@@ -2,6 +2,10 @@
   box-sizing: border-box;
 }
 
+:root {
+  color-scheme: dark;
+}
+
 body {
   margin: 0;
   background: #14181d;
@@ -12,7 +16,9 @@ body {
 .app {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 16px;
+  padding-block: 16px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
 
 .scoreboard {
@@ -60,6 +66,13 @@ body {
 .team-formation {
   color: #868e96;
   font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .team-formation {
+    display: none;
+  }
 }
 
 .match-view {

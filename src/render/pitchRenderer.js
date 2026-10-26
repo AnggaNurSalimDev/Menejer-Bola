@@ -155,7 +155,8 @@ function drawPlayer(ctx, vp, player, teamColors) {
   ctx.fillText(String(player.number), cx, cy + w * 0.08);
 
   // Nama di bawah jersey.
-  const nameSize = Math.max(9, Math.round(w * 0.36));
+  // Di layar kecil, nama ikut mengecil bersama jersey agar tidak menutupi lapangan.
+  const nameSize = Math.max(6, Math.round(w * 0.36));
   ctx.font = `600 ${nameSize}px system-ui, sans-serif`;
   ctx.textBaseline = 'top';
   ctx.lineWidth = 3;
