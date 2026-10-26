@@ -177,6 +177,31 @@ function drawBall(ctx, vp, ball) {
   ctx.stroke();
 }
 
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+// Interpolasi: posisi di antara dua tick, supaya gerakan halus di 60fps
+// walaupun simulasi hanya 10 tick per detik (prinsip arsitektur no. 2).
+export function interpolateState(previous, current, alpha) {
+  if (!previous || previous.players.length !== current.players.length) return current;
+  const t = Math.min(1, Math.max(0, alpha));
+
+  return {
+    ...current,
+    ball: {
+      ...current.ball,
+      x: lerp(previous.ball.x, current.ball.x, t),
+      y: lerp(previous.ball.y, current.ball.y, t),
+    },
+    players: current.players.map((player, i) => {
+      const before = previous.players[i];
+      if (before.id !== player.id) return player;
+      return { ...player, x: lerp(before.x, player.x, t), y: lerp(before.y, player.y, t) };
+    }),
+  };
+}
+
 export function renderMatch(ctx, state, cssWidth, cssHeight) {
   if (!ctx) throw new TypeError('renderMatch: context canvas tidak ada');
   if (!state) throw new TypeError('renderMatch: state tidak ada');

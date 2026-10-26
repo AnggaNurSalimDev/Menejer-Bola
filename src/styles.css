@@ -72,8 +72,49 @@ body {
   display: block;
 }
 
+.clock {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #adb5bd;
+  text-align: center;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.controls button {
+  background: #23292f;
+  color: #e9ecef;
+  border: 1px solid #343a40;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.controls button:hover {
+  background: #2c333a;
+}
+
+.speed-group {
+  display: flex;
+  gap: 4px;
+}
+
+.speed-group button.is-active {
+  background: #1f4fbf;
+  border-color: #1f4fbf;
+}
+
 .stage-note {
   color: #868e96;
   font-size: 0.85rem;
-  margin-top: 10px;
+  margin-left: auto;
 }

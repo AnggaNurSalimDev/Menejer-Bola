@@ -4,6 +4,9 @@
 import { PITCH, isInsidePitch } from './pitch.js';
 import { getFormation } from './formations.js';
 import { validateStats } from './stats.js';
+import { deriveMovementProfile } from './movement.js';
+
+const SPEED_TOLERANCE = 1e-6;
 
 // Ubah slot formasi (relatif, menyerang ke kanan) menjadi koordinat meter.
 // Tim yang menyerang ke kiri dicerminkan pada kedua sumbu, supaya
@@ -31,10 +34,13 @@ function placeTeam(team, attacksRight) {
       number: player.number,
       role: player.role,
       shortName: player.shortName,
+      slot: { depth: slot.depth, lane: slot.lane },
+      profile: deriveMovementProfile(player.stats),
       x,
       y,
       vx: 0,
       vy: 0,
+      target: { x, y },
     };
   });
 }
@@ -49,7 +55,8 @@ export function createMatchState(home, away) {
       [home.id]: { id: home.id, name: home.name, colors: home.colors, attacksRight: true },
       [away.id]: { id: away.id, name: away.name, colors: away.colors, attacksRight: false },
     },
-    ball: { x: PITCH.length / 2, y: PITCH.width / 2, vx: 0, vy: 0 },
+    // restTicks: berapa tick lagi bola diam sebelum "ditendang" lagi.
+    ball: { x: PITCH.length / 2, y: PITCH.width / 2, vx: 0, vy: 0, restTicks: 10 },
     players: [...placeTeam(home, true), ...placeTeam(away, false)],
   };
 
@@ -86,9 +93,20 @@ export function validateMatchState(state, teams = []) {
 
   for (const p of state.players) {
     if (!isInsidePitch(p.x, p.y)) errors.push(`pemain ${p.id} di luar lapangan (${p.x}, ${p.y})`);
+    if (!Number.isFinite(p.vx) || !Number.isFinite(p.vy)) {
+      errors.push(`pemain ${p.id}: kecepatan bukan angka`);
+    } else if (Math.hypot(p.vx, p.vy) > p.profile.maxSpeed + SPEED_TOLERANCE) {
+      errors.push(`pemain ${p.id}: melebihi kecepatan maksimal`);
+    }
+    if (!p.target || !isInsidePitch(p.target.x, p.target.y)) {
+      errors.push(`pemain ${p.id}: target di luar lapangan`);
+    }
   }
 
-  if (!isInsidePitch(state.ball.x, state.ball.y)) errors.push('bola di luar lapangan');
+  const { ball } = state;
+  if (!isInsidePitch(ball.x, ball.y)) errors.push('bola di luar lapangan');
+  if (!Number.isFinite(ball.vx) || !Number.isFinite(ball.vy)) errors.push('kecepatan bola bukan angka');
+  if (!Number.isInteger(ball.restTicks) || ball.restTicks < 0) errors.push('restTicks bola tidak valid');
 
   for (const team of teams) {
     for (const player of team.players) {
