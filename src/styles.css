@@ -1,0 +1,79 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #14181d;
+  color: #e9ecef;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.scoreboard {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.score {
+  font-size: 1.6rem;
+  font-weight: 700;
+  padding: 4px 16px;
+  background: #0b0d10;
+  border-radius: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.team-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.team-label--right {
+  justify-content: flex-end;
+}
+
+.team-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.team-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.team-formation {
+  color: #868e96;
+  font-size: 0.85rem;
+}
+
+.match-view {
+  width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.match-view canvas {
+  display: block;
+}
+
+.stage-note {
+  color: #868e96;
+  font-size: 0.85rem;
+  margin-top: 10px;
+}
