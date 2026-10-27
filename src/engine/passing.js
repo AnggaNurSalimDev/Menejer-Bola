@@ -32,7 +32,7 @@ const MAX_OPENNESS = 12; // meter
 
 // Selisih waktu terkecil antara bola dan lawan di sepanjang jalur operan.
 // Positif = bola selalu sampai duluan.
-function laneMargin(from, to, speed, opponents) {
+export function laneMargin(from, to, speed, opponents) {
   const length = distance(from, to);
   let margin = Infinity;
 
@@ -49,6 +49,18 @@ function laneMargin(from, to, speed, opponents) {
     }
   }
   return margin;
+}
+
+// Apakah ada lawan yang SUDAH berdiri dalam jangkauan jalur bola
+// (bola pasti mengenainya, tanpa perlu bereaksi)?
+export function laneOccupied(from, to, opponents) {
+  const length = distance(from, to);
+  for (let s = LANE_FIRST_SAMPLE; s <= length + 1e-9; s += LANE_SAMPLE_STEP) {
+    const ratio = s / length;
+    const point = { x: from.x + (to.x - from.x) * ratio, y: from.y + (to.y - from.y) * ratio };
+    if (opponents.some((opponent) => reachTime(opponent, point) === 0)) return true;
+  }
+  return false;
 }
 
 function nearestDistance(point, others) {
@@ -103,7 +115,9 @@ export function evaluatePassOptions({ holder, origin, teammates, opponents, atta
 // lurus ke depan, sedikit ke tengah, tanpa masuk terlalu dalam ke pojok.
 const DRIBBLE_LOOKAHEAD = 10;
 const DRIBBLE_CENTER_PULL = 0.15;
-const DRIBBLE_MAX_FORWARD = PITCH.length - 14;
+const DRIBBLE_MAX_FORWARD = PITCH.length - 8;
+const FINAL_THIRD_START = PITCH.length - 35; // meter dari gawang sendiri
+const CUT_INSIDE_DEPTH = 9; // titik tuju: 9 m di depan gawang lawan, di tengah
 
 // Saat ditekan: menggiring menjauh dari penekan, sambil tetap condong ke depan.
 const ESCAPE_DISTANCE = 8;
@@ -125,7 +139,22 @@ export function dribbleTarget(holder, attacksRight, presser = null) {
     );
   }
 
-  const forward = Math.min(DRIBBLE_MAX_FORWARD, forwardOf(holder, attacksRight) + DRIBBLE_LOOKAHEAD);
+  const holderForward = forwardOf(holder, attacksRight);
+
+  // Di sepertiga akhir: potong ke arah gawang untuk membuka sudut tembak.
+  if (holderForward >= FINAL_THIRD_START) {
+    const aimForward = PITCH.length - CUT_INSIDE_DEPTH;
+    const aim = { x: attacksRight ? aimForward : PITCH.length - aimForward, y: PITCH.width / 2 };
+    const toAim = distance(holder, aim);
+    if (toAim < 1) return clampToPitch(aim, 1.5);
+    const step = Math.min(DRIBBLE_LOOKAHEAD, toAim);
+    return clampToPitch(
+      { x: holder.x + ((aim.x - holder.x) / toAim) * step, y: holder.y + ((aim.y - holder.y) / toAim) * step },
+      1.5,
+    );
+  }
+
+  const forward = Math.min(DRIBBLE_MAX_FORWARD, holderForward + DRIBBLE_LOOKAHEAD);
   const x = attacksRight ? forward : PITCH.length - forward;
   const y = holder.y + (PITCH.width / 2 - holder.y) * DRIBBLE_CENTER_PULL;
   return clampToPitch({ x, y }, 1.5);

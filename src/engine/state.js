@@ -32,11 +32,14 @@ function placeTeam(team, attacksRight) {
     return {
       id: player.id,
       teamId: team.id,
+      attacksRight,
       number: player.number,
       role: player.role,
       shortName: player.shortName,
       slot: { depth: slot.depth, lane: slot.lane },
       profile: deriveMovementProfile(player.stats),
+      // Salinan stat 1–20, dipakai untuk duel (tekel) dan nanti untuk noise.
+      skills: { ...player.stats },
       x,
       y,
       vx: 0,
@@ -44,16 +47,19 @@ function placeTeam(team, attacksRight) {
       target: { x, y },
       // shape | hold | chase | receive | press
       task: 'shape',
+      // Tick tersisa sebelum boleh mencoba tekel lagi.
+      tackleCooldown: 0,
     };
   });
 }
 
 export const TASKS = Object.freeze(['shape', 'hold', 'chase', 'receive', 'press']);
 
-// Bola punya tiga keadaan:
-//   dikuasai    : ownerId terisi, bola menempel di kaki pemegangnya
-//   dalam operan: ownerId kosong, passTargetId terisi
-//   bebas       : ownerId dan passTargetId kosong
+// Bola punya empat keadaan:
+//   dikuasai     : ownerId terisi, bola menempel di kaki pemegangnya
+//   dalam operan : ownerId kosong, passTargetId terisi
+//   tembakan     : ownerId kosong, shotTeamId terisi
+//   bebas        : semuanya kosong
 // restartTeamId terisi = bola mati (kick-off / keluar lapangan),
 // hanya tim itu yang boleh mengambilnya.
 export function createInitialBall(kickOffTeamId) {
@@ -70,6 +76,7 @@ export function createInitialBall(kickOffTeamId) {
     kickCooldown: 0,
     passTargetId: null,
     passTeamId: null,
+    shotTeamId: null,
     lastTouchTeamId: kickOffTeamId,
     restartTeamId: kickOffTeamId,
   };
@@ -80,10 +87,17 @@ function createStats(teamIds) {
   return {
     possessionTicks: perTeam(() => 0),
     passes: perTeam(() => ({ attempted: 0, completed: 0 })),
+    shots: perTeam(() => ({ total: 0, onTarget: 0 })),
+    goals: perTeam(() => 0),
+    tackles: perTeam(() => ({ attempted: 0, won: 0 })),
+    saves: perTeam(() => ({ caught: 0, parried: 0 })),
     turnovers: 0,
     outOfPlay: 0,
   };
 }
+
+// Setelah gol, permainan jeda sejenak: pemain kembali ke posisi kick-off.
+export const GOAL_PAUSE_TICKS = 40;
 
 export function createMatchState(home, away) {
   if (!home || !away) throw new TypeError('createMatchState: home dan away wajib ada');
@@ -99,6 +113,10 @@ export function createMatchState(home, away) {
     ball: createInitialBall(home.id),
     players: [...placeTeam(home, true), ...placeTeam(away, false)],
     stats: createStats([home.id, away.id]),
+    // Tick tersisa dari jeda setelah gol (0 = bermain normal).
+    pauseTicks: 0,
+    // Gol terakhir, untuk ditampilkan UI: { teamId, scorerId, tick } atau null.
+    lastGoal: null,
   };
 
   const errors = validateMatchState(state, [home, away]);
@@ -143,6 +161,12 @@ export function validateMatchState(state, teams = []) {
       errors.push(`pemain ${p.id}: target di luar lapangan`);
     }
     if (!TASKS.includes(p.task)) errors.push(`pemain ${p.id}: tugas tidak dikenal "${p.task}"`);
+    if (!Number.isInteger(p.tackleCooldown) || p.tackleCooldown < 0) {
+      errors.push(`pemain ${p.id}: tackleCooldown tidak valid`);
+    }
+    if (p.attacksRight !== state.teams[p.teamId]?.attacksRight) {
+      errors.push(`pemain ${p.id}: arah serang tidak sama dengan timnya`);
+    }
   }
 
   const byId = new Map(state.players.map((p) => [p.id, p]));
@@ -154,7 +178,7 @@ export function validateMatchState(state, teams = []) {
   if (!Number.isInteger(ball.kickCooldown) || ball.kickCooldown < 0) errors.push('kickCooldown bola tidak valid');
   if (!Number.isInteger(ball.heldTicks) || ball.heldTicks < 0) errors.push('heldTicks bola tidak valid');
 
-  // Status bola harus tepat salah satu dari tiga keadaan.
+  // Status bola harus tepat salah satu keadaan.
   if (ball.ownerId !== null) {
     const owner = byId.get(ball.ownerId);
     if (!owner) {
@@ -163,7 +187,20 @@ export function validateMatchState(state, teams = []) {
       errors.push(`bola terlalu jauh dari pemegangnya ${owner.id}`);
     }
     if (ball.passTargetId !== null) errors.push('bola dikuasai sekaligus sedang dioper');
+    if (ball.shotTeamId !== null) errors.push('bola dikuasai sekaligus sedang ditembakkan');
     if (ball.restartTeamId !== null) errors.push('bola dikuasai sekaligus bola mati');
+  }
+  if (ball.shotTeamId !== null) {
+    if (!teamIds.includes(ball.shotTeamId)) errors.push('shotTeamId tidak valid');
+    if (ball.passTargetId !== null) errors.push('bola dioper sekaligus ditembakkan');
+  }
+
+  // Jeda setelah gol: bola diam di titik tengah, menunggu kick-off.
+  if (!Number.isInteger(state.pauseTicks) || state.pauseTicks < 0) errors.push('pauseTicks tidak valid');
+  if (state.pauseTicks > 0) {
+    if (ball.restartTeamId === null) errors.push('jeda gol tanpa tim kick-off');
+    if (ball.x !== PITCH.length / 2 || ball.y !== PITCH.width / 2) errors.push('jeda gol tetapi bola tidak di tengah');
+    if (state.players.some((p) => p.task !== 'shape')) errors.push('jeda gol tetapi ada pemain mengurus bola');
   }
   if (ball.passTargetId !== null) {
     const receiver = byId.get(ball.passTargetId);
@@ -202,6 +239,13 @@ export function validateMatchState(state, teams = []) {
     for (const id of teamIds) {
       const { attempted, completed } = state.stats.passes[id];
       if (!(completed >= 0 && completed <= attempted)) errors.push(`tim ${id}: operan sukses > operan dicoba`);
+      const shots = state.stats.shots[id];
+      if (!(shots.onTarget >= 0 && shots.onTarget <= shots.total)) errors.push(`tim ${id}: tembakan tepat > total`);
+      const tackles = state.stats.tackles[id];
+      if (!(tackles.won >= 0 && tackles.won <= tackles.attempted)) errors.push(`tim ${id}: tekel sukses > dicoba`);
+      if (!Number.isInteger(state.stats.goals[id]) || state.stats.goals[id] < 0) errors.push(`tim ${id}: gol tidak valid`);
+      const saves = state.stats.saves[id];
+      if (!(saves.caught >= 0 && saves.parried >= 0)) errors.push(`tim ${id}: penyelamatan tidak valid`);
     }
   } else {
     errors.push('stats tidak ada');

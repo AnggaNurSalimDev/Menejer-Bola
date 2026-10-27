@@ -3,24 +3,34 @@
 // Tidak tahu apa-apa soal tampilan — bisa dijalankan di Node.
 //
 // Urutan satu tick:
-//   1. Pemegang bola memutuskan: tetap menggiring atau mengoper.
+//   0. Kalau sedang jeda setelah gol: pemain kembali ke posisi kick-off, selesai.
+//   1. Duel & keputusan pemegang bola: ditekel? kalau tidak, tembak / oper / giring.
 //   2. Setiap tim menunjuk satu pemain untuk menjemput/menekan bola.
 //   3. Setiap pemain mendapat tugas & target, lalu tubuhnya bergerak.
-//   4. Bola bergerak: menempel di kaki pemegang, atau menggelinding
-//      lalu dicek siapa yang menyentuhnya / apakah keluar lapangan.
+//   4. Bola bergerak: menempel di kaki pemegang, atau menggelinding lalu dicek:
+//      siapa yang menyentuhnya, gol, atau keluar lapangan.
 //   5. Statistik dicatat.
 
 import { createRng } from './rng.js';
-import { createMatchState } from './state.js';
+import { createMatchState, createInitialBall, slotToPitch, GOAL_PAUSE_TICKS } from './state.js';
 import { DT, DECISION_INTERVAL_TICKS, KICK_COOLDOWN_TICKS } from './constants.js';
-import { clampToPitch, distance, isInsidePitch } from './pitch.js';
+import { PITCH, clampToPitch, distance, isInsidePitch, isBetweenPosts } from './pitch.js';
 import { rollBall } from './ball.js';
 import { computeAnchor } from './shape.js';
 import { stepBody } from './movement.js';
 import { pickChaser, pickPresser } from './roles.js';
 import { evaluatePassOptions, dribbleTarget } from './passing.js';
+import { evaluateShot, shotVelocity } from './shooting.js';
+import {
+  pickTackler,
+  tackleSuccessChance,
+  looseBallVelocity,
+  BEATEN_COOLDOWN_TICKS,
+  SUCCESS_COOLDOWN_TICKS,
+} from './tackle.js';
 import { findController } from './touch.js';
 import { assignMarks, blendTowardMark } from './marking.js';
+import { catchChance, parryVelocity, isKeeperHandling } from './keeper.js';
 
 // Pemegang bola
 const HOLD_MIN_TICKS = 10; // menggiring paling sedikit 1 detik sebelum mempertimbangkan operan
@@ -31,6 +41,7 @@ const FORCED_PASS_TICKS = 35; // terlalu lama tanpa opsi aman → oper yang terb
 const PRESSURE_RADIUS = 3; // meter
 const PRESSURED_MIN_TICKS = 5; // ditekan pun, pemain butuh setengah detik untuk melepas operan
 const PRESSURED_FORCED_TICKS = 10;
+const SHOT_MIN_TICKS = 2; // butuh sentuhan persiapan sebelum menembak
 const DRIBBLE_SPEED_SCALE = 0.75;
 const BALL_AHEAD_OF_FEET = 0.6; // meter
 
@@ -42,22 +53,27 @@ const SEPARATION_STRENGTH = 0.8;
 const RESTART_INSET = 0.5;
 
 function cloneStats(stats) {
+  const perTeam = (obj) => Object.fromEntries(Object.entries(obj).map(([id, v]) => [id, { ...v }]));
   return {
     possessionTicks: { ...stats.possessionTicks },
-    passes: Object.fromEntries(Object.entries(stats.passes).map(([id, p]) => [id, { ...p }])),
+    passes: perTeam(stats.passes),
+    shots: perTeam(stats.shots),
+    goals: { ...stats.goals },
+    tackles: perTeam(stats.tackles),
+    saves: perTeam(stats.saves),
     turnovers: stats.turnovers,
     outOfPlay: stats.outOfPlay,
   };
 }
 
-function facingOf(player, attacksRight) {
+function facingOf(player) {
   const speed = Math.hypot(player.vx, player.vy);
   if (speed > 0.5) return { x: player.vx / speed, y: player.vy / speed };
-  return { x: attacksRight ? 1 : -1, y: 0 };
+  return { x: player.attacksRight ? 1 : -1, y: 0 };
 }
 
-function ballAtFeet(player, attacksRight) {
-  const facing = facingOf(player, attacksRight);
+function ballAtFeet(player) {
+  const facing = facingOf(player);
   return clampToPitch({
     x: player.x + facing.x * BALL_AHEAD_OF_FEET,
     y: player.y + facing.y * BALL_AHEAD_OF_FEET,
@@ -93,10 +109,15 @@ function applySeparation(target, player, players) {
   return clampToPitch({ x: target.x + pushX, y: target.y + pushY });
 }
 
-function decideHolder(holder, ball, players, teams) {
-  const team = teams[holder.teamId];
+// Keputusan pemegang bola: { type: 'shoot', shot } | { type: 'pass', option } | null (terus menggiring)
+function decideHolder(holder, ball, players) {
   const opponents = players.filter((p) => p.teamId !== holder.teamId);
   const pressured = nearestDistance(holder, opponents) < PRESSURE_RADIUS;
+
+  if (ball.heldTicks >= SHOT_MIN_TICKS) {
+    const shot = evaluateShot({ origin: ball, opponents, attacksRight: holder.attacksRight, pressured });
+    if (shot?.shouldShoot) return { type: 'shoot', shot };
+  }
 
   const ready = ball.heldTicks >= ball.holdTarget || (pressured && ball.heldTicks >= PRESSURED_MIN_TICKS);
   if (!ready) return null;
@@ -106,7 +127,7 @@ function decideHolder(holder, ball, players, teams) {
     origin: ball,
     teammates: players.filter((p) => p.teamId === holder.teamId),
     opponents,
-    attacksRight: team.attacksRight,
+    attacksRight: holder.attacksRight,
     previousOwnerId: ball.previousOwnerId,
   });
   if (options.length === 0) return null;
@@ -114,30 +135,58 @@ function decideHolder(holder, ball, players, teams) {
   const best = options[0];
   const forced =
     ball.heldTicks >= FORCED_PASS_TICKS || (pressured && ball.heldTicks >= PRESSURED_FORCED_TICKS);
-  return best.safe || forced ? best : null;
+  return best.safe || forced ? { type: 'pass', option: best } : null;
 }
 
-function kick(ball, holder, option) {
-  const d = distance(ball, option.target);
-  if (!(d > 0)) throw new Error(`kick: jarak operan nol dari ${holder.id}`);
+// Bola meninggalkan kaki pemain (operan, tembakan, atau terlepas karena tekel).
+function releaseBall(ball, kicker, velocity, extra) {
   return {
     ...ball,
-    vx: ((option.target.x - ball.x) / d) * option.speed,
-    vy: ((option.target.y - ball.y) / d) * option.speed,
+    vx: velocity.vx,
+    vy: velocity.vy,
     ownerId: null,
     heldTicks: 0,
     holdTarget: 0,
-    previousOwnerId: holder.id,
-    kickerId: holder.id,
+    previousOwnerId: kicker.id,
+    kickerId: kicker.id,
     kickCooldown: KICK_COOLDOWN_TICKS,
-    passTargetId: option.receiver.id,
-    passTeamId: holder.teamId,
-    lastTouchTeamId: holder.teamId,
+    passTargetId: null,
+    passTeamId: null,
+    shotTeamId: null,
+    lastTouchTeamId: kicker.teamId,
     restartTeamId: null,
+    ...extra,
   };
 }
 
-function gainControl(ball, controller, teams, stats, rng) {
+function passVelocity(ball, option) {
+  const d = distance(ball, option.target);
+  if (!(d > 0)) throw new Error('passVelocity: jarak operan nol');
+  return {
+    vx: ((option.target.x - ball.x) / d) * option.speed,
+    vy: ((option.target.y - ball.y) / d) * option.speed,
+  };
+}
+
+// Apakah arah bola saat ini akan melewati garis gawang di antara tiang?
+function headingBetweenPosts(ball) {
+  if (ball.vx === 0) return false;
+  const lineX = ball.vx > 0 ? PITCH.length : 0;
+  const y = ball.y + ball.vy * ((lineX - ball.x) / ball.vx);
+  return isBetweenPosts(y);
+}
+
+// Tembakan lawan yang sampai ke jangkauan kiper di kotaknya sendiri.
+function isShotReachingKeeper(ball, player, point) {
+  return (
+    player.role === 'GK' &&
+    ball.shotTeamId !== null &&
+    ball.shotTeamId !== player.teamId &&
+    isKeeperHandling(player, point)
+  );
+}
+
+function gainControl(ball, controller, stats, rng) {
   if (ball.passTeamId !== null && controller.teamId === ball.passTeamId) {
     stats.passes[controller.teamId].completed += 1;
   }
@@ -149,7 +198,7 @@ function gainControl(ball, controller, teams, stats, rng) {
   const isKeeper = controller.role === 'GK';
   return {
     ...ball,
-    ...ballAtFeet(controller, teams[controller.teamId].attacksRight),
+    ...ballAtFeet(controller),
     vx: controller.vx,
     vy: controller.vy,
     ownerId: controller.id,
@@ -162,16 +211,53 @@ function gainControl(ball, controller, teams, stats, rng) {
     kickCooldown: 0,
     passTargetId: null,
     passTeamId: null,
+    shotTeamId: null,
     lastTouchTeamId: controller.teamId,
     restartTeamId: null,
   };
 }
 
-// Bola keluar: diberikan ke lawan dari tim yang terakhir menyentuh,
-// diletakkan di titik keluarnya (versi sederhana lemparan ke dalam).
-function restartFromOut(ball, outPoint, teamIds) {
+// Di mana lintasan from→to memotong garis gawang, kalau memotong.
+// Mengembalikan { lineX, y, u } (u = posisi relatif di lintasan) atau null.
+export function goalLineCrossing(from, to) {
+  for (const lineX of [0, PITCH.length]) {
+    // Bola harus melewati garis sepenuhnya; berada tepat di garis belum dihitung.
+    const crosses = (from.x - lineX) * (to.x - lineX) < 0;
+    if (!crosses) continue;
+    const u = (lineX - from.x) / (to.x - from.x);
+    return { lineX, y: from.y + (to.y - from.y) * u, u };
+  }
+  return null;
+}
+
+// Bola keluar: diberikan ke lawan dari tim yang terakhir menyentuh.
+//   lewat garis samping              → lemparan ke dalam (versi sederhana) di titik keluar
+//   lewat garis gawang, milik bertahan → tendangan gawang dari tepi kotak gawang
+//   lewat garis gawang, milik penyerang → sepak pojok
+function restartFromOut(ball, from, outPoint, teams, teamIds) {
   const restartTeamId = teamIds.find((id) => id !== ball.lastTouchTeamId) ?? teamIds[0];
-  const spot = clampToPitch(outPoint, RESTART_INSET);
+  const crossing = goalLineCrossing(from, outPoint);
+  const mid = PITCH.width / 2;
+  let spot;
+
+  if (crossing) {
+    const defendingTeamId = teamIds.find((id) => teams[id].attacksRight === (crossing.lineX === 0));
+    if (restartTeamId === defendingTeamId) {
+      const halfGoalArea = PITCH.goalAreaWidth / 2;
+      spot = {
+        x: crossing.lineX === 0 ? PITCH.goalAreaDepth : PITCH.length - PITCH.goalAreaDepth,
+        y: Math.min(mid + halfGoalArea, Math.max(mid - halfGoalArea, crossing.y)),
+      };
+    } else {
+      spot = {
+        x: crossing.lineX === 0 ? RESTART_INSET : PITCH.length - RESTART_INSET,
+        y: crossing.y < mid ? RESTART_INSET : PITCH.width - RESTART_INSET,
+      };
+    }
+  } else {
+    spot = clampToPitch(outPoint, RESTART_INSET);
+  }
+
   return {
     ...ball,
     ...spot,
@@ -184,6 +270,7 @@ function restartFromOut(ball, outPoint, teamIds) {
     kickCooldown: 0,
     passTargetId: null,
     passTeamId: null,
+    shotTeamId: null,
     restartTeamId,
   };
 }
@@ -195,23 +282,75 @@ export function createSimulation(home, away, seed) {
   let state = createMatchState(home, away);
   const teamIds = Object.keys(state.teams);
 
+  // 0. Jeda setelah gol: semua pemain berjalan kembali ke posisi kick-off.
+  function stepPause(prev, tick, stats) {
+    const players = prev.players.map((player) => {
+      const target = slotToPitch(player.slot, player.attacksRight);
+      const body = stepBody(player, target, DT);
+      return { ...player, ...body, target, task: 'shape', tackleCooldown: Math.max(0, player.tackleCooldown - 1) };
+    });
+    stats.possessionTicks[prev.ball.restartTeamId] += 1;
+    return { ...prev, tick, players, stats, pauseTicks: prev.pauseTicks - 1 };
+  }
+
   function step() {
     const prev = state;
     const tick = prev.tick + 1;
     const stats = cloneStats(prev.stats);
+
+    if (prev.pauseTicks > 0) {
+      state = stepPause(prev, tick, stats);
+      return state;
+    }
+
     const teams = Object.fromEntries(teamIds.map((id) => [id, { ...prev.teams[id] }]));
     const byId = new Map(prev.players.map((p) => [p.id, p]));
     let ball = { ...prev.ball };
+    let lastGoal = prev.lastGoal;
+    let pauseTicks = 0;
 
-    // 1. Pemegang bola: oper atau terus menggiring.
+    const cooldownOverrides = new Map();
+    const stumbled = new Set();
+
+    // 1. Duel dan keputusan pemegang bola.
     if (ball.ownerId !== null) {
       const holder = byId.get(ball.ownerId);
       if (!holder) throw new Error(`step: pemegang bola ${ball.ownerId} tidak ditemukan`);
       ball.heldTicks += 1;
-      const pass = decideHolder(holder, ball, prev.players, teams);
-      if (pass) {
-        ball = kick(ball, holder, pass);
-        stats.passes[holder.teamId].attempted += 1;
+
+      const opponents = prev.players.filter((p) => p.teamId !== holder.teamId);
+      // Bola di tangan kiper tidak boleh ditekel.
+      const tackler = isKeeperHandling(holder, ball) ? null : pickTackler(holder, opponents, rng);
+      let tackled = false;
+
+      if (tackler) {
+        stats.tackles[tackler.teamId].attempted += 1;
+        if (rng.chance(tackleSuccessChance(tackler, holder))) {
+          stats.tackles[tackler.teamId].won += 1;
+          ball = releaseBall(ball, holder, looseBallVelocity(tackler, holder, rng), {});
+          cooldownOverrides.set(tackler.id, SUCCESS_COOLDOWN_TICKS);
+          tackled = true;
+        } else {
+          cooldownOverrides.set(tackler.id, BEATEN_COOLDOWN_TICKS);
+          stumbled.add(tackler.id);
+        }
+      }
+
+      if (!tackled) {
+        const decision = decideHolder(holder, ball, prev.players);
+        if (decision?.type === 'shoot') {
+          // "Tepat sasaran" dihitung saat tembakan berakhir (gol atau diselamatkan
+          // kiper), sesuai definisi statistik sepak bola; tembakan terblok tidak termasuk.
+          const velocity = shotVelocity(ball, decision.shot.aim, holder.attacksRight, rng);
+          stats.shots[holder.teamId].total += 1;
+          ball = releaseBall(ball, holder, velocity, { shotTeamId: holder.teamId });
+        } else if (decision?.type === 'pass') {
+          stats.passes[holder.teamId].attempted += 1;
+          ball = releaseBall(ball, holder, passVelocity(ball, decision.option), {
+            passTargetId: decision.option.receiver.id,
+            passTeamId: holder.teamId,
+          });
+        }
       }
     }
 
@@ -224,7 +363,9 @@ export function createSimulation(home, away, seed) {
       let pick = null;
 
       if (owner) {
-        if (owner.teamId !== id) pick = pickPresser(own, owner, team.attacksRight, team.chaserId);
+        // Kiper memegang bola di kotaknya: lawan tidak menekan, cukup jaga bentuk.
+        const keeperHolding = isKeeperHandling(owner, ball);
+        if (owner.teamId !== id && !keeperHolding) pick = pickPresser(own, owner, team.attacksRight, team.chaserId);
       } else if (ball.restartTeamId !== null && ball.restartTeamId !== id) {
         pick = null; // bola mati milik lawan: tunggu
       } else if (ball.passTeamId === id) {
@@ -242,7 +383,9 @@ export function createSimulation(home, away, seed) {
     }
 
     // 3. Tugas, target, lalu gerak.
-    const possessingTeamId = owner ? owner.teamId : (ball.passTeamId ?? ball.restartTeamId ?? null);
+    const possessingTeamId = owner
+      ? owner.teamId
+      : (ball.passTeamId ?? ball.shotTeamId ?? ball.restartTeamId ?? null);
 
     // Tim yang bertahan membagi penjagaan lawan (tidak termasuk pemegang bola,
     // yang sudah diurus penekan).
@@ -264,7 +407,9 @@ export function createSimulation(home, away, seed) {
 
       if (ball.ownerId === player.id) {
         task = 'hold';
-        const presserId = teamIds.map((id) => teams[id].chaserId).find((id) => id && byId.get(id).teamId !== player.teamId);
+        const presserId = teamIds
+          .map((id) => teams[id].chaserId)
+          .find((id) => id && byId.get(id).teamId !== player.teamId);
         const presser = presserId ? byId.get(presserId) : null;
         const pressing = presser && distance(presser, player) < PRESSURE_RADIUS * 2 ? presser : null;
         target = dribbleTarget(player, team.attacksRight, pressing);
@@ -288,20 +433,22 @@ export function createSimulation(home, away, seed) {
 
       target = clampToPitch(target);
       const moveTarget = task === 'shape' ? applySeparation(target, player, prev.players) : target;
-      const body = stepBody(player, moveTarget, DT, moveOptions);
-      return { ...player, ...body, target, task };
+      // Penekan yang gagal menekel kehilangan momentum.
+      const body = stepBody(stumbled.has(player.id) ? { ...player, vx: 0, vy: 0 } : player, moveTarget, DT, moveOptions);
+      const tackleCooldown = cooldownOverrides.get(player.id) ?? Math.max(0, player.tackleCooldown - 1);
+      return { ...player, ...body, target, task, tackleCooldown };
     });
 
     // 4. Bola.
     if (ball.ownerId !== null) {
       const holder = players.find((p) => p.id === ball.ownerId);
-      ball = { ...ball, ...ballAtFeet(holder, teams[holder.teamId].attacksRight), vx: holder.vx, vy: holder.vy };
+      ball = { ...ball, ...ballAtFeet(holder), vx: holder.vx, vy: holder.vy };
     } else {
       const from = { x: ball.x, y: ball.y };
       const rolled = ball.restartTeamId !== null ? { ...from, vx: 0, vy: 0 } : rollBall(ball, DT);
       const cooldown = Math.max(0, ball.kickCooldown - 1);
 
-      const controller = findController(
+      const touch = findController(
         from,
         rolled,
         players,
@@ -309,19 +456,58 @@ export function createSimulation(home, away, seed) {
           !(p.id === ball.kickerId && ball.kickCooldown > 0) &&
           (ball.restartTeamId === null || p.teamId === ball.restartTeamId),
       );
+      const crossing = goalLineCrossing(from, rolled);
+      const isGoal = crossing && isBetweenPosts(crossing.y) && (!touch || crossing.u < touch.u);
 
-      if (controller) {
-        ball = gainControl(ball, controller, teams, stats, rng);
+      if (isGoal) {
+        // Gol: tim yang menyerang ke garis itu mencetak angka.
+        const scoringTeamId = teamIds.find((id) => teams[id].attacksRight === (crossing.lineX === PITCH.length));
+        const concedingTeamId = teamIds.find((id) => id !== scoringTeamId);
+        stats.goals[scoringTeamId] += 1;
+        if (ball.shotTeamId === scoringTeamId) stats.shots[scoringTeamId].onTarget += 1;
+        lastGoal = {
+          teamId: scoringTeamId,
+          scorerId: ball.kickerId,
+          ownGoal: ball.lastTouchTeamId !== scoringTeamId,
+          tick,
+        };
+        ball = createInitialBall(concedingTeamId);
+        pauseTicks = GOAL_PAUSE_TICKS;
+        for (let i = 0; i < players.length; i += 1) {
+          if (players[i].task !== 'shape') players[i] = { ...players[i], task: 'shape' };
+        }
+        for (const id of teamIds) teams[id].chaserId = null;
+      } else if (touch && isShotReachingKeeper(ball, touch.player, from)) {
+        // Kiper menjangkau tembakan: tangkap, atau tepis jadi bola muntah.
+        const keeper = touch.player;
+        const speed = Math.hypot(ball.vx, ball.vy);
+        if (headingBetweenPosts(ball)) stats.shots[ball.shotTeamId].onTarget += 1;
+        const contact = { x: from.x + (rolled.x - from.x) * touch.u, y: from.y + (rolled.y - from.y) * touch.u };
+        if (rng.chance(catchChance(speed))) {
+          stats.saves[keeper.teamId].caught += 1;
+          ball = gainControl(ball, keeper, stats, rng);
+          for (let i = 0; i < players.length; i += 1) {
+            const p = players[i];
+            if (p.id === keeper.id) players[i] = { ...p, task: 'hold' };
+            else if (p.task !== 'shape') players[i] = { ...p, task: 'shape' };
+          }
+          for (const id of teamIds) teams[id].chaserId = null;
+        } else {
+          stats.saves[keeper.teamId].parried += 1;
+          ball = releaseBall({ ...ball, ...clampToPitch(contact) }, keeper, parryVelocity(keeper, speed, rng), {});
+        }
+      } else if (touch) {
+        ball = gainControl(ball, touch.player, stats, rng);
         // Tugas pemain mengikuti pergantian penguasaan di tick yang sama.
         for (let i = 0; i < players.length; i += 1) {
           const p = players[i];
-          if (p.id === controller.id) players[i] = { ...p, task: 'hold' };
+          if (p.id === touch.player.id) players[i] = { ...p, task: 'hold' };
           else if (p.task !== 'shape') players[i] = { ...p, task: 'shape' };
         }
         for (const id of teamIds) teams[id].chaserId = null;
       } else if (!isInsidePitch(rolled.x, rolled.y)) {
         stats.outOfPlay += 1;
-        ball = restartFromOut(ball, rolled, teamIds);
+        ball = restartFromOut(ball, from, rolled, teams, teamIds);
       } else {
         ball = { ...ball, ...rolled, kickCooldown: cooldown };
       }
@@ -338,10 +524,10 @@ export function createSimulation(home, away, seed) {
     // 5. Statistik penguasaan bola.
     const holderTeamId = ball.ownerId !== null ? players.find((p) => p.id === ball.ownerId).teamId : null;
     const creditTeamId =
-      holderTeamId ?? ball.passTeamId ?? ball.restartTeamId ?? ball.lastTouchTeamId ?? teamIds[0];
+      holderTeamId ?? ball.passTeamId ?? ball.shotTeamId ?? ball.restartTeamId ?? ball.lastTouchTeamId ?? teamIds[0];
     stats.possessionTicks[creditTeamId] += 1;
 
-    state = { ...prev, tick, teams, ball, players, stats };
+    state = { ...prev, tick, teams, ball, players, stats, pauseTicks, lastGoal };
     return state;
   }
 

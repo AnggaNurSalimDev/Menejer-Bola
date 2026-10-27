@@ -131,7 +131,13 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - penerima menjemput bola; lawan bisa memotong (siapa sampai duluan, dia yang menguasai)
    - bentuk tim per fase (menyerang melebar & maju, bertahan merapat) + penjagaan lawan per zona
    - penghindaran rekan
-4. Tembakan dan gol; tekel ke pemain yang sedang menggiring → pertandingan bisa selesai dengan skor.
+4. ✅ Tembakan, gol, dan tekel → pertandingan selesai dengan skor:
+   - tembak kalau kualitas tembakan (sudut × risiko blok × kesiapan kiper) melewati ambang
+   - meleset dasar yang sama untuk semua pemain (stat Finishing menyusul di tahap 5)
+   - kiper: jangkauan lebih besar di kotaknya; tangkap atau tepis (makin kencang, makin sering ditepis); bola di tangan kiper tidak boleh ditekel/ditekan
+   - tekel dari stat: Tackling vs Dribbling + Kekuatan; gagal = penekan terhuyung
+   - gol → jeda 4 detik, pemain kembali ke posisi, kick-off oleh tim yang kebobolan
+   - bola keluar lewat garis gawang → tendangan gawang atau sepak pojok
 5. Noise berdasarkan stat teknis (blunder).
 6. Lapisan psikologis dan kelelahan.
 7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
@@ -142,6 +148,9 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
 - Stat kiper: dimasukkan sejak awal atau menyusul.
 - Angka detail (bobot tarikan, jumlah tick per detik, batas nerf) — ditentukan lewat pengujian prototipe, bukan diskusi.
 - Catatan pengujian tahap 3: jumlah operan (~1.100/tim/90 menit) dan pergantian penguasaan (~580) masih sedikit di atas rentang wajar. Penyebab utamanya tekanan lawan yang selalu berhasil mendekat; ditinjau ulang setelah tekel dan noise stat ada.
+- Catatan pengujian tahap 4 (rata-rata 8 pertandingan): 3,5 gol per laga, 18 tembakan per tim, 55% tepat sasaran, 10% tembakan jadi gol, tekel berhasil 44%. Jumlah operan & pergantian penguasaan masih sedikit di atas rentang (tekel tidak mengubahnya banyak).
+- Parameter yang sangat sensitif: jangkauan kiper (KEEPER_REACH). Mengubahnya dari 2,2 m ke 1,8 m menaikkan tembakan dari ~7 ke ~18 per tim. Hati-hati saat menyetelnya, dan saat menambahkan stat kiper di tahap 5.
+- Belum ada: umpan terobosan, lari ke belakang garis bek, umpan silang/sundulan, pelanggaran & kartu, offside, babak kedua.
 
 ## 8. Aturan Anti-Melenceng
 

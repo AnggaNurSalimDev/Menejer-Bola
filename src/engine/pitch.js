@@ -46,3 +46,19 @@ export function forwardOf(point, attacksRight) {
 export function distance(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
+
+// Kotak penalti milik tim yang menyerang ke arah `attacksRight`
+// (kotak di depan gawangnya sendiri).
+export function insideOwnPenaltyArea(point, attacksRight) {
+  const depth = forwardOf(point, attacksRight);
+  return depth <= PITCH.penaltyAreaDepth && Math.abs(point.y - PITCH.width / 2) <= PITCH.penaltyAreaWidth / 2;
+}
+
+// Garis gawang yang diserang tim ini.
+export function opponentGoalX(attacksRight) {
+  return attacksRight ? PITCH.length : 0;
+}
+
+export function isBetweenPosts(y) {
+  return Math.abs(y - PITCH.width / 2) <= PITCH.goalWidth / 2;
+}

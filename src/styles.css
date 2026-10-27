@@ -93,6 +93,61 @@ body {
   text-align: center;
 }
 
+.pitch-wrap {
+  position: relative;
+}
+
+.goal-banner {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 4px;
+  pointer-events: none;
+  background: rgba(10, 12, 15, 0.35);
+  border-radius: 8px;
+}
+
+.goal-banner[hidden] {
+  display: none;
+}
+
+.goal-banner__title {
+  font-size: clamp(2.5rem, 9vw, 5.5rem);
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: #fff;
+  text-shadow: 0 3px 0 var(--goal-color, #1f4fbf), 0 6px 18px rgba(0, 0, 0, 0.6);
+  animation: goal-pop 0.45s ease-out;
+}
+
+.goal-banner__detail {
+  font-size: clamp(0.9rem, 2.4vw, 1.2rem);
+  font-weight: 600;
+  color: #fff;
+  background: var(--goal-color, #1f4fbf);
+  padding: 4px 12px;
+  border-radius: 4px;
+}
+
+@keyframes goal-pop {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .goal-banner__title {
+    animation: none;
+  }
+}
+
 .match-stats {
   display: grid;
   gap: 6px;

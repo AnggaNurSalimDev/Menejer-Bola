@@ -11,6 +11,17 @@ function randomSeed() {
   return Math.floor(Math.random() * 1_000_000);
 }
 
+// ?seed=123 di alamat halaman memutar ulang pertandingan tertentu (untuk melacak bug).
+function initialSeed() {
+  try {
+    const fromUrl = Number(new URLSearchParams(window.location.search).get('seed'));
+    if (Number.isInteger(fromUrl) && fromUrl > 0) return fromUrl;
+  } catch {
+    // Alamat tidak bisa dibaca: pakai seed acak.
+  }
+  return randomSeed();
+}
+
 function formatClock(tick) {
   const totalSeconds = Math.floor(tick / TICK_RATE);
   const minutes = Math.floor(totalSeconds / 60);
@@ -22,52 +33,83 @@ function percent(part, whole) {
   return whole > 0 ? Math.round((part / whole) * 100) : 0;
 }
 
-function formatPasses({ attempted, completed }) {
-  return `${completed}/${attempted}`;
-}
+// Baris statistik: label + cara membaca angka satu tim dari state.stats.
+const STAT_ROWS = [
+  { key: 'shots', label: 'Tembakan (tepat sasaran)', read: (s, id) => `${s.shots[id].total} (${s.shots[id].onTarget})` },
+  { key: 'passes', label: 'Operan sukses / dicoba', read: (s, id) => `${s.passes[id].completed}/${s.passes[id].attempted}` },
+  { key: 'tackles', label: 'Tekel berhasil / dicoba', read: (s, id) => `${s.tackles[id].won}/${s.tackles[id].attempted}` },
+  {
+    key: 'saves',
+    label: 'Penyelamatan kiper',
+    read: (s, id) => `${s.saves[id].caught + s.saves[id].parried}`,
+  },
+];
 
 export default function App() {
-  const [matchSeed, setMatchSeed] = useState(randomSeed);
+  const [matchSeed, setMatchSeed] = useState(initialSeed);
   const [running, setRunning] = useState(true);
   const [speed, setSpeed] = useState(1);
-  const clockRef = useRef(null);
-  const statRefs = {
-    homePossession: useRef(null),
-    awayPossession: useRef(null),
-    possessionBar: useRef(null),
-    homePasses: useRef(null),
-    awayPasses: useRef(null),
-  };
 
-  const { home, away, simulation } = useMemo(() => {
+  const clockRef = useRef(null);
+  const scoreRef = useRef(null);
+  const goalBannerRef = useRef(null);
+  const possessionRefs = { home: useRef(null), away: useRef(null), bar: useRef(null) };
+  const rowRefs = useRef({});
+
+  const { home, away, simulation, namesById } = useMemo(() => {
     const teams = createDemoTeams(TEAM_SEED);
-    return { ...teams, simulation: createSimulation(teams.home, teams.away, matchSeed) };
+    const names = new Map(
+      [...teams.home.players, ...teams.away.players].map((p) => [p.id, p.shortName]),
+    );
+    return { ...teams, namesById: names, simulation: createSimulation(teams.home, teams.away, matchSeed) };
   }, [matchSeed]);
 
-  // Jam dan statistik diperbarui langsung di DOM, tanpa render ulang React setiap tick.
+  // Semua angka diperbarui langsung di DOM, tanpa render ulang React setiap tick.
   const handleTick = useCallback(
     (state) => {
-      if (clockRef.current) clockRef.current.textContent = formatClock(state.tick);
-
-      const { possessionTicks, passes } = state.stats;
-      const total = possessionTicks[home.id] + possessionTicks[away.id];
-      const homeShare = percent(possessionTicks[home.id], total);
-      const set = (ref, text) => {
-        if (ref.current) ref.current.textContent = text;
+      const set = (el, text) => {
+        if (el && el.textContent !== text) el.textContent = text;
       };
-      set(statRefs.homePossession, `${homeShare}%`);
-      set(statRefs.awayPossession, `${total > 0 ? 100 - homeShare : 0}%`);
-      if (statRefs.possessionBar.current) statRefs.possessionBar.current.style.width = `${total > 0 ? homeShare : 50}%`;
-      set(statRefs.homePasses, formatPasses(passes[home.id]));
-      set(statRefs.awayPasses, formatPasses(passes[away.id]));
+      const { stats } = state;
+
+      set(clockRef.current, formatClock(state.tick));
+      set(scoreRef.current, `${stats.goals[home.id]} – ${stats.goals[away.id]}`);
+
+      const total = stats.possessionTicks[home.id] + stats.possessionTicks[away.id];
+      const homeShare = percent(stats.possessionTicks[home.id], total);
+      set(possessionRefs.home.current, `${homeShare}%`);
+      set(possessionRefs.away.current, `${total > 0 ? 100 - homeShare : 0}%`);
+      if (possessionRefs.bar.current) possessionRefs.bar.current.style.width = `${total > 0 ? homeShare : 50}%`;
+
+      for (const row of STAT_ROWS) {
+        set(rowRefs.current[`${row.key}-home`], row.read(stats, home.id));
+        set(rowRefs.current[`${row.key}-away`], row.read(stats, away.id));
+      }
+
+      // Tulisan GOL! selama jeda setelah gol.
+      const banner = goalBannerRef.current;
+      if (banner) {
+        const showing = state.pauseTicks > 0 && state.lastGoal !== null;
+        banner.hidden = !showing;
+        if (showing) {
+          const goal = state.lastGoal;
+          const team = goal.teamId === home.id ? home : away;
+          const scorer = goal.scorerId ? namesById.get(goal.scorerId) : null;
+          const who = goal.ownGoal ? 'gol bunuh diri' : (scorer ?? team.name);
+          set(banner.querySelector('.goal-banner__detail'), `${who} · ${team.name}`);
+          banner.style.setProperty('--goal-color', team.colors.shirt);
+        }
+      }
     },
-    // statRefs berisi ref yang stabil; home/away berubah hanya saat simulasi baru.
+    // Ref di atas stabil; home/away/namesById berubah hanya saat simulasi baru.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [home.id, away.id],
+    [home, away, namesById],
   );
 
   function restart() {
     if (clockRef.current) clockRef.current.textContent = formatClock(0);
+    if (scoreRef.current) scoreRef.current.textContent = '0 – 0';
+    if (goalBannerRef.current) goalBannerRef.current.hidden = true;
     setMatchSeed(randomSeed());
     setRunning(true);
   }
@@ -77,7 +119,7 @@ export default function App() {
       <header className="scoreboard">
         <TeamLabel team={home} align="right" />
         <div className="score">
-          0 – 0
+          <span ref={scoreRef}>0 – 0</span>
           <span ref={clockRef} className="clock">
             00:00
           </span>
@@ -85,22 +127,34 @@ export default function App() {
         <TeamLabel team={away} align="left" />
       </header>
 
-      <MatchView simulation={simulation} running={running} speed={speed} onTick={handleTick} />
+      <div className="pitch-wrap">
+        <MatchView simulation={simulation} running={running} speed={speed} onTick={handleTick} />
+        <div ref={goalBannerRef} className="goal-banner" hidden aria-live="polite">
+          <span className="goal-banner__title">GOL!</span>
+          <span className="goal-banner__detail" />
+        </div>
+      </div>
 
       <section className="match-stats" aria-label="Statistik pertandingan">
         <div className="stat-row">
-          <span ref={statRefs.homePossession} className="stat-value">0%</span>
+          <span ref={possessionRefs.home} className="stat-value">0%</span>
           <span className="stat-label">Penguasaan bola</span>
-          <span ref={statRefs.awayPossession} className="stat-value stat-value--away">0%</span>
+          <span ref={possessionRefs.away} className="stat-value stat-value--away">0%</span>
         </div>
         <div className="possession-track" style={{ background: away.colors.shirt }}>
-          <div ref={statRefs.possessionBar} className="possession-fill" style={{ background: home.colors.shirt }} />
+          <div ref={possessionRefs.bar} className="possession-fill" style={{ background: home.colors.shirt }} />
         </div>
-        <div className="stat-row">
-          <span ref={statRefs.homePasses} className="stat-value">0/0</span>
-          <span className="stat-label">Operan sukses / dicoba</span>
-          <span ref={statRefs.awayPasses} className="stat-value stat-value--away">0/0</span>
-        </div>
+        {STAT_ROWS.map((row) => (
+          <div key={row.key} className="stat-row">
+            <span ref={(el) => (rowRefs.current[`${row.key}-home`] = el)} className="stat-value">
+              –
+            </span>
+            <span className="stat-label">{row.label}</span>
+            <span ref={(el) => (rowRefs.current[`${row.key}-away`] = el)} className="stat-value stat-value--away">
+              –
+            </span>
+          </div>
+        ))}
       </section>
 
       <div className="controls">
@@ -122,7 +176,7 @@ export default function App() {
         <button type="button" onClick={restart}>
           Ulang (seed baru)
         </button>
-        <span className="stage-note">Tahap 3 — penguasaan & operan. Seed: {matchSeed}</span>
+        <span className="stage-note">Tahap 4 — tembakan, gol & tekel. Seed: {matchSeed}</span>
       </div>
     </main>
   );

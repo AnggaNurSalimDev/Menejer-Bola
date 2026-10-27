@@ -5,10 +5,11 @@
 // Pemilihan memakai WAKTU, bukan jarak: pemain cepat yang sedikit lebih
 // jauh bisa lebih dulu sampai daripada pemain lambat yang lebih dekat.
 
-import { PITCH, clampToPitch, distance, forwardOf } from './pitch.js';
+import { PITCH, clampToPitch, distance, insideOwnPenaltyArea } from './pitch.js';
 import { ballSpeed, predictBallPosition, STOP_SPEED } from './ball.js';
-import { DT, REACTION_TIME, CONTROL_RADIUS } from './constants.js';
+import { DT, REACTION_TIME } from './constants.js';
 import { travelTime } from './movement.js';
+import { controlRadiusAt } from './control.js';
 
 const MAX_LOOKAHEAD = 4; // detik
 // Komitmen (prinsip 4): pengejar lama hanya diganti kalau ada rekan
@@ -16,11 +17,11 @@ const MAX_LOOKAHEAD = 4; // detik
 const ROLE_HYSTERESIS = 0.35; // detik
 const PRESS_OFFSET = 1.2; // meter di depan pemegang bola, di sisi gawang sendiri
 
-// Waktu sampai ke dalam jangkauan kaki dari sebuah titik.
+// Waktu sampai ke dalam jangkauan sebuah titik (kaki, atau tangan kiper).
 // Pemain yang SUDAH berada dalam jangkauan tidak perlu bereaksi: bola yang
-// lewat di situ akan mengenai kakinya (sama dengan aturan fisika di touch.js).
+// lewat di situ akan mengenainya (sama dengan aturan fisika di touch.js).
 export function reachTime(player, point) {
-  const gap = Math.max(0, distance(player, point) - CONTROL_RADIUS);
+  const gap = Math.max(0, distance(player, point) - controlRadiusAt(player, point));
   if (gap === 0) return 0;
   return travelTime(player.profile, gap) + REACTION_TIME;
 }
@@ -40,12 +41,6 @@ export function interceptFor(player, ball) {
 
   const point = clampToPitch(predictBallPosition(ball, MAX_LOOKAHEAD));
   return { point, time: Math.max(MAX_LOOKAHEAD, reachTime(player, point)) };
-}
-
-function insideOwnPenaltyArea(point, attacksRight) {
-  const depth = forwardOf(point, attacksRight);
-  const halfWidth = PITCH.penaltyAreaWidth / 2;
-  return depth <= PITCH.penaltyAreaDepth && Math.abs(point.y - PITCH.width / 2) <= halfWidth;
 }
 
 function pickWithHysteresis(candidates, previousId) {

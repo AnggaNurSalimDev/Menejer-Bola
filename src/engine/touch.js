@@ -3,10 +3,10 @@
 // Dalam satu tick (0,1 detik) bola cepat bisa berpindah 2–3 meter.
 // Kalau hanya posisi akhir bola yang dicek, bola bisa "menembus" kaki
 // pemain. Jadi yang dicek adalah seluruh lintasan bola selama tick itu:
-// pemain mana yang berada dalam jangkauan kaki dari garis lintasan,
+// pemain mana yang berada dalam jangkauan dari garis lintasan,
 // dan siapa yang dilewati bola lebih dulu.
 
-import { CONTROL_RADIUS } from './constants.js';
+import { controlRadiusAt } from './control.js';
 
 const EPSILON = 1e-9;
 
@@ -25,13 +25,16 @@ export function findController(from, to, players, canControl) {
     let u = lengthSq > 0 ? ((player.x - from.x) * sx + (player.y - from.y) * sy) / lengthSq : 0;
     u = Math.min(1, Math.max(0, u));
 
-    const d = Math.hypot(player.x - (from.x + sx * u), player.y - (from.y + sy * u));
-    if (d > CONTROL_RADIUS) continue;
+    const closest = { x: from.x + sx * u, y: from.y + sy * u };
+    const d = Math.hypot(player.x - closest.x, player.y - closest.y);
+    if (d > controlRadiusAt(player, closest)) continue;
 
     const earlier = !best || u < best.u - EPSILON;
     const sameMomentButCloser = best && Math.abs(u - best.u) <= EPSILON && d < best.d;
     if (earlier || sameMomentButCloser) best = { player, u, d };
   }
 
-  return best ? best.player : null;
+  // u ikut dikembalikan supaya pemanggil bisa membandingkan urutan kejadian
+  // (misalnya: bola melewati garis gawang dulu, atau tersentuh kiper dulu?).
+  return best ? { player: best.player, u: best.u } : null;
 }

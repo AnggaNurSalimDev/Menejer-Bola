@@ -13,6 +13,8 @@ export const REACTION_TIME = 0.3; // detik
 
 // Jangkauan kaki: bola dalam jarak ini bisa dikuasai.
 export const CONTROL_RADIUS = 1.2; // meter
+// Kiper di kotak penaltinya sendiri boleh memakai tangan dan menjatuhkan diri.
+export const KEEPER_REACH = 1.8; // meter
 
 // Setelah menendang, pemain tidak bisa langsung menguasai bola lagi.
 export const KICK_COOLDOWN_TICKS = 5;

@@ -36,5 +36,20 @@ export function createRng(seed) {
     return list[Math.floor(next() * list.length)];
   }
 
-  return { next, range, int, pick };
+  // Angka acak berdistribusi normal (Box–Muller): kebanyakan dekat 0,
+  // sesekali jauh. Cocok untuk meleset: kebanyakan tipis, kadang parah.
+  function normal(mean = 0, stdDev = 1) {
+    if (!(stdDev >= 0)) throw new RangeError(`normal: stdDev tidak valid ${stdDev}`);
+    const u = Math.max(next(), Number.EPSILON);
+    const v = next();
+    return mean + stdDev * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  // true dengan peluang p.
+  function chance(p) {
+    if (!(p >= 0 && p <= 1)) throw new RangeError(`chance: peluang tidak valid ${p}`);
+    return next() < p;
+  }
+
+  return { next, range, int, pick, normal, chance };
 }

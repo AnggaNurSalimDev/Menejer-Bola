@@ -16,6 +16,9 @@ import { computeAnchor, PHASES } from '../src/engine/shape.js';
 import { PITCH } from '../src/engine/pitch.js';
 import { rollBall, predictBallPosition, timeToTravel, passSpeedForDistance } from '../src/engine/ball.js';
 import { findController } from '../src/engine/touch.js';
+import { goalLineCrossing } from '../src/engine/simulation.js';
+import { isBetweenPosts } from '../src/engine/pitch.js';
+import { tackleSuccessChance } from '../src/engine/tackle.js';
 
 let failures = 0;
 
@@ -80,9 +83,42 @@ console.log('Fisika bola');
   check('operan 5–42 m selalu sampai', errs2);
 
   // Bola cepat tidak boleh "menembus" kaki pemain.
-  const player = { id: 'p', x: 5, y: 0.5 };
-  const hit = findController({ x: 0, y: 0 }, { x: 10, y: 0 }, [player], () => true);
+  const player = { id: 'p', role: 'CM', attacksRight: true, x: 5, y: 0.5 };
+  const hit = findController({ x: 30, y: 30 }, { x: 40, y: 30 }, [{ ...player, x: 35, y: 30.5 }], () => true);
   check('bola cepat yang lewat di dekat kaki tetap tersentuh', hit ? [] : ['tidak terdeteksi']);
+
+  // Kiper menjangkau lebih jauh, tapi hanya di kotak penaltinya sendiri.
+  const keeperInBox = { id: 'k', role: 'GK', attacksRight: true, x: 3, y: 34 };
+  const keeperOut = { ...keeperInBox, x: 40 };
+  const passBox = findController({ x: 3, y: 35.6 }, { x: 3, y: 35.7 }, [keeperInBox], () => true);
+  const passOut = findController({ x: 40, y: 35.6 }, { x: 40, y: 35.7 }, [keeperOut], () => true);
+  check(
+    'kiper menjangkau lebih jauh di kotaknya, tidak di luar kotak',
+    passBox && !passOut ? [] : [`di kotak: ${!!passBox}, di luar: ${!!passOut}`],
+  );
+}
+
+console.log('Gol dan tekel');
+{
+  const errors = [];
+  const mid = PITCH.width / 2;
+  const inGoal = goalLineCrossing({ x: 104, y: mid }, { x: 106, y: mid + 1 });
+  if (!inGoal || inGoal.lineX !== PITCH.length || !isBetweenPosts(inGoal.y)) errors.push('bola masuk gawang kanan tidak terdeteksi');
+  const wide = goalLineCrossing({ x: 104, y: mid + 6 }, { x: 106, y: mid + 6 });
+  if (!wide || isBetweenPosts(wide.y)) errors.push('bola melebar dianggap masuk');
+  if (goalLineCrossing({ x: 50, y: mid }, { x: 105, y: mid }) !== null) errors.push('bola tepat di garis dianggap melewati');
+  check('deteksi gol lewat garis di antara tiang', errors);
+
+  const makeSkills = (tackling, dribbling, kekuatan) => ({ skills: { tackling, dribbling, kekuatan } });
+  const strongDefender = { id: 'd', ...makeSkills(18, 10, 15) };
+  const weakDefender = { id: 'd2', ...makeSkills(6, 10, 8) };
+  const holder = { id: 'h', ...makeSkills(10, 12, 12) };
+  const strong = tackleSuccessChance(strongDefender, holder);
+  const weak = tackleSuccessChance(weakDefender, holder);
+  check(
+    `tekel: bek kuat lebih sering berhasil (${(strong * 100).toFixed(0)}% vs ${(weak * 100).toFixed(0)}%)`,
+    strong > weak && strong <= 0.85 && weak >= 0.15 ? [] : ['urutan atau batas peluang salah'],
+  );
 }
 
 console.log('Bentuk tim (jangkar formasi)');
@@ -118,7 +154,7 @@ console.log('Bentuk tim (jangkar formasi)');
 console.log('Simulasi 90 menit');
 const MATCH_TICKS = 90 * 60 * TICK_RATE;
 
-function runMatch(seed) {
+function runMatch(seed, { validate = true } = {}) {
   const teams = createDemoTeams(2026);
   const sim = createSimulation(teams.home, teams.away, seed);
   const errors = [];
@@ -128,7 +164,7 @@ function runMatch(seed) {
 
   for (let i = 0; i < MATCH_TICKS; i += 1) {
     const s = sim.step();
-    for (const e of validateMatchState(s)) errors.push(`tick ${s.tick}: ${e}`);
+    if (validate) for (const e of validateMatchState(s)) errors.push(`tick ${s.tick}: ${e}`);
     if (errors.length > 50) break;
 
     // Bola macet: bebas, diam, dan bukan bola mati.
@@ -177,6 +213,36 @@ inRange('pergantian penguasaan', stats.turnovers, 40, 500, (v) => v.toFixed(0));
 inRange('bola keluar lapangan', stats.outOfPlay, 0, 150, (v) => v.toFixed(0));
 inRange('bola macet terlama (detik)', run1.longestStuck / TICK_RATE, 0, 8);
 inRange('rata-rata pasangan rekan bertumpuk (<1 m) per tick', run1.overlapPerTick, 0, 0.3, (v) => v.toFixed(2));
+
+// Gol dan tembakan sangat acak per pertandingan, jadi dinilai dari rata-rata
+// beberapa pertandingan. Rentang memakai faktor ~1,5× dari angka laga nyata
+// (90 menit tanpa jeda vs ~57 menit bola bergulir).
+console.log('Rata-rata 8 pertandingan');
+{
+  const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
+  const totals = { goals: 0, shots: 0, onTarget: 0, tackles: 0, tacklesWon: 0 };
+  const scores = [];
+  for (const seed of SEEDS) {
+    const { final } = runMatch(seed, { validate: false });
+    const s = final.stats;
+    scores.push(`${s.goals[homeId]}-${s.goals[awayId]}`);
+    for (const id of [homeId, awayId]) {
+      totals.goals += s.goals[id];
+      totals.shots += s.shots[id].total;
+      totals.onTarget += s.shots[id].onTarget;
+      totals.tackles += s.tackles[id].attempted;
+      totals.tacklesWon += s.tackles[id].won;
+    }
+  }
+  const matches = SEEDS.length;
+  console.log(`  info  skor: ${scores.join(', ')}`);
+  inRange('gol per pertandingan (dua tim)', totals.goals / matches, 1.5, 7);
+  inRange('tembakan per tim', totals.shots / matches / 2, 6, 35);
+  inRange('tembakan tepat sasaran', (totals.onTarget / Math.max(1, totals.shots)) * 100, 20, 60, (v) => `${v.toFixed(0)}%`);
+  inRange('gol per tembakan', (totals.goals / Math.max(1, totals.shots)) * 100, 5, 25, (v) => `${v.toFixed(0)}%`);
+  inRange('tekel dicoba per tim', totals.tackles / matches / 2, 10, 150, (v) => v.toFixed(0));
+  inRange('tekel berhasil', (totals.tacklesWon / Math.max(1, totals.tackles)) * 100, 35, 75, (v) => `${v.toFixed(0)}%`);
+}
 
 const run2 = runMatch(7);
 check('seed sama → pertandingan identik', JSON.stringify(run1.final) === JSON.stringify(run2.final) ? [] : ['hasil berbeda']);
