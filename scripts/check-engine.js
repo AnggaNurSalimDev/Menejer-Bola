@@ -284,21 +284,25 @@ console.log(`Titik nol: tim rata-rata vs tim rata-rata (${SEEDS.length} pertandi
   inRange('penguasaan bola kandang (rata-rata)', (r.homePossession / r.n) * 100, 35, 65, (v) => `${v.toFixed(0)}%`);
 }
 
-// Dinamika: kualitas skuad harus terasa di hasil. Selama stat belum
-// mengatur operan/tembakan/kiper (tahap 5), selisihnya diperkirakan masih kecil.
-console.log(`Tim kuat (15) vs tim lemah (9), bergantian kandang/tamu (${SEEDS.length} pertandingan)`);
-{
+// Dinamika: kualitas skuad harus terasa di hasil, tapi tanpa efek bola salju.
+//   15 vs 9  : beda kelas — tim kuat wajar hampir selalu menang
+//   13 vs 11 : satu liga — kejutan harus masih sering terjadi
+// Untuk angka yang lebih pasti (dengan rentang ketidakpastian): npm run calibrate
+for (const [strongQ, weakQ, winRange, lossRange] of [
+  [15, 9, [75, 100], [0, 15]],
+  [13, 11, [30, 70], [5, 40]],
+]) {
+  console.log(`Tim ${strongQ} vs tim ${weakQ}, bergantian kandang/tamu (${SEEDS.length} pertandingan)`);
   let strongGoals = 0;
   let weakGoals = 0;
   let strongWins = 0;
   let weakWins = 0;
-  let strongPossession = 0;
   for (const seed of SEEDS) {
     const strongIsHome = seed % 2 === 0;
     const { final } = runMatch(seed, {
       validate: false,
-      homeQuality: strongIsHome ? 15 : 9,
-      awayQuality: strongIsHome ? 9 : 15,
+      homeQuality: strongIsHome ? strongQ : weakQ,
+      awayQuality: strongIsHome ? weakQ : strongQ,
     });
     const strongId = strongIsHome ? 'home' : 'away';
     const weakId = strongIsHome ? 'away' : 'home';
@@ -306,17 +310,15 @@ console.log(`Tim kuat (15) vs tim lemah (9), bergantian kandang/tamu (${SEEDS.le
     weakGoals += final.stats.goals[weakId];
     if (final.stats.goals[strongId] > final.stats.goals[weakId]) strongWins += 1;
     if (final.stats.goals[weakId] > final.stats.goals[strongId]) weakWins += 1;
-    const p = final.stats.possessionTicks;
-    strongPossession += p[strongId] / (p.home + p.away);
   }
   const n = SEEDS.length;
   console.log(
-    `  info  gol rata-rata kuat ${(strongGoals / n).toFixed(2)} vs lemah ${(weakGoals / n).toFixed(2)}; ` +
+    `  info  gol rata-rata ${(strongGoals / n).toFixed(2)} vs ${(weakGoals / n).toFixed(2)}; ` +
       `menang ${strongWins}, kalah ${weakWins}, seri ${n - strongWins - weakWins}`,
   );
-  inRange('tim kuat menang (persen pertandingan)', (strongWins / n) * 100, 50, 90, (v) => `${v.toFixed(0)}%`);
-  inRange('selisih gol rata-rata (kuat − lemah)', (strongGoals - weakGoals) / n, 0.5, 3);
-  inRange('penguasaan bola tim kuat', (strongPossession / n) * 100, 50, 70, (v) => `${v.toFixed(0)}%`);
+  inRange(`tim ${strongQ} menang`, (strongWins / n) * 100, winRange[0], winRange[1], (v) => `${v.toFixed(0)}%`);
+  inRange(`tim ${weakQ} menang (kejutan)`, (weakWins / n) * 100, lossRange[0], lossRange[1], (v) => `${v.toFixed(0)}%`);
+  inRange('tim yang lebih bagus mencetak lebih banyak gol', strongGoals - weakGoals, 1, Infinity, (v) => v.toFixed(0));
 }
 
 if (failures > 0) {

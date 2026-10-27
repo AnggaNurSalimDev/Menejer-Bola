@@ -9,6 +9,9 @@
 // berdiri di antara lawan dan gawang.
 
 import { PITCH, clampToPitch, distance, forwardOf } from './pitch.js';
+import { blunder } from './skill.js';
+
+const MAX_ALLOWED_PULL = 0.95;
 
 const MARK_RADIUS = 12; // meter dari posisi penjaga
 const GOAL_SIDE_OFFSET = 1.5; // meter
@@ -51,7 +54,9 @@ export function assignMarks(defenders, attackers, attacksRight) {
     // Jarak lawan dari garis gawang kita (0 = di garis gawang kita).
     const fromOurGoal = forwardOf(attacker, attacksRight);
     const closeness = 1 - Math.min(1, fromOurGoal / TIGHT_ZONE);
-    const pull = MIN_PULL + (MAX_PULL - MIN_PULL) * closeness;
+    // Stat Posisi: bek yang buruk menjaga lebih longgar (blunder tahap 5).
+    const tightness = defender.skills ? blunder(defender, 'markingTightness') : 1;
+    const pull = Math.min(MAX_ALLOWED_PULL, (MIN_PULL + (MAX_PULL - MIN_PULL) * closeness) * tightness);
 
     marks.set(defender.id, { point, pull, attackerId: attacker.id });
   }

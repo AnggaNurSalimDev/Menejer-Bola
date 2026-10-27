@@ -7,7 +7,8 @@
 // Tembak kalau kualitas ≥ ambang (ambangnya lebih rendah saat ditekan).
 //
 // Bidikan diarahkan ke sisi gawang yang jauh dari kiper, sedikit di dalam tiang.
-// Eksekusinya diberi meleset acak (SHOT_SPREAD) yang SAMA untuk semua pemain.
+// Eksekusinya diberi meleset acak yang besarnya diturunkan dari stat Finishing
+// (lihat skill.js, baris shotSpread). SHOT_SPREAD hanya cadangan.
 // Di tahap blunder, besar meleset ini akan diturunkan dari stat Finishing.
 
 import { PITCH, distance, opponentGoalX, isBetweenPosts } from './pitch.js';
@@ -31,8 +32,8 @@ const KEEPER_FACTOR = { beaten: 1, stretched: 0.6, set: 0.3 };
 const KEEPER_ON_LANE_FACTOR = 0.1; // kiper sudah berdiri di jalur tembakan
 
 // Tempo padat: pemain lebih berani menembak.
-export const SHOT_QUALITY_THRESHOLD = 0.13;
-export const PRESSURED_SHOT_QUALITY_THRESHOLD = 0.09;
+export const SHOT_QUALITY_THRESHOLD = 0.1;
+export const PRESSURED_SHOT_QUALITY_THRESHOLD = 0.07;
 
 function blockFactor(margin) {
   if (margin > 0) return BLOCK_FACTOR.clear;
@@ -105,13 +106,14 @@ export function evaluateShot({ origin, opponents, attacksRight, pressured }) {
 
 // Arah tendangan setelah diberi meleset. Mengembalikan kecepatan bola
 // dan apakah arahnya masih mengarah di antara tiang (tepat sasaran).
-export function shotVelocity(origin, aim, attacksRight, rng) {
+export function shotVelocity(origin, aim, attacksRight, rng, spread = SHOT_SPREAD) {
+  if (!(spread >= 0)) throw new RangeError(`shotVelocity: spread tidak valid ${spread}`);
   const dx = aim.x - origin.x;
   const dy = aim.y - origin.y;
   const length = Math.hypot(dx, dy);
   if (!(length > 0)) throw new Error('shotVelocity: titik tembak sama dengan bidikan');
 
-  const error = rng.normal(0, SHOT_SPREAD);
+  const error = rng.normal(0, spread);
   const cos = Math.cos(error);
   const sin = Math.sin(error);
   const ux = (dx / length) * cos - (dy / length) * sin;

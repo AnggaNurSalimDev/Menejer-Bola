@@ -23,7 +23,7 @@ const PRESS_OFFSET = 1.2; // meter di depan pemegang bola, di sisi gawang sendir
 export function reachTime(player, point) {
   const gap = Math.max(0, distance(player, point) - controlRadiusAt(player, point));
   if (gap === 0) return 0;
-  return travelTime(player.profile, gap) + REACTION_TIME;
+  return travelTime(player.profile, gap) + (player.profile.reaction ?? REACTION_TIME);
 }
 
 // Titik paling awal di lintasan bola yang bisa dicapai pemain tepat waktu.

@@ -11,7 +11,8 @@ Proyek ini dibuat untuk senang-senang.
 - Tahap 3 selesai (penguasaan & operan): bola hanya digerakkan pemain. Satu pemain per tim menjemput atau menekan bola, pemegang bola menggiring lalu mengoper ke rekan terbaik, lawan bisa memotong operan, tim melebar saat menyerang dan menjaga lawan per zona saat bertahan. Tampilan: tanda kuning di bawah pemegang bola, statistik penguasaan dan operan.
 - Tahap 4 selesai (tembakan, gol & tekel): pemain menembak berdasarkan sudut, risiko blok, dan posisi kiper. Kiper menangkap atau menepis. Tekel ditentukan stat Tackling, Dribbling, dan Kekuatan. Gol memicu jeda dan kick-off ulang; bola keluar lewat garis gawang jadi tendangan gawang atau sepak pojok. Tampilan: skor, tulisan GOL! dengan nama pencetak gol, statistik tembakan, tekel, dan penyelamatan.
 - Format pertandingan: 2 babak × 5 menit nyata (jam 0'–90'), pemain tetap bergerak dengan kecepatan nyata, tempo dipadatkan. Layar jeda dengan tombol "Lanjut babak 2" (nanti tempat mengubah taktik), layar akhir dengan "Main lagi". Babak kedua tukar sisi.
-- Berikutnya tahap 5: blunder dari stat teknis (operan meleset, sentuhan buruk, salah keputusan), lalu kalibrasi ulang rata-rata gol.
+- Tahap 5 selesai (blunder dari stat): operan meleset (Passing), sentuhan pertama terlalu jauh (Kontrol), tembakan meleset (Finishing), salah menilai risiko (Keputusan), jangkauan operan (Visi), waktu reaksi nyata (Antisipasi), ketat/longgarnya menjaga (Posisi), jangkauan dan tangkapan kiper. Penyerang mencari ruang tembak, tembakan yang kena bek memantul liar.
+- Berikutnya: lapisan psikologis dan kelelahan (tahap 6), atau pola serangan (umpan terobosan, lari ke belakang bek, umpan silang).
 
 Tip: tambahkan `?seed=13` di alamat (misalnya `http://localhost:5173/?seed=13`) untuk memutar ulang pertandingan tertentu.
 
@@ -21,6 +22,7 @@ Tip: tambahkan `?seed=13` di alamat (misalnya `http://localhost:5173/?seed=13`) 
 npm install
 npm run dev      # buka di browser
 npm run check    # uji engine tanpa tampilan
+npm run calibrate # ukur rata-rata gol & dinamika kualitas tim (64 laga, dengan rentang ketidakpastian)
 npm run build    # build produksi
 ```
 
@@ -36,6 +38,7 @@ npm run build    # build produksi
   - `tackle.js` — duel tekel berbasis stat
   - `keeper.js` — tangkap/tepis, bola di tangan kiper
   - `control.js` — jangkauan pemain terhadap bola (kaki atau tangan kiper)
+  - `skill.js` — SEMUA angka blunder dari stat (tabel BLUNDER)
   - `shape.js` — posisi jangkar formasi per fase (menyerang/bertahan/netral)
   - `marking.js` — penjagaan lawan per zona saat bertahan
   - `movement.js` — lapisan gerak: tubuh pemain dengan inersia

@@ -148,7 +148,14 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - gol → jeda 4 detik, pemain kembali ke posisi, kick-off oleh tim yang kebobolan
    - bola keluar lewat garis gawang → tendangan gawang atau sepak pojok
    - ✅ (27 Okt) 2 babak × 5 menit nyata, jam 0'–90', layar jeda + layar akhir, tukar sisi; tempo dipadatkan (tuas 1–3)
-5. Noise berdasarkan stat teknis (blunder). Setelah ini: kalibrasi ulang titik nol gol (tuas 4–5: kelonggaran pertahanan, kekuatan kiper) bila masih di bawah 2–4.
+5. ✅ Blunder dari stat teknis (27 Okt). Semua angka ada di `src/engine/skill.js` (tabel BLUNDER, nilai stat 1 dan stat 20):
+   - Passing → arah & kekuatan operan meleset; Kontrol → sentuhan pertama terlalu jauh (bola memantul)
+   - Finishing → besar meleset tembakan; Keputusan → salah menilai keamanan operan
+   - Visi → operan terjauh yang terpikirkan; Antisipasi → waktu reaksi NYATA (pemain telat bergerak setelah bola dilepas)
+   - Posisi → ketat/longgarnya menjaga lawan; Refleks → jangkauan kiper; Tangkapan → peluang menangkap
+   - Perilaku baru: penyerang menggeser bola ke samping kalau jalur tembak ditutup bek; tembakan yang kena bek memantul liar
+   - Rentang fisik (Kecepatan/Akselerasi/Kelincahan) dan blunder disempitkan setelah uji ablasi, untuk mencegah efek bola salju
+   - Alat ukur baru: `npm run calibrate` (64 laga per skenario, dengan rentang ketidakpastian)
 6. Lapisan psikologis dan kelelahan.
 7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
 
@@ -161,6 +168,9 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
 - Catatan pengujian tahap 4 (rata-rata 8 pertandingan): 3,5 gol per laga, 18 tembakan per tim, 55% tepat sasaran, 10% tembakan jadi gol, tekel berhasil 44%. Jumlah operan & pergantian penguasaan masih sedikit di atas rentang (tekel tidak mengubahnya banyak).
 - Parameter yang sangat sensitif: jangkauan kiper (KEEPER_REACH). Mengubahnya dari 2,2 m ke 1,8 m menaikkan tembakan dari ~7 ke ~18 per tim. Hati-hati saat menyetelnya, dan saat menambahkan stat kiper di tahap 5.
 - Catatan pengujian tempo padat (16 pertandingan, 2 × 5 menit): titik nol 1,3 gol per laga (target 2–4, sisanya diharapkan datang dari blunder tahap 5), 8 tembakan per tim, operan sukses 59%. Tim kualitas 15 vs 9: menang 13, kalah 2, seri 1 (rata-rata gol 1,94 vs 0,25) — kualitas skuad sudah terasa walau stat baru memengaruhi gerak dan tekel.
+- Catatan pengujian tahap 5 (`npm run calibrate`, 64 laga): titik nol 1,6 ± 0,35 gol per laga, masih di bawah target 2–4. Tim 15 vs 9 (beda kelas): menang 95%, tim lemah hampir tidak mencetak gol. Tim 13 vs 11 (satu liga): menang 48%, seri 32%, kalah 20% — kejutan masih sering terjadi.
+- Uji ablasi tahap 5: penyebab terbesar selisih tim kuat vs lemah adalah stat fisik (kecepatan). Hati-hati melebarkan rentang di movement.js.
+- Kenapa titik nol mentok ~1,5: menyetel ambang tembak, kiper, dan kelonggaran bek hanya memberi perubahan kecil (sebagian di dalam rentang ketidakpastian). Hambatannya struktural: belum ada cara menciptakan peluang selain menggiring/mengoper pendek ke kotak penalti yang penuh. Diperkirakan naik setelah ada umpan terobosan, lari ke belakang garis bek, dan umpan silang — sesuai ide bahwa gol bertambah dari pergerakan dan taktik, bukan dari angka.
 - Belum ada: umpan terobosan, lari ke belakang garis bek, umpan silang/sundulan, pelanggaran & kartu, offside, pergantian pemain.
 
 ## 8. Aturan Anti-Melenceng

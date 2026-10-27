@@ -5,15 +5,17 @@
 //   bebas   : seberapa jauh lawan terdekat dari si penerima
 //   maju    : seberapa jauh operan ini membawa bola ke depan
 //
-// Untuk sementara pilihan terbaik selalu yang diambil (tanpa noise).
-// Di tahap blunder, stat Keputusan dan Visi akan mengacaukan pilihan ini.
+// Blunder (tahap 5):
+//   Visi      : operan yang lebih jauh dari jangkauan penglihatan tidak terpikirkan
+//   Keputusan : rasa aman tiap opsi dinilai dengan salah kira (noise), jadi pemain
+//               dengan Keputusan rendah kadang mengoper ke jalur yang sebenarnya berbahaya
 
 import { PITCH, clampToPitch, distance, forwardOf } from './pitch.js';
 import { passSpeedForDistance, timeToTravel } from './ball.js';
 import { reachTime } from './roles.js';
+import { blunder } from './skill.js';
 
 const MIN_PASS_DISTANCE = 4;
-const MAX_PASS_DISTANCE = 42;
 const LANE_SAMPLE_STEP = 1.5; // meter
 const LANE_FIRST_SAMPLE = 0.5; // meter dari titik tendangan
 const LEAD_FACTOR = 0.6; // seberapa jauh operan diarahkan ke depan lari penerima
@@ -69,15 +71,19 @@ function nearestDistance(point, others) {
   return best;
 }
 
-export function evaluatePassOptions({ holder, origin, teammates, opponents, attacksRight, previousOwnerId }) {
+// rng opsional: tanpa rng, penilaian dilakukan sempurna (dipakai uji dan alat ukur).
+export function evaluatePassOptions({ holder, origin, teammates, opponents, attacksRight, previousOwnerId, rng = null }) {
   if (!holder || !origin) throw new TypeError('evaluatePassOptions: holder dan origin wajib ada');
+
+  const vision = blunder(holder, 'passVision');
+  const misjudge = rng ? blunder(holder, 'riskMisjudge') : 0;
 
   const options = [];
   for (const receiver of teammates) {
     if (receiver.id === holder.id) continue;
 
     const plainDistance = distance(origin, receiver);
-    if (plainDistance < MIN_PASS_DISTANCE || plainDistance > MAX_PASS_DISTANCE) continue;
+    if (plainDistance < MIN_PASS_DISTANCE || plainDistance > vision) continue;
 
     // Arahkan sedikit ke depan lari penerima.
     const roughTime = plainDistance / passSpeedForDistance(plainDistance);
@@ -92,7 +98,9 @@ export function evaluatePassOptions({ holder, origin, teammates, opponents, atta
     if (passDistance < MIN_PASS_DISTANCE) continue;
 
     const speed = passSpeedForDistance(passDistance);
-    const margin = laneMargin(origin, target, speed, opponents);
+    const trueMargin = laneMargin(origin, target, speed, opponents);
+    // Yang dipakai untuk memutuskan adalah rasa aman MENURUT si pemain.
+    const margin = misjudge > 0 ? trueMargin + rng.normal(0, misjudge) : trueMargin;
     const openness = Math.min(MAX_OPENNESS, nearestDistance(target, opponents));
     const progress = forwardOf(target, attacksRight) - forwardOf(origin, attacksRight);
 
@@ -104,7 +112,7 @@ export function evaluatePassOptions({ holder, origin, teammates, opponents, atta
       (receiver.role === 'GK' ? WEIGHTS.keeper : 0) -
       (receiver.id === previousOwnerId ? WEIGHTS.returnPass : 0);
 
-    options.push({ receiver, target, speed, margin, score, safe: margin > SAFE_MARGIN });
+    options.push({ receiver, target, speed, margin, trueMargin, score, safe: margin > SAFE_MARGIN });
   }
 
   options.sort((a, b) => b.score - a.score || a.receiver.id.localeCompare(b.receiver.id));
@@ -123,8 +131,59 @@ const CUT_INSIDE_DEPTH = 9; // titik tuju: 9 m di depan gawang lawan, di tengah
 const ESCAPE_DISTANCE = 8;
 const ESCAPE_WEIGHT = 1.4;
 
-export function dribbleTarget(holder, attacksRight, presser = null) {
+// Mencari ruang tembak: kalau bek menutup jalur ke gawang, geser bola ke samping.
+export const SHOT_LANE_RANGE = 32; // meter ke tengah gawang
+const LANE_BLOCK_WIDTH = 1.8; // meter dari garis tembak
+const SIDESTEP_DISTANCE = 5;
+const SIDESTEP_FORWARD = 1.5;
+
+// Bek lapangan yang berdiri di jalur dari bola ke tengah gawang (di depan bola), atau null.
+export function shotLaneBlocker(origin, opponents, attacksRight) {
+  const goal = { x: attacksRight ? PITCH.length : 0, y: PITCH.width / 2 };
+  const length = distance(origin, goal);
+  if (length > SHOT_LANE_RANGE || length === 0) return null;
+  const ux = (goal.x - origin.x) / length;
+  const uy = (goal.y - origin.y) / length;
+
+  let best = null;
+  for (const opponent of opponents) {
+    if (opponent.role === 'GK') continue;
+    const along = (opponent.x - origin.x) * ux + (opponent.y - origin.y) * uy;
+    if (along <= 0 || along >= length) continue;
+    const across = Math.abs(-(opponent.x - origin.x) * uy + (opponent.y - origin.y) * ux);
+    if (across <= LANE_BLOCK_WIDTH && (!best || along < best.along)) best = { opponent, along };
+  }
+  return best ? best.opponent : null;
+}
+
+function sidestepTarget(holder, blocker, attacksRight) {
+  const goal = { x: attacksRight ? PITCH.length : 0, y: PITCH.width / 2 };
+  const length = distance(holder, goal) || 1;
+  const ux = (goal.x - holder.x) / length;
+  const uy = (goal.y - holder.y) / length;
+  // Tegak lurus arah gawang; pilih sisi yang menjauhi bek (kalau tepat di garis: ke arah tengah lapangan).
+  const side = -(blocker.x - holder.x) * uy + (blocker.y - holder.y) * ux;
+  let px = -uy;
+  let py = ux;
+  const towardCenter = (PITCH.width / 2 - holder.y) * py >= 0;
+  const flip = side > 1e-6 || (Math.abs(side) <= 1e-6 && !towardCenter);
+  if (flip) {
+    px = -px;
+    py = -py;
+  }
+  return clampToPitch(
+    {
+      x: holder.x + px * SIDESTEP_DISTANCE + ux * SIDESTEP_FORWARD,
+      y: holder.y + py * SIDESTEP_DISTANCE + uy * SIDESTEP_FORWARD,
+    },
+    1.5,
+  );
+}
+
+export function dribbleTarget(holder, attacksRight, presser = null, laneBlocker = null) {
   if (holder.role === 'GK') return clampToPitch(holder, 1);
+
+  if (laneBlocker) return sidestepTarget(holder, laneBlocker, attacksRight);
 
   if (presser) {
     const away = distance(holder, presser);

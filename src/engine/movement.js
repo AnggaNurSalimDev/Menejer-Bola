@@ -8,6 +8,7 @@
 
 import { PITCH } from './pitch.js';
 import { STAT_MIN, STAT_MAX } from './stats.js';
+import { blunderFromStats } from './skill.js';
 
 // Nilai stat 1–20 menjadi 0–1.
 function normalize(stat) {
@@ -18,11 +19,17 @@ function normalize(stat) {
 export function deriveMovementProfile(stats) {
   if (!stats) throw new TypeError('deriveMovementProfile: stats wajib ada');
 
-  const maxSpeed = 6.5 + 2.8 * normalize(stats.kecepatan); // 6.5–9.3 m/s
-  const maxAccel = 2.5 + 3.0 * normalize(stats.akselerasi); // 2.5–5.5 m/s²
-  const turnAccel = maxAccel * (0.5 + 0.6 * normalize(stats.kelincahan)); // 50–110% dari maxAccel
+  // Rentang sengaja sempit (disempitkan di tahap 5 setelah uji ablasi):
+  // rentang lebar membuat tim yang sedikit lebih cepat selalu menang duel bola.
+  const maxSpeed = 7.0 + 1.8 * normalize(stats.kecepatan); // 7,0–8,8 m/s
+  const maxAccel = 3.0 + 2.0 * normalize(stats.akselerasi); // 3,0–5,0 m/s²
+  const turnAccel = maxAccel * (0.6 + 0.4 * normalize(stats.kelincahan)); // 60–100% dari maxAccel
 
-  return { maxSpeed, maxAccel, turnAccel };
+  // Otak: waktu reaksi dari Antisipasi; jangkauan tangan dari Refleks (khusus kiper).
+  const reaction = blunderFromStats(stats, 'reaction');
+  const keeperReach = Number.isFinite(stats.refleks) ? blunderFromStats(stats, 'keeperReach') : null;
+
+  return { maxSpeed, maxAccel, turnAccel, reaction, keeperReach };
 }
 
 // Perkiraan waktu menempuh `distance` meter dari keadaan diam, dengan

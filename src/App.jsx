@@ -199,7 +199,7 @@ export default function App() {
         <button type="button" onClick={restart}>
           Ulang (seed baru)
         </button>
-        <span className="stage-note">Tahap 4 — 2 × 5 menit, tempo padat. Seed: {matchSeed}</span>
+        <span className="stage-note">Tahap 5 — blunder dari stat. Seed: {matchSeed}</span>
       </div>
     </main>
   );

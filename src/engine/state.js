@@ -9,6 +9,7 @@ import { HALF_TICKS, GAME_MINUTES_PER_HALF, PERIODS } from './constants.js';
 
 const SPEED_TOLERANCE = 1e-6;
 const OWNED_BALL_MAX_DISTANCE = 1.5; // meter
+const MAX_REACTION_TICKS = 10; // 1 detik; reaksi terburuk di skill.js 0,55 detik
 
 // Ubah slot formasi (relatif, menyerang ke kanan) menjadi koordinat meter.
 // Tim yang menyerang ke kiri dicerminkan pada kedua sumbu, supaya
@@ -50,6 +51,8 @@ function placeTeam(team, attacksRight) {
       task: 'shape',
       // Tick tersisa sebelum boleh mencoba tekel lagi.
       tackleCooldown: 0,
+      // Tick tersisa sebelum pemain bereaksi terhadap bola yang baru dilepas (stat Antisipasi).
+      reactionDelay: 0,
     };
   });
 }
@@ -92,6 +95,8 @@ function createStats(teamIds) {
     goals: perTeam(() => 0),
     tackles: perTeam(() => ({ attempted: 0, won: 0 })),
     saves: perTeam(() => ({ caught: 0, parried: 0 })),
+    heavyTouches: perTeam(() => 0),
+    blocks: perTeam(() => 0),
     turnovers: 0,
     outOfPlay: 0,
   };
@@ -188,6 +193,9 @@ export function validateMatchState(state, teams = []) {
     if (!Number.isInteger(p.tackleCooldown) || p.tackleCooldown < 0) {
       errors.push(`pemain ${p.id}: tackleCooldown tidak valid`);
     }
+    if (!Number.isInteger(p.reactionDelay) || p.reactionDelay < 0 || p.reactionDelay > MAX_REACTION_TICKS) {
+      errors.push(`pemain ${p.id}: reactionDelay tidak valid (${p.reactionDelay})`);
+    }
     if (p.attacksRight !== state.teams[p.teamId]?.attacksRight) {
       errors.push(`pemain ${p.id}: arah serang tidak sama dengan timnya`);
     }
@@ -270,6 +278,8 @@ export function validateMatchState(state, teams = []) {
       if (!Number.isInteger(state.stats.goals[id]) || state.stats.goals[id] < 0) errors.push(`tim ${id}: gol tidak valid`);
       const saves = state.stats.saves[id];
       if (!(saves.caught >= 0 && saves.parried >= 0)) errors.push(`tim ${id}: penyelamatan tidak valid`);
+      if (!(state.stats.heavyTouches[id] >= 0)) errors.push(`tim ${id}: sentuhan buruk tidak valid`);
+      if (!(state.stats.blocks[id] >= 0)) errors.push(`tim ${id}: blok tidak valid`);
     }
   } else {
     errors.push('stats tidak ada');

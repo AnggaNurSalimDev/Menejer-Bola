@@ -9,6 +9,7 @@
 // boleh ditekel dan tidak ditekan; lawan mundur ke posisinya.
 
 import { insideOwnPenaltyArea } from './pitch.js';
+import { blunder } from './skill.js';
 
 const EASY_CATCH_SPEED = 10; // m/s: di bawah ini selalu tertangkap
 const CATCH_FALLOFF = 20; // m/s: peluang tangkap turun linear sepanjang rentang ini
@@ -18,9 +19,12 @@ const PARRY_SPEED_MIN = 0.25; // bagian dari laju datang
 const PARRY_SPEED_MAX = 0.45;
 const PARRY_SPREAD = (70 * Math.PI) / 180; // ±70° dari arah ke lapangan
 
-export function catchChance(ballSpeed) {
+// Peluang menangkap: turun untuk bola kencang, digeser oleh stat Tangkapan
+// (kalau kiper diberikan; tanpa kiper = kiper rata-rata).
+export function catchChance(ballSpeed, keeper = null) {
   if (!(ballSpeed >= 0)) throw new RangeError(`catchChance: laju tidak valid ${ballSpeed}`);
-  const raw = 1 - (ballSpeed - EASY_CATCH_SPEED) / CATCH_FALLOFF;
+  const bonus = keeper ? blunder(keeper, 'catchBonus') : 0;
+  const raw = 1 - (ballSpeed - EASY_CATCH_SPEED) / CATCH_FALLOFF + bonus;
   return Math.min(1, Math.max(MIN_CATCH_CHANCE, raw));
 }
 

@@ -13,13 +13,14 @@
 
 import { createRng } from './rng.js';
 import { createMatchState, createInitialBall, slotToPitch, validateMatchState, GOAL_PAUSE_TICKS } from './state.js';
-import { DT, DECISION_INTERVAL_TICKS, KICK_COOLDOWN_TICKS, HALF_TICKS } from './constants.js';
+import { DT, TICK_RATE, DECISION_INTERVAL_TICKS, KICK_COOLDOWN_TICKS, HALF_TICKS } from './constants.js';
+import { blunder } from './skill.js';
 import { PITCH, clampToPitch, distance, isInsidePitch, isBetweenPosts } from './pitch.js';
-import { rollBall } from './ball.js';
+import { rollBall, MAX_KICK_SPEED } from './ball.js';
 import { computeAnchor } from './shape.js';
 import { stepBody } from './movement.js';
 import { pickChaser, pickPresser } from './roles.js';
-import { evaluatePassOptions, dribbleTarget } from './passing.js';
+import { evaluatePassOptions, dribbleTarget, shotLaneBlocker } from './passing.js';
 import { evaluateShot, shotVelocity } from './shooting.js';
 import {
   pickTackler,
@@ -62,6 +63,8 @@ function cloneStats(stats) {
     goals: { ...stats.goals },
     tackles: perTeam(stats.tackles),
     saves: perTeam(stats.saves),
+    heavyTouches: { ...stats.heavyTouches },
+    blocks: { ...stats.blocks },
     turnovers: stats.turnovers,
     outOfPlay: stats.outOfPlay,
   };
@@ -111,7 +114,7 @@ function applySeparation(target, player, players) {
 }
 
 // Keputusan pemegang bola: { type: 'shoot', shot } | { type: 'pass', option } | null (terus menggiring)
-function decideHolder(holder, ball, players) {
+function decideHolder(holder, ball, players, rng) {
   const opponents = players.filter((p) => p.teamId !== holder.teamId);
   const pressured = nearestDistance(holder, opponents) < PRESSURE_RADIUS;
 
@@ -130,6 +133,7 @@ function decideHolder(holder, ball, players) {
     opponents,
     attacksRight: holder.attacksRight,
     previousOwnerId: ball.previousOwnerId,
+    rng,
   });
   if (options.length === 0) return null;
 
@@ -160,13 +164,50 @@ function releaseBall(ball, kicker, velocity, extra) {
   };
 }
 
-function passVelocity(ball, option) {
+// Arah dan laju operan setelah diberi meleset sesuai stat Passing pengoper.
+function passVelocity(ball, option, passer, rng) {
   const d = distance(ball, option.target);
   if (!(d > 0)) throw new Error('passVelocity: jarak operan nol');
-  return {
-    vx: ((option.target.x - ball.x) / d) * option.speed,
-    vy: ((option.target.y - ball.y) / d) * option.speed,
-  };
+  const angle = Math.atan2(option.target.y - ball.y, option.target.x - ball.x) + rng.normal(0, blunder(passer, 'passAngle'));
+  const speedFactor = Math.max(0.5, 1 + rng.normal(0, blunder(passer, 'passSpeed')));
+  const speed = Math.min(MAX_KICK_SPEED, option.speed * speedFactor);
+  return { vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed };
+}
+
+// Sentuhan pertama terlalu jauh (stat Kontrol): bola memantul dari kaki,
+// makin sering untuk bola yang datang kencang. Kiper yang memakai tangan
+// di kotaknya tidak terkena aturan ini (lihat keeper.js).
+const HEAVY_TOUCH_MAX_CHANCE = 0.6;
+const HEAVY_TOUCH_SPEED_MIN = 0.3; // bagian dari laju datang
+const HEAVY_TOUCH_SPEED_MAX = 0.55;
+const HEAVY_TOUCH_SPREAD = (40 * Math.PI) / 180;
+
+// Tembakan yang mengenai bek lapangan biasanya memantul liar, tidak langsung dikuasai.
+const BLOCK_DEFLECT_CHANCE = 0.75;
+const DEFLECT_SPEED_MIN = 0.25; // bagian dari laju datang
+const DEFLECT_SPEED_MAX = 0.55;
+const DEFLECT_SPREAD = (60 * Math.PI) / 180;
+
+function deflectVelocity(ball, rng) {
+  const speed = Math.hypot(ball.vx, ball.vy);
+  const angle = Math.atan2(ball.vy, ball.vx) + Math.PI + rng.range(-DEFLECT_SPREAD, DEFLECT_SPREAD);
+  const out = speed * rng.range(DEFLECT_SPEED_MIN, DEFLECT_SPEED_MAX);
+  return { vx: Math.cos(angle) * out, vy: Math.sin(angle) * out };
+}
+
+function reactionTicks(player) {
+  return Math.round(player.profile.reaction * TICK_RATE);
+}
+
+function heavyTouchChance(player, incomingSpeed) {
+  return Math.min(HEAVY_TOUCH_MAX_CHANCE, (incomingSpeed / 10) * blunder(player, 'heavyTouchPer10ms'));
+}
+
+function heavyTouchVelocity(ball, rng) {
+  const speed = Math.hypot(ball.vx, ball.vy);
+  const angle = Math.atan2(ball.vy, ball.vx) + rng.range(-HEAVY_TOUCH_SPREAD, HEAVY_TOUCH_SPREAD);
+  const out = speed * rng.range(HEAVY_TOUCH_SPEED_MIN, HEAVY_TOUCH_SPEED_MAX);
+  return { vx: Math.cos(angle) * out, vy: Math.sin(angle) * out };
 }
 
 // Apakah arah bola saat ini akan melewati garis gawang di antara tiang?
@@ -288,7 +329,14 @@ export function createSimulation(home, away, seed) {
     const players = prev.players.map((player) => {
       const target = slotToPitch(player.slot, player.attacksRight);
       const body = stepBody(player, target, DT);
-      return { ...player, ...body, target, task: 'shape', tackleCooldown: Math.max(0, player.tackleCooldown - 1) };
+      return {
+        ...player,
+        ...body,
+        target,
+        task: 'shape',
+        tackleCooldown: Math.max(0, player.tackleCooldown - 1),
+        reactionDelay: 0,
+      };
     });
     stats.possessionTicks[prev.ball.restartTeamId] += 1;
     return { ...prev, tick, players, stats, pauseTicks: prev.pauseTicks - 1 };
@@ -313,6 +361,9 @@ export function createSimulation(home, away, seed) {
 
     const cooldownOverrides = new Map();
     const stumbled = new Set();
+    // Siapa yang melepas bola di tick ini (operan, tembakan, tekel): pemain lain
+    // butuh waktu reaksi (stat Antisipasi) sebelum mengubah arah larinya.
+    let ballReleasedBy = null;
 
     // 1. Duel dan keputusan pemegang bola.
     if (ball.ownerId !== null) {
@@ -332,6 +383,7 @@ export function createSimulation(home, away, seed) {
           ball = releaseBall(ball, holder, looseBallVelocity(tackler, holder, rng), {});
           cooldownOverrides.set(tackler.id, SUCCESS_COOLDOWN_TICKS);
           tackled = true;
+          ballReleasedBy = holder.id;
         } else {
           cooldownOverrides.set(tackler.id, BEATEN_COOLDOWN_TICKS);
           stumbled.add(tackler.id);
@@ -339,19 +391,22 @@ export function createSimulation(home, away, seed) {
       }
 
       if (!tackled) {
-        const decision = decideHolder(holder, ball, prev.players);
+        const decision = decideHolder(holder, ball, prev.players, rng);
         if (decision?.type === 'shoot') {
           // "Tepat sasaran" dihitung saat tembakan berakhir (gol atau diselamatkan
           // kiper), sesuai definisi statistik sepak bola; tembakan terblok tidak termasuk.
-          const velocity = shotVelocity(ball, decision.shot.aim, holder.attacksRight, rng);
+          const spread = blunder(holder, 'shotSpread');
+          const velocity = shotVelocity(ball, decision.shot.aim, holder.attacksRight, rng, spread);
           stats.shots[holder.teamId].total += 1;
           ball = releaseBall(ball, holder, velocity, { shotTeamId: holder.teamId });
+          ballReleasedBy = holder.id;
         } else if (decision?.type === 'pass') {
           stats.passes[holder.teamId].attempted += 1;
-          ball = releaseBall(ball, holder, passVelocity(ball, decision.option), {
+          ball = releaseBall(ball, holder, passVelocity(ball, decision.option, holder, rng), {
             passTargetId: decision.option.receiver.id,
             passTeamId: holder.teamId,
           });
+          ballReleasedBy = holder.id;
         }
       }
     }
@@ -414,7 +469,9 @@ export function createSimulation(home, away, seed) {
           .find((id) => id && byId.get(id).teamId !== player.teamId);
         const presser = presserId ? byId.get(presserId) : null;
         const pressing = presser && distance(presser, player) < PRESSURE_RADIUS * 2 ? presser : null;
-        target = dribbleTarget(player, team.attacksRight, pressing);
+        const opponentsOfHolder = prev.players.filter((p) => p.teamId !== player.teamId);
+        const laneBlocker = shotLaneBlocker(ball, opponentsOfHolder, team.attacksRight);
+        target = dribbleTarget(player, team.attacksRight, pressing, laneBlocker);
         moveOptions = { speedScale: DRIBBLE_SPEED_SCALE };
       } else if (team.chaserId === player.id) {
         if (owner) task = 'press';
@@ -433,13 +490,29 @@ export function createSimulation(home, away, seed) {
         }
       }
 
+      // Waktu reaksi (stat Antisipasi): selama masih "telat membaca", pemain
+      // tetap berlari ke target lamanya walau tugasnya sudah berubah.
+      if (player.reactionDelay > 0 && task !== 'hold') target = player.target;
+
       target = clampToPitch(target);
       const moveTarget = task === 'shape' ? applySeparation(target, player, prev.players) : target;
       // Penekan yang gagal menekel kehilangan momentum.
       const body = stepBody(stumbled.has(player.id) ? { ...player, vx: 0, vy: 0 } : player, moveTarget, DT, moveOptions);
       const tackleCooldown = cooldownOverrides.get(player.id) ?? Math.max(0, player.tackleCooldown - 1);
-      return { ...player, ...body, target, task, tackleCooldown };
+      let reactionDelay = Math.max(0, player.reactionDelay - 1);
+      // Bola baru saja dilepas: semua orang kecuali pelepas dan penerima yang dituju harus bereaksi.
+      if (ballReleasedBy !== null && player.id !== ballReleasedBy && player.id !== ball.passTargetId) {
+        reactionDelay = reactionTicks(player);
+      }
+      return { ...player, ...body, target, task, tackleCooldown, reactionDelay };
     });
+
+    // Bola terlepas di tahap 4 (tepisan, sentuhan buruk): reaksi berlaku mulai tick berikutnya.
+    const startReactions = (releaserId) => {
+      for (let i = 0; i < players.length; i += 1) {
+        if (players[i].id !== releaserId) players[i] = { ...players[i], reactionDelay: reactionTicks(players[i]) };
+      }
+    };
 
     // 4. Bola.
     if (ball.ownerId !== null) {
@@ -485,7 +558,7 @@ export function createSimulation(home, away, seed) {
         const speed = Math.hypot(ball.vx, ball.vy);
         if (headingBetweenPosts(ball)) stats.shots[ball.shotTeamId].onTarget += 1;
         const contact = { x: from.x + (rolled.x - from.x) * touch.u, y: from.y + (rolled.y - from.y) * touch.u };
-        if (rng.chance(catchChance(speed))) {
+        if (rng.chance(catchChance(speed, keeper))) {
           stats.saves[keeper.teamId].caught += 1;
           ball = gainControl(ball, keeper, stats, rng);
           for (let i = 0; i < players.length; i += 1) {
@@ -497,7 +570,34 @@ export function createSimulation(home, away, seed) {
         } else {
           stats.saves[keeper.teamId].parried += 1;
           ball = releaseBall({ ...ball, ...clampToPitch(contact) }, keeper, parryVelocity(keeper, speed, rng), {});
+          startReactions(keeper.id);
         }
+      } else if (
+        touch &&
+        ball.shotTeamId !== null &&
+        touch.player.teamId !== ball.shotTeamId &&
+        rng.chance(BLOCK_DEFLECT_CHANCE)
+      ) {
+        // Tembakan terblok bek: bola memantul liar ke arah datangnya.
+        const blocker = touch.player;
+        const contact = { x: from.x + (rolled.x - from.x) * touch.u, y: from.y + (rolled.y - from.y) * touch.u };
+        stats.blocks[blocker.teamId] += 1;
+        ball = releaseBall({ ...ball, ...clampToPitch(contact) }, blocker, deflectVelocity(ball, rng), {});
+        startReactions(blocker.id);
+      } else if (
+        touch &&
+        ball.restartTeamId === null &&
+        !isKeeperHandling(touch.player, from) &&
+        rng.chance(heavyTouchChance(touch.player, Math.hypot(ball.vx, ball.vy)))
+      ) {
+        // Sentuhan pertama terlalu jauh: bola memantul dari kaki dan bisa direbut siapa saja.
+        const player = touch.player;
+        const contact = { x: from.x + (rolled.x - from.x) * touch.u, y: from.y + (rolled.y - from.y) * touch.u };
+        if (ball.passTeamId !== null && player.teamId === ball.passTeamId) stats.passes[player.teamId].completed += 1;
+        if (ball.lastTouchTeamId !== null && player.teamId !== ball.lastTouchTeamId) stats.turnovers += 1;
+        stats.heavyTouches[player.teamId] += 1;
+        ball = releaseBall({ ...ball, ...clampToPitch(contact) }, player, heavyTouchVelocity(ball, rng), {});
+        startReactions(player.id);
       } else if (touch) {
         ball = gainControl(ball, touch.player, stats, rng);
         // Tugas pemain mengikuti pergantian penguasaan di tick yang sama.
@@ -567,7 +667,17 @@ export function createSimulation(home, away, seed) {
     const players = state.players.map((player) => {
       const attacksRight = teams[player.teamId].attacksRight;
       const spot = slotToPitch(player.slot, attacksRight);
-      return { ...player, attacksRight, ...spot, vx: 0, vy: 0, target: spot, task: 'shape', tackleCooldown: 0 };
+      return {
+        ...player,
+        attacksRight,
+        ...spot,
+        vx: 0,
+        vy: 0,
+        target: spot,
+        task: 'shape',
+        tackleCooldown: 0,
+        reactionDelay: 0,
+      };
     });
     const kickOffTeamId = teamIds.find((id) => id !== state.firstKickOffTeamId);
 
