@@ -14,6 +14,14 @@ import { PITCH, clampToPitch, distance, forwardOf } from './pitch.js';
 import { passSpeedForDistance, timeToTravel } from './ball.js';
 import { reachTime } from './roles.js';
 import { blunder } from './skill.js';
+import { offsideLine, isOffside, throughBallPoint } from './attack.js';
+
+// Keputusan rendah juga berarti salah membaca garis offside (meter per detik salah kira).
+const OFFSIDE_MISJUDGE_METERS_PER_SECOND = 10;
+// Umpan terobosan ke pelari di belakang garis bek sedikit lebih dihargai.
+const THROUGH_BALL_BONUS = 0.6;
+// Umpan terobosan layak dicoba walau sedikit berisiko: hadiahnya peluang satu lawan satu.
+const THROUGH_SAFE_MARGIN = -0.25; // detik
 
 const MIN_PASS_DISTANCE = 4;
 const LANE_SAMPLE_STEP = 1.5; // meter
@@ -77,6 +85,7 @@ export function evaluatePassOptions({ holder, origin, teammates, opponents, atta
 
   const vision = blunder(holder, 'passVision');
   const misjudge = rng ? blunder(holder, 'riskMisjudge') : 0;
+  const trueLine = offsideLine(opponents, attacksRight);
 
   const options = [];
   for (const receiver of teammates) {
@@ -85,15 +94,28 @@ export function evaluatePassOptions({ holder, origin, teammates, opponents, atta
     const plainDistance = distance(origin, receiver);
     if (plainDistance < MIN_PASS_DISTANCE || plainDistance > vision) continue;
 
-    // Arahkan sedikit ke depan lari penerima.
-    const roughTime = plainDistance / passSpeedForDistance(plainDistance);
-    const target = clampToPitch(
-      {
-        x: receiver.x + receiver.vx * roughTime * LEAD_FACTOR,
-        y: receiver.y + receiver.vy * roughTime * LEAD_FACTOR,
-      },
-      0.5,
-    );
+    // Offside dinilai saat bola dimainkan. Pemain bisa salah membaca garisnya.
+    const perceivedLine = misjudge > 0 ? trueLine + rng.normal(0, misjudge * OFFSIDE_MISJUDGE_METERS_PER_SECOND) : trueLine;
+    if (isOffside(receiver, origin, perceivedLine, attacksRight)) continue;
+    const offside = isOffside(receiver, origin, trueLine, attacksRight);
+
+    // Pelari ke belakang garis bek: umpan ke RUANG di depan larinya.
+    // Penerima lain: operan diarahkan sedikit ke depan larinya.
+    const isRun = receiver.task === 'run' && receiver.target;
+    let target;
+    if (isRun) {
+      target = throughBallPoint(origin, receiver);
+      if (!target) continue;
+    } else {
+      const roughTime = plainDistance / passSpeedForDistance(plainDistance);
+      target = clampToPitch(
+        {
+          x: receiver.x + receiver.vx * roughTime * LEAD_FACTOR,
+          y: receiver.y + receiver.vy * roughTime * LEAD_FACTOR,
+        },
+        0.5,
+      );
+    }
     const passDistance = distance(origin, target);
     if (passDistance < MIN_PASS_DISTANCE) continue;
 
@@ -110,9 +132,11 @@ export function evaluatePassOptions({ holder, origin, teammates, opponents, atta
       WEIGHTS.safety * Math.min(margin, MAX_SAFETY_CREDIT) -
       WEIGHTS.distance * passDistance -
       (receiver.role === 'GK' ? WEIGHTS.keeper : 0) -
-      (receiver.id === previousOwnerId ? WEIGHTS.returnPass : 0);
+      (receiver.id === previousOwnerId ? WEIGHTS.returnPass : 0) +
+      (isRun ? THROUGH_BALL_BONUS : 0);
 
-    options.push({ receiver, target, speed, margin, trueMargin, score, safe: margin > SAFE_MARGIN });
+    const safe = margin > (isRun ? THROUGH_SAFE_MARGIN : SAFE_MARGIN);
+    options.push({ receiver, target, speed, margin, trueMargin, score, safe, offside, through: !!isRun });
   }
 
   options.sort((a, b) => b.score - a.score || a.receiver.id.localeCompare(b.receiver.id));

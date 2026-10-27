@@ -53,11 +53,13 @@ function placeTeam(team, attacksRight) {
       tackleCooldown: 0,
       // Tick tersisa sebelum pemain bereaksi terhadap bola yang baru dilepas (stat Antisipasi).
       reactionDelay: 0,
+      // Tick tersisa sebelum boleh berlari ke belakang garis bek lagi.
+      runCooldown: 0,
     };
   });
 }
 
-export const TASKS = Object.freeze(['shape', 'hold', 'chase', 'receive', 'press']);
+export const TASKS = Object.freeze(['shape', 'hold', 'chase', 'receive', 'press', 'run']);
 
 // Bola punya empat keadaan:
 //   dikuasai     : ownerId terisi, bola menempel di kaki pemegangnya
@@ -81,6 +83,8 @@ export function createInitialBall(kickOffTeamId) {
     passTargetId: null,
     passTeamId: null,
     shotTeamId: null,
+    // Penerima operan yang sudah offside saat bola dimainkan (atau null).
+    offsideReceiverId: null,
     lastTouchTeamId: kickOffTeamId,
     restartTeamId: kickOffTeamId,
   };
@@ -97,9 +101,14 @@ function createStats(teamIds) {
     saves: perTeam(() => ({ caught: 0, parried: 0 })),
     heavyTouches: perTeam(() => 0),
     blocks: perTeam(() => 0),
+    offsides: perTeam(() => 0),
     turnovers: 0,
     outOfPlay: 0,
   };
+}
+
+export function emptyTeamRoles() {
+  return { chaserId: null, runnerId: null, runTarget: null, runTicks: 0 };
 }
 
 // Setelah gol, permainan jeda sejenak: pemain kembali ke posisi kick-off.
@@ -113,8 +122,9 @@ export function createMatchState(home, away) {
     tick: 0,
     teams: {
       // chaserId: pemain yang sedang menjemput/menekan bola untuk tim ini.
-      [home.id]: { id: home.id, name: home.name, colors: home.colors, attacksRight: true, chaserId: null },
-      [away.id]: { id: away.id, name: away.name, colors: away.colors, attacksRight: false, chaserId: null },
+      // runnerId/runTarget/runTicks: penyerang yang sedang berlari ke belakang garis bek.
+      [home.id]: { id: home.id, name: home.name, colors: home.colors, attacksRight: true, ...emptyTeamRoles() },
+      [away.id]: { id: away.id, name: away.name, colors: away.colors, attacksRight: false, ...emptyTeamRoles() },
     },
     ball: createInitialBall(home.id),
     players: [...placeTeam(home, true), ...placeTeam(away, false)],
@@ -265,6 +275,23 @@ export function validateMatchState(state, teams = []) {
   }
 
   // Statistik harus konsisten dengan waktu dan dengan dirinya sendiri.
+  // Pelari ke belakang garis bek: paling banyak satu per tim, dan cocok dengan tugasnya.
+  for (const teamId of teamIds) {
+    const team = state.teams[teamId];
+    const runners = state.players.filter((p) => p.teamId === teamId && p.task === 'run');
+    if (runners.length > 1) errors.push(`tim ${teamId}: ${runners.length} pelari sekaligus`);
+    if ((runners[0]?.id ?? null) !== team.runnerId) errors.push(`tim ${teamId}: runnerId tidak cocok dengan tugas pemain`);
+    if (team.runnerId !== null && (!team.runTarget || !isInsidePitch(team.runTarget.x, team.runTarget.y))) {
+      errors.push(`tim ${teamId}: target lari tidak valid`);
+    }
+  }
+  for (const p of state.players) {
+    if (!Number.isInteger(p.runCooldown) || p.runCooldown < 0) errors.push(`pemain ${p.id}: runCooldown tidak valid`);
+  }
+  if (ball.offsideReceiverId !== null && ball.offsideReceiverId !== ball.passTargetId) {
+    errors.push('penanda offside bukan penerima operan yang sedang berjalan');
+  }
+
   if (state.stats) {
     const possessionTotal = teamIds.reduce((sum, id) => sum + state.stats.possessionTicks[id], 0);
     if (possessionTotal !== state.tick) errors.push(`total tick penguasaan ${possessionTotal} ≠ tick ${state.tick}`);
@@ -280,6 +307,7 @@ export function validateMatchState(state, teams = []) {
       if (!(saves.caught >= 0 && saves.parried >= 0)) errors.push(`tim ${id}: penyelamatan tidak valid`);
       if (!(state.stats.heavyTouches[id] >= 0)) errors.push(`tim ${id}: sentuhan buruk tidak valid`);
       if (!(state.stats.blocks[id] >= 0)) errors.push(`tim ${id}: blok tidak valid`);
+      if (!(state.stats.offsides[id] >= 0)) errors.push(`tim ${id}: offside tidak valid`);
     }
   } else {
     errors.push('stats tidak ada');

@@ -12,7 +12,14 @@
 //   5. Statistik dicatat.
 
 import { createRng } from './rng.js';
-import { createMatchState, createInitialBall, slotToPitch, validateMatchState, GOAL_PAUSE_TICKS } from './state.js';
+import {
+  createMatchState,
+  createInitialBall,
+  slotToPitch,
+  validateMatchState,
+  emptyTeamRoles,
+  GOAL_PAUSE_TICKS,
+} from './state.js';
 import { DT, TICK_RATE, DECISION_INTERVAL_TICKS, KICK_COOLDOWN_TICKS, HALF_TICKS } from './constants.js';
 import { blunder } from './skill.js';
 import { PITCH, clampToPitch, distance, isInsidePitch, isBetweenPosts } from './pitch.js';
@@ -32,6 +39,14 @@ import {
 import { findController } from './touch.js';
 import { assignMarks, blendTowardMark } from './marking.js';
 import { catchChance, parryVelocity, isKeeperHandling } from './keeper.js';
+import {
+  offsideLine,
+  clampOnside,
+  pickRunner,
+  RUN_MAX_TICKS,
+  RUN_COOLDOWN_TICKS,
+  RUN_START_CHANCE,
+} from './attack.js';
 
 // Pemegang bola
 // Tempo padat (pertandingan 2 × 5 menit): bola dilepas dalam 0,5–1,5 detik.
@@ -44,6 +59,7 @@ const PRESSURE_RADIUS = 3; // meter
 const PRESSURED_MIN_TICKS = 4; // ditekan pun, pemain butuh sejenak untuk melepas operan
 const PRESSURED_FORCED_TICKS = 8;
 const SHOT_MIN_TICKS = 2; // butuh sentuhan persiapan sebelum menembak
+const RUN_SPOT_MIN_TICKS = 2; // butuh sentuhan persiapan sebelum mengirim umpan terobosan
 const DRIBBLE_SPEED_SCALE = 0.75;
 const BALL_AHEAD_OF_FEET = 0.6; // meter
 
@@ -65,6 +81,7 @@ function cloneStats(stats) {
     saves: perTeam(stats.saves),
     heavyTouches: { ...stats.heavyTouches },
     blocks: { ...stats.blocks },
+    offsides: { ...stats.offsides },
     turnovers: stats.turnovers,
     outOfPlay: stats.outOfPlay,
   };
@@ -123,7 +140,12 @@ function decideHolder(holder, ball, players, rng) {
     if (shot?.shouldShoot) return { type: 'shoot', shot };
   }
 
-  const ready = ball.heldTicks >= ball.holdTarget || (pressured && ball.heldTicks >= PRESSURED_MIN_TICKS);
+  // Rekan mulai berlari ke belakang garis bek: lihat dan layani larinya sekarang.
+  const runnerAvailable = players.some((p) => p.teamId === holder.teamId && p.task === 'run');
+  const ready =
+    ball.heldTicks >= ball.holdTarget ||
+    (pressured && ball.heldTicks >= PRESSURED_MIN_TICKS) ||
+    (runnerAvailable && ball.heldTicks >= RUN_SPOT_MIN_TICKS);
   if (!ready) return null;
 
   const options = evaluatePassOptions({
@@ -158,6 +180,7 @@ function releaseBall(ball, kicker, velocity, extra) {
     passTargetId: null,
     passTeamId: null,
     shotTeamId: null,
+    offsideReceiverId: null,
     lastTouchTeamId: kicker.teamId,
     restartTeamId: null,
     ...extra,
@@ -254,6 +277,7 @@ function gainControl(ball, controller, stats, rng) {
     passTargetId: null,
     passTeamId: null,
     shotTeamId: null,
+    offsideReceiverId: null,
     lastTouchTeamId: controller.teamId,
     restartTeamId: null,
   };
@@ -313,6 +337,7 @@ function restartFromOut(ball, from, outPoint, teams, teamIds) {
     passTargetId: null,
     passTeamId: null,
     shotTeamId: null,
+    offsideReceiverId: null,
     restartTeamId,
   };
 }
@@ -323,6 +348,40 @@ export function createSimulation(home, away, seed) {
   const rng = createRng(seed);
   let state = createMatchState(home, away);
   const teamIds = Object.keys(state.teams);
+
+  // Lari ke belakang garis bek: lanjutkan, akhiri, atau mulai lari baru.
+  // Hanya untuk tim yang sedang menguasai bola; satu pelari per tim.
+  function updateRunner(team, owner, ball, players, line, runCooldowns) {
+    const endRun = () => {
+      if (team.runnerId !== null) runCooldowns.set(team.runnerId, RUN_COOLDOWN_TICKS);
+      Object.assign(team, { runnerId: null, runTarget: null, runTicks: 0 });
+    };
+    const inPossession = owner !== null && owner.teamId === team.id;
+
+    if (team.runnerId !== null) {
+      // Operan sudah datang ke pelari: dia kini penerima (pengejar), larinya selesai.
+      if (ball.passTargetId === team.runnerId) return endRun();
+      team.runTicks += 1;
+      const stillOn =
+        inPossession && owner.id !== team.runnerId && team.chaserId !== team.runnerId && team.runTicks <= RUN_MAX_TICKS;
+      if (!stillOn) endRun();
+      return undefined;
+    }
+
+    if (!inPossession || !rng.chance(RUN_START_CHANCE)) return undefined;
+    const pick = pickRunner({
+      teammates: players.filter((p) => p.teamId === team.id),
+      holder: owner,
+      defenders: players.filter((p) => p.teamId !== team.id),
+      ballPoint: ball,
+      attacksRight: team.attacksRight,
+    });
+    if (pick && Number.isFinite(line)) {
+      Object.assign(team, { runnerId: pick.player.id, runTarget: pick.target, runTicks: 0 });
+      return team.id; // lari baru dimulai
+    }
+    return undefined;
+  }
 
   // 0. Jeda setelah gol: semua pemain berjalan kembali ke posisi kick-off.
   function stepPause(prev, tick, stats) {
@@ -360,6 +419,9 @@ export function createSimulation(home, away, seed) {
     let pauseTicks = 0;
 
     const cooldownOverrides = new Map();
+    const runCooldowns = new Map();
+    // Tim yang penyerangnya baru mulai berlari di tick ini: lawan butuh waktu membacanya.
+    const runStartedBy = new Set();
     const stumbled = new Set();
     // Siapa yang melepas bola di tick ini (operan, tembakan, tekel): pemain lain
     // butuh waktu reaksi (stat Antisipasi) sebelum mengubah arah larinya.
@@ -405,11 +467,17 @@ export function createSimulation(home, away, seed) {
           ball = releaseBall(ball, holder, passVelocity(ball, decision.option, holder, rng), {
             passTargetId: decision.option.receiver.id,
             passTeamId: holder.teamId,
+            offsideReceiverId: decision.option.offside ? decision.option.receiver.id : null,
           });
           ballReleasedBy = holder.id;
         }
       }
     }
+
+    // Garis offside untuk setiap tim (dari sudut pandang tim itu sebagai penyerang).
+    const offsideLines = Object.fromEntries(
+      teamIds.map((id) => [id, offsideLine(prev.players.filter((p) => p.teamId !== id), teams[id].attacksRight)]),
+    );
 
     // 2. Siapa yang menjemput/menekan bola di tiap tim.
     const owner = ball.ownerId !== null ? byId.get(ball.ownerId) : null;
@@ -437,6 +505,8 @@ export function createSimulation(home, away, seed) {
 
       team.chaserId = pick ? pick.player.id : null;
       if (pick) roleTargets.set(pick.player.id, pick.point);
+
+      if (updateRunner(team, owner, ball, prev.players, offsideLines[id], runCooldowns) === id) runStartedBy.add(id);
     }
 
     // 3. Tugas, target, lalu gerak.
@@ -473,6 +543,10 @@ export function createSimulation(home, away, seed) {
         const laneBlocker = shotLaneBlocker(ball, opponentsOfHolder, team.attacksRight);
         target = dribbleTarget(player, team.attacksRight, pressing, laneBlocker);
         moveOptions = { speedScale: DRIBBLE_SPEED_SCALE };
+      } else if (team.runnerId === player.id) {
+        task = 'run';
+        target = team.runTarget;
+        moveOptions = { urgent: true };
       } else if (team.chaserId === player.id) {
         if (owner) task = 'press';
         else task = ball.passTargetId === player.id ? 'receive' : 'chase';
@@ -487,6 +561,8 @@ export function createSimulation(home, away, seed) {
           if (possessingTeamId !== null) phase = possessingTeamId === player.teamId ? 'attack' : 'defend';
           target = computeAnchor(player, ball, team.attacksRight, phase);
           if (phase === 'defend') target = blendTowardMark(target, marksByTeam.get(player.teamId)?.get(player.id));
+          // Penyerang tidak menunggu di posisi offside.
+          if (phase === 'attack') target = clampOnside(target, ball, offsideLines[player.teamId], team.attacksRight);
         }
       }
 
@@ -504,7 +580,12 @@ export function createSimulation(home, away, seed) {
       if (ballReleasedBy !== null && player.id !== ballReleasedBy && player.id !== ball.passTargetId) {
         reactionDelay = reactionTicks(player);
       }
-      return { ...player, ...body, target, task, tackleCooldown, reactionDelay };
+      // Lari tanpa bola tidak langsung terbaca oleh lawan (stat Antisipasi).
+      for (const teamId of runStartedBy) {
+        if (player.teamId !== teamId) reactionDelay = Math.max(reactionDelay, reactionTicks(player));
+      }
+      const runCooldown = runCooldowns.get(player.id) ?? Math.max(0, player.runCooldown - 1);
+      return { ...player, ...body, target, task, tackleCooldown, reactionDelay, runCooldown };
     });
 
     // Bola terlepas di tahap 4 (tepisan, sentuhan buruk): reaksi berlaku mulai tick berikutnya.
@@ -551,6 +632,31 @@ export function createSimulation(home, away, seed) {
         for (let i = 0; i < players.length; i += 1) {
           if (players[i].task !== 'shape') players[i] = { ...players[i], task: 'shape' };
         }
+        for (const id of teamIds) Object.assign(teams[id], emptyTeamRoles());
+      } else if (touch && touch.player.id === ball.offsideReceiverId) {
+        const offender = touch.player;
+        const defendingTeamId = teamIds.find((id) => id !== offender.teamId);
+        stats.offsides[offender.teamId] += 1;
+        ball = {
+          ...ball,
+          ...clampToPitch(offender, 0.5),
+          vx: 0,
+          vy: 0,
+          ownerId: null,
+          heldTicks: 0,
+          holdTarget: 0,
+          kickerId: null,
+          kickCooldown: 0,
+          passTargetId: null,
+          passTeamId: null,
+          shotTeamId: null,
+          offsideReceiverId: null,
+          lastTouchTeamId: offender.teamId,
+          restartTeamId: defendingTeamId,
+        };
+        for (let i = 0; i < players.length; i += 1) {
+          if (players[i].task !== 'shape' && players[i].task !== 'run') players[i] = { ...players[i], task: 'shape' };
+        }
         for (const id of teamIds) teams[id].chaserId = null;
       } else if (touch && isShotReachingKeeper(ball, touch.player, from)) {
         // Kiper menjangkau tembakan: tangkap, atau tepis jadi bola muntah.
@@ -564,7 +670,7 @@ export function createSimulation(home, away, seed) {
           for (let i = 0; i < players.length; i += 1) {
             const p = players[i];
             if (p.id === keeper.id) players[i] = { ...p, task: 'hold' };
-            else if (p.task !== 'shape') players[i] = { ...p, task: 'shape' };
+            else if (p.task !== 'shape' && p.task !== 'run') players[i] = { ...p, task: 'shape' };
           }
           for (const id of teamIds) teams[id].chaserId = null;
         } else {
@@ -604,7 +710,7 @@ export function createSimulation(home, away, seed) {
         for (let i = 0; i < players.length; i += 1) {
           const p = players[i];
           if (p.id === touch.player.id) players[i] = { ...p, task: 'hold' };
-          else if (p.task !== 'shape') players[i] = { ...p, task: 'shape' };
+          else if (p.task !== 'shape' && p.task !== 'run') players[i] = { ...p, task: 'shape' };
         }
         for (const id of teamIds) teams[id].chaserId = null;
       } else if (!isInsidePitch(rolled.x, rolled.y)) {
@@ -662,7 +768,7 @@ export function createSimulation(home, away, seed) {
     }
 
     const teams = Object.fromEntries(
-      teamIds.map((id) => [id, { ...state.teams[id], attacksRight: !state.teams[id].attacksRight, chaserId: null }]),
+      teamIds.map((id) => [id, { ...state.teams[id], attacksRight: !state.teams[id].attacksRight, ...emptyTeamRoles() }]),
     );
     const players = state.players.map((player) => {
       const attacksRight = teams[player.teamId].attacksRight;
@@ -677,6 +783,7 @@ export function createSimulation(home, away, seed) {
         task: 'shape',
         tackleCooldown: 0,
         reactionDelay: 0,
+        runCooldown: 0,
       };
     });
     const kickOffTeamId = teamIds.find((id) => id !== state.firstKickOffTeamId);

@@ -32,15 +32,30 @@ export function deriveMovementProfile(stats) {
   return { maxSpeed, maxAccel, turnAccel, reaction, keeperReach };
 }
 
-// Perkiraan waktu menempuh `distance` meter dari keadaan diam, dengan
-// percepatan maxAccel sampai mencapai maxSpeed. Dipakai otak pemain untuk
-// memperkirakan siapa yang lebih dulu sampai ke bola.
-export function travelTime(profile, distanceMeters) {
+// Perkiraan waktu menempuh `distance` meter, mulai dari laju awal v0 (m/s)
+// ke arah tujuan, dengan percepatan maxAccel sampai mencapai maxSpeed.
+// v0 negatif = sedang berlari menjauh: harus mengerem dulu (berbalik).
+// Dipakai otak pemain untuk memperkirakan siapa yang lebih dulu sampai ke bola.
+// Komponen kecepatan yang menyamping diabaikan (penyederhanaan).
+export function travelTime(profile, distanceMeters, v0 = 0) {
   if (!(distanceMeters >= 0)) throw new RangeError(`travelTime: jarak tidak valid ${distanceMeters}`);
+  if (!Number.isFinite(v0)) throw new RangeError(`travelTime: laju awal tidak valid ${v0}`);
   const { maxSpeed, maxAccel } = profile;
-  const accelDistance = (maxSpeed * maxSpeed) / (2 * maxAccel);
-  if (distanceMeters <= accelDistance) return Math.sqrt((2 * distanceMeters) / maxAccel);
-  return maxSpeed / maxAccel + (distanceMeters - accelDistance) / maxSpeed;
+
+  if (v0 < 0) {
+    // Mengerem sampai diam, sambil terbawa menjauh, lalu berangkat dari diam.
+    const brakeTime = -v0 / maxAccel;
+    const driftAway = (v0 * v0) / (2 * maxAccel);
+    return brakeTime + travelTime(profile, distanceMeters + driftAway, 0);
+  }
+
+  const start = Math.min(v0, maxSpeed);
+  const accelTime = (maxSpeed - start) / maxAccel;
+  const accelDistance = (maxSpeed * maxSpeed - start * start) / (2 * maxAccel);
+  if (distanceMeters <= accelDistance) {
+    return (-start + Math.sqrt(start * start + 2 * maxAccel * distanceMeters)) / maxAccel;
+  }
+  return accelTime + (distanceMeters - accelDistance) / maxSpeed;
 }
 
 // Kecepatan jelajah saat sekadar berpindah posisi: pemain tidak sprint

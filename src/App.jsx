@@ -38,6 +38,7 @@ const STAT_ROWS = [
   { key: 'shots', label: 'Tembakan (tepat sasaran)', read: (s, id) => `${s.shots[id].total} (${s.shots[id].onTarget})` },
   { key: 'passes', label: 'Operan sukses / dicoba', read: (s, id) => `${s.passes[id].completed}/${s.passes[id].attempted}` },
   { key: 'tackles', label: 'Tekel berhasil / dicoba', read: (s, id) => `${s.tackles[id].won}/${s.tackles[id].attempted}` },
+  { key: 'offsides', label: 'Offside', read: (s, id) => `${s.offsides[id]}` },
   {
     key: 'saves',
     label: 'Penyelamatan kiper',
@@ -199,7 +200,7 @@ export default function App() {
         <button type="button" onClick={restart}>
           Ulang (seed baru)
         </button>
-        <span className="stage-note">Tahap 5 — blunder dari stat. Seed: {matchSeed}</span>
+        <span className="stage-note">Tahap 5b — offside, lari & umpan terobosan. Seed: {matchSeed}</span>
       </div>
     </main>
   );

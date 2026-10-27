@@ -12,7 +12,8 @@ Proyek ini dibuat untuk senang-senang.
 - Tahap 4 selesai (tembakan, gol & tekel): pemain menembak berdasarkan sudut, risiko blok, dan posisi kiper. Kiper menangkap atau menepis. Tekel ditentukan stat Tackling, Dribbling, dan Kekuatan. Gol memicu jeda dan kick-off ulang; bola keluar lewat garis gawang jadi tendangan gawang atau sepak pojok. Tampilan: skor, tulisan GOL! dengan nama pencetak gol, statistik tembakan, tekel, dan penyelamatan.
 - Format pertandingan: 2 babak × 5 menit nyata (jam 0'–90'), pemain tetap bergerak dengan kecepatan nyata, tempo dipadatkan. Layar jeda dengan tombol "Lanjut babak 2" (nanti tempat mengubah taktik), layar akhir dengan "Main lagi". Babak kedua tukar sisi.
 - Tahap 5 selesai (blunder dari stat): operan meleset (Passing), sentuhan pertama terlalu jauh (Kontrol), tembakan meleset (Finishing), salah menilai risiko (Keputusan), jangkauan operan (Visi), waktu reaksi nyata (Antisipasi), ketat/longgarnya menjaga (Posisi), jangkauan dan tangkapan kiper. Penyerang mencari ruang tembak, tembakan yang kena bek memantul liar.
-- Berikutnya: lapisan psikologis dan kelelahan (tahap 6), atau pola serangan (umpan terobosan, lari ke belakang bek, umpan silang).
+- Pola serangan tahap awal: aturan offside, lari ke belakang garis bek, umpan terobosan. Umpan silang belum (butuh bola melambung).
+- Berikutnya: memperkuat pola serangan (lari ke celah antar-bek, garis pertahanan yang naik) atau lapisan psikologis dan kelelahan (tahap 6).
 
 Tip: tambahkan `?seed=13` di alamat (misalnya `http://localhost:5173/?seed=13`) untuk memutar ulang pertandingan tertentu.
 
@@ -41,6 +42,7 @@ npm run build    # build produksi
   - `skill.js` — SEMUA angka blunder dari stat (tabel BLUNDER)
   - `shape.js` — posisi jangkar formasi per fase (menyerang/bertahan/netral)
   - `marking.js` — penjagaan lawan per zona saat bertahan
+  - `attack.js` — garis offside, lari ke belakang garis bek, titik umpan terobosan
   - `movement.js` — lapisan gerak: tubuh pemain dengan inersia
   - `state.js`, `teams.js`, `formations.js`, `stats.js`, `pitch.js`, `rng.js`
 - `src/render/` — menggambar state ke canvas dan menghaluskan gerakan di antara tick. Hanya membaca state, tidak pernah mengubahnya.

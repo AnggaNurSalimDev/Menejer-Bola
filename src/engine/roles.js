@@ -20,6 +20,11 @@ const PRESS_OFFSET = 1.2; // meter di depan pemegang bola, di sisi gawang sendir
 // Waktu sampai ke dalam jangkauan sebuah titik (kaki, atau tangan kiper).
 // Pemain yang SUDAH berada dalam jangkauan tidak perlu bereaksi: bola yang
 // lewat di situ akan mengenainya (sama dengan aturan fisika di touch.js).
+//
+// Catatan (27 Okt): sempat dicoba memperhitungkan laju awal pemain (travelTime
+// mendukung v0). Hasilnya umpan terobosan tidak membaik, tetapi tim yang lebih
+// bagus jadi terlalu dominan (kejutan 13 vs 11 turun dari 13% ke 6%). Jadi otak
+// pemain tetap memperkirakan dari keadaan diam.
 export function reachTime(player, point) {
   const gap = Math.max(0, distance(player, point) - controlRadiusAt(player, point));
   if (gap === 0) return 0;
