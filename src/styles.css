@@ -93,6 +93,48 @@ body {
   text-align: center;
 }
 
+.match-stats {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  max-width: 520px;
+  margin-inline: auto;
+}
+
+.stat-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.stat-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-value--away {
+  text-align: right;
+}
+
+.stat-label {
+  color: #868e96;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.possession-track {
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.possession-fill {
+  height: 100%;
+  width: 50%;
+  transition: width 0.4s ease;
+}
+
 .controls {
   display: flex;
   flex-wrap: wrap;

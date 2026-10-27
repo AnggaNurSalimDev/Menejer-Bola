@@ -7,6 +7,7 @@ import { validateStats } from './stats.js';
 import { deriveMovementProfile } from './movement.js';
 
 const SPEED_TOLERANCE = 1e-6;
+const OWNED_BALL_MAX_DISTANCE = 1.5; // meter
 
 // Ubah slot formasi (relatif, menyerang ke kanan) menjadi koordinat meter.
 // Tim yang menyerang ke kiri dicerminkan pada kedua sumbu, supaya
@@ -41,8 +42,47 @@ function placeTeam(team, attacksRight) {
       vx: 0,
       vy: 0,
       target: { x, y },
+      // shape | hold | chase | receive | press
+      task: 'shape',
     };
   });
+}
+
+export const TASKS = Object.freeze(['shape', 'hold', 'chase', 'receive', 'press']);
+
+// Bola punya tiga keadaan:
+//   dikuasai    : ownerId terisi, bola menempel di kaki pemegangnya
+//   dalam operan: ownerId kosong, passTargetId terisi
+//   bebas       : ownerId dan passTargetId kosong
+// restartTeamId terisi = bola mati (kick-off / keluar lapangan),
+// hanya tim itu yang boleh mengambilnya.
+export function createInitialBall(kickOffTeamId) {
+  return {
+    x: PITCH.length / 2,
+    y: PITCH.width / 2,
+    vx: 0,
+    vy: 0,
+    ownerId: null,
+    heldTicks: 0,
+    holdTarget: 0,
+    previousOwnerId: null,
+    kickerId: null,
+    kickCooldown: 0,
+    passTargetId: null,
+    passTeamId: null,
+    lastTouchTeamId: kickOffTeamId,
+    restartTeamId: kickOffTeamId,
+  };
+}
+
+function createStats(teamIds) {
+  const perTeam = (make) => Object.fromEntries(teamIds.map((id) => [id, make()]));
+  return {
+    possessionTicks: perTeam(() => 0),
+    passes: perTeam(() => ({ attempted: 0, completed: 0 })),
+    turnovers: 0,
+    outOfPlay: 0,
+  };
 }
 
 export function createMatchState(home, away) {
@@ -52,12 +92,13 @@ export function createMatchState(home, away) {
   const state = {
     tick: 0,
     teams: {
-      [home.id]: { id: home.id, name: home.name, colors: home.colors, attacksRight: true },
-      [away.id]: { id: away.id, name: away.name, colors: away.colors, attacksRight: false },
+      // chaserId: pemain yang sedang menjemput/menekan bola untuk tim ini.
+      [home.id]: { id: home.id, name: home.name, colors: home.colors, attacksRight: true, chaserId: null },
+      [away.id]: { id: away.id, name: away.name, colors: away.colors, attacksRight: false, chaserId: null },
     },
-    // restTicks: berapa tick lagi bola diam sebelum "ditendang" lagi.
-    ball: { x: PITCH.length / 2, y: PITCH.width / 2, vx: 0, vy: 0, restTicks: 10 },
+    ball: createInitialBall(home.id),
     players: [...placeTeam(home, true), ...placeTeam(away, false)],
+    stats: createStats([home.id, away.id]),
   };
 
   const errors = validateMatchState(state, [home, away]);
@@ -101,12 +142,70 @@ export function validateMatchState(state, teams = []) {
     if (!p.target || !isInsidePitch(p.target.x, p.target.y)) {
       errors.push(`pemain ${p.id}: target di luar lapangan`);
     }
+    if (!TASKS.includes(p.task)) errors.push(`pemain ${p.id}: tugas tidak dikenal "${p.task}"`);
   }
 
+  const byId = new Map(state.players.map((p) => [p.id, p]));
+  const teamIds = Object.keys(state.teams);
   const { ball } = state;
+
   if (!isInsidePitch(ball.x, ball.y)) errors.push('bola di luar lapangan');
   if (!Number.isFinite(ball.vx) || !Number.isFinite(ball.vy)) errors.push('kecepatan bola bukan angka');
-  if (!Number.isInteger(ball.restTicks) || ball.restTicks < 0) errors.push('restTicks bola tidak valid');
+  if (!Number.isInteger(ball.kickCooldown) || ball.kickCooldown < 0) errors.push('kickCooldown bola tidak valid');
+  if (!Number.isInteger(ball.heldTicks) || ball.heldTicks < 0) errors.push('heldTicks bola tidak valid');
+
+  // Status bola harus tepat salah satu dari tiga keadaan.
+  if (ball.ownerId !== null) {
+    const owner = byId.get(ball.ownerId);
+    if (!owner) {
+      errors.push(`pemegang bola "${ball.ownerId}" tidak ada`);
+    } else if (Math.hypot(owner.x - ball.x, owner.y - ball.y) > OWNED_BALL_MAX_DISTANCE) {
+      errors.push(`bola terlalu jauh dari pemegangnya ${owner.id}`);
+    }
+    if (ball.passTargetId !== null) errors.push('bola dikuasai sekaligus sedang dioper');
+    if (ball.restartTeamId !== null) errors.push('bola dikuasai sekaligus bola mati');
+  }
+  if (ball.passTargetId !== null) {
+    const receiver = byId.get(ball.passTargetId);
+    if (!receiver) errors.push(`penerima operan "${ball.passTargetId}" tidak ada`);
+    else if (receiver.teamId !== ball.passTeamId) errors.push('penerima operan bukan rekan pengoper');
+  }
+  if ((ball.passTargetId === null) !== (ball.passTeamId === null)) {
+    errors.push('passTargetId dan passTeamId harus terisi atau kosong bersamaan');
+  }
+  if (ball.restartTeamId !== null) {
+    if (!teamIds.includes(ball.restartTeamId)) errors.push('restartTeamId tidak valid');
+    if (ball.vx !== 0 || ball.vy !== 0) errors.push('bola mati tetapi bergerak');
+  }
+  if (ball.lastTouchTeamId !== null && !teamIds.includes(ball.lastTouchTeamId)) {
+    errors.push('lastTouchTeamId tidak valid');
+  }
+
+  // Tugas pemain harus cocok dengan status bola.
+  const holders = state.players.filter((p) => p.task === 'hold');
+  if (holders.length > 1) errors.push(`${holders.length} pemain memegang bola sekaligus`);
+  if ((holders[0]?.id ?? null) !== ball.ownerId) errors.push('tugas "hold" tidak cocok dengan pemegang bola');
+
+  for (const teamId of teamIds) {
+    const busy = state.players.filter(
+      (p) => p.teamId === teamId && (p.task === 'chase' || p.task === 'receive' || p.task === 'press'),
+    );
+    if (busy.length > 1) errors.push(`tim ${teamId}: ${busy.length} pemain menjemput bola sekaligus`);
+    const chaserId = state.teams[teamId].chaserId;
+    if ((busy[0]?.id ?? null) !== chaserId) errors.push(`tim ${teamId}: chaserId tidak cocok dengan tugas pemain`);
+  }
+
+  // Statistik harus konsisten dengan waktu dan dengan dirinya sendiri.
+  if (state.stats) {
+    const possessionTotal = teamIds.reduce((sum, id) => sum + state.stats.possessionTicks[id], 0);
+    if (possessionTotal !== state.tick) errors.push(`total tick penguasaan ${possessionTotal} ≠ tick ${state.tick}`);
+    for (const id of teamIds) {
+      const { attempted, completed } = state.stats.passes[id];
+      if (!(completed >= 0 && completed <= attempted)) errors.push(`tim ${id}: operan sukses > operan dicoba`);
+    }
+  } else {
+    errors.push('stats tidak ada');
+  }
 
   for (const team of teams) {
     for (const player of team.players) {

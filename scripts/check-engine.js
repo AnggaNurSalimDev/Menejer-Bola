@@ -1,5 +1,10 @@
 // Uji engine tanpa tampilan (prinsip arsitektur no. 5).
 // Jalankan: npm run check
+//
+// Dua jenis pemeriksaan:
+//   - invariant  : hal yang TIDAK BOLEH dilanggar (gagal = bug)
+//   - kewajaran  : angka hasil 90 menit harus masuk rentang yang masuk akal.
+//                  Rentangnya tebakan awal, boleh disesuaikan setelah ditonton.
 
 import { FORMATIONS, validateFormation } from '../src/engine/formations.js';
 import { createDemoTeams } from '../src/engine/teams.js';
@@ -7,8 +12,10 @@ import { createMatchState, validateMatchState } from '../src/engine/state.js';
 import { createSimulation } from '../src/engine/simulation.js';
 import { createRng } from '../src/engine/rng.js';
 import { TICK_RATE } from '../src/engine/constants.js';
-import { computeAnchor } from '../src/engine/shape.js';
+import { computeAnchor, PHASES } from '../src/engine/shape.js';
 import { PITCH } from '../src/engine/pitch.js';
+import { rollBall, predictBallPosition, timeToTravel, passSpeedForDistance } from '../src/engine/ball.js';
+import { findController } from '../src/engine/touch.js';
 
 let failures = 0;
 
@@ -20,6 +27,18 @@ function check(label, errors) {
     console.log(`  GAGAL ${label}`);
     for (const e of errors.slice(0, 10)) console.log(`        - ${e}`);
     if (errors.length > 10) console.log(`        … dan ${errors.length - 10} lagi`);
+  }
+}
+
+// Kewajaran = peringatan, bukan kegagalan: rentangnya tebakan, bukan aturan.
+let warnings = 0;
+function inRange(label, value, min, max, format = (v) => v.toFixed(1)) {
+  const text = `${label}: ${format(value)} (wajar ${format(min)}–${format(max)})`;
+  if (value >= min && value <= max) {
+    console.log(`  OK    ${text}`);
+  } else {
+    warnings += 1;
+    console.log(`  AWAS  ${text}`);
   }
 }
 
@@ -36,91 +55,141 @@ const a = createRng(42);
 const b = createRng(42);
 const sameSequence = Array.from({ length: 50 }, () => a.next() === b.next()).every(Boolean);
 check('seed sama menghasilkan urutan sama', sameSequence ? [] : ['urutan berbeda']);
-
 const teamsAgain = createDemoTeams(2026);
-const sameTeams = JSON.stringify(teamsAgain) === JSON.stringify({ home, away });
-check('tim yang sama dari seed yang sama', sameTeams ? [] : ['tim berbeda']);
+check('tim yang sama dari seed yang sama', JSON.stringify(teamsAgain) === JSON.stringify({ home, away }) ? [] : ['tim berbeda']);
+
+console.log('Fisika bola');
+{
+  // Gelinding per tick harus berakhir di titik yang sama dengan prediksi.
+  const errors = [];
+  let ball = { x: 10, y: 10, vx: 12, vy: 5 };
+  const start = { ...ball };
+  for (let i = 1; i <= 30; i += 1) {
+    ball = rollBall(ball, 1 / TICK_RATE);
+    const predicted = predictBallPosition(start, i / TICK_RATE);
+    if (Math.hypot(ball.x - predicted.x, ball.y - predicted.y) > 1e-6) errors.push(`tick ${i}: selisih prediksi`);
+  }
+  check('gelinding per tick = prediksi', errors);
+
+  // Operan sampai ke tujuan dengan laju yang dihitung.
+  const errs2 = [];
+  for (const d of [5, 15, 30, 42]) {
+    const t = timeToTravel(d, passSpeedForDistance(d));
+    if (!Number.isFinite(t)) errs2.push(`operan ${d} m tidak sampai`);
+  }
+  check('operan 5–42 m selalu sampai', errs2);
+
+  // Bola cepat tidak boleh "menembus" kaki pemain.
+  const player = { id: 'p', x: 5, y: 0.5 };
+  const hit = findController({ x: 0, y: 0 }, { x: 10, y: 0 }, [player], () => true);
+  check('bola cepat yang lewat di dekat kaki tetap tersentuh', hit ? [] : ['tidak terdeteksi']);
+}
 
 console.log('Bentuk tim (jangkar formasi)');
 {
-  // Untuk setiap posisi bola di seluruh lapangan, lini yang berbeda
+  // Untuk setiap posisi bola dan setiap fase, lini yang berbeda
   // (selisih kedalaman slot ≥ 0.1) harus tetap terpisah minimal 5 meter.
   const MIN_LINE_GAP = 5;
   const errors = [];
-  const s0 = createMatchState(home, away);
-  for (let bx = 0; bx <= PITCH.length; bx += 5) {
-    for (let by = 0; by <= PITCH.width; by += 4) {
-      for (const teamId of Object.keys(s0.teams)) {
-        const { attacksRight } = s0.teams[teamId];
-        const own = s0.players.filter((p) => p.teamId === teamId && p.role !== 'GK');
-        const anchors = own.map((p) => {
-          const a = computeAnchor(p, { x: bx, y: by }, attacksRight);
-          return { p, depthX: attacksRight ? a.x : PITCH.length - a.x };
-        });
-        for (const A of anchors) {
-          for (const B of anchors) {
-            if (B.p.slot.depth - A.p.slot.depth >= 0.1 && B.depthX - A.depthX < MIN_LINE_GAP) {
-              errors.push(`bola (${bx},${by}) ${A.p.id}/${B.p.id}: jarak lini ${(B.depthX - A.depthX).toFixed(1)} m`);
+  for (const phase of Object.keys(PHASES)) {
+    for (let bx = 0; bx <= PITCH.length; bx += 5) {
+      for (let by = 0; by <= PITCH.width; by += 4) {
+        for (const teamId of Object.keys(state.teams)) {
+          const { attacksRight } = state.teams[teamId];
+          const own = state.players.filter((p) => p.teamId === teamId && p.role !== 'GK');
+          const anchors = own.map((p) => {
+            const anchor = computeAnchor(p, { x: bx, y: by }, attacksRight, phase);
+            return { p, depthX: attacksRight ? anchor.x : PITCH.length - anchor.x };
+          });
+          for (const A of anchors) {
+            for (const B of anchors) {
+              if (B.p.slot.depth - A.p.slot.depth >= 0.1 && B.depthX - A.depthX < MIN_LINE_GAP) {
+                errors.push(`${phase}, bola (${bx},${by}) ${A.p.id}/${B.p.id}: ${(B.depthX - A.depthX).toFixed(1)} m`);
+              }
             }
           }
         }
       }
     }
   }
-  check(`lini tidak menumpuk di posisi bola mana pun (min ${MIN_LINE_GAP} m)`, errors);
+  check(`lini tidak menumpuk di fase & posisi bola mana pun (min ${MIN_LINE_GAP} m)`, errors);
 }
 
-console.log('Simulasi (tahap 2)');
-const MATCH_TICKS = 90 * 60 * TICK_RATE; // 90 menit waktu simulasi
+console.log('Simulasi 90 menit');
+const MATCH_TICKS = 90 * 60 * TICK_RATE;
 
 function runMatch(seed) {
   const teams = createDemoTeams(2026);
   const sim = createSimulation(teams.home, teams.away, seed);
   const errors = [];
-  let ballMoves = 0;
-  let maxPlayerSpeed = 0;
-  let previousBallMoving = false;
+  let stuckTicks = 0;
+  let longestStuck = 0;
+  let overlapPairs = 0;
 
   for (let i = 0; i < MATCH_TICKS; i += 1) {
     const s = sim.step();
     for (const e of validateMatchState(s)) errors.push(`tick ${s.tick}: ${e}`);
     if (errors.length > 50) break;
 
-    const moving = Math.hypot(s.ball.vx, s.ball.vy) > 0;
-    if (moving && !previousBallMoving) ballMoves += 1;
-    previousBallMoving = moving;
+    // Bola macet: bebas, diam, dan bukan bola mati.
+    const stuck = s.ball.ownerId === null && s.ball.restartTeamId === null && s.ball.vx === 0 && s.ball.vy === 0;
+    stuckTicks = stuck ? stuckTicks + 1 : 0;
+    longestStuck = Math.max(longestStuck, stuckTicks);
 
-    for (const p of s.players) maxPlayerSpeed = Math.max(maxPlayerSpeed, Math.hypot(p.vx, p.vy));
+    for (let p = 0; p < s.players.length; p += 1) {
+      for (let q = p + 1; q < s.players.length; q += 1) {
+        const A = s.players[p];
+        const B = s.players[q];
+        if (A.teamId === B.teamId && Math.hypot(A.x - B.x, A.y - B.y) < 1) overlapPairs += 1;
+      }
+    }
   }
 
-  return { final: sim.getState(), errors, ballMoves, maxPlayerSpeed };
+  return { final: sim.getState(), errors, longestStuck, overlapPerTick: overlapPairs / MATCH_TICKS };
 }
 
 const run1 = runMatch(7);
-check(`invariant terjaga selama ${MATCH_TICKS} tick (90 menit)`, run1.errors);
-check(
-  `bola benar-benar bergerak (${run1.ballMoves} kali ditendang)`,
-  run1.ballMoves > 100 ? [] : [`hanya ${run1.ballMoves} kali`],
-);
-check(
-  `pemain benar-benar bergerak (laju tertinggi ${run1.maxPlayerSpeed.toFixed(2)} m/s)`,
-  run1.maxPlayerSpeed > 3 ? [] : ['pemain hampir tidak bergerak'],
-);
+check(`invariant terjaga selama ${MATCH_TICKS} tick`, run1.errors);
+
+const { stats } = run1.final;
+const [homeId, awayId] = Object.keys(run1.final.teams);
+const totalPossession = stats.possessionTicks[homeId] + stats.possessionTicks[awayId];
+const homeShare = (stats.possessionTicks[homeId] / totalPossession) * 100;
+
+for (const id of [homeId, awayId]) {
+  const { attempted, completed } = stats.passes[id];
+  console.log(`  info  ${id}: ${completed}/${attempted} operan sukses`);
+}
+const attempted = stats.passes[homeId].attempted + stats.passes[awayId].attempted;
+const completed = stats.passes[homeId].completed + stats.passes[awayId].completed;
+console.log(`  info  pergantian penguasaan: ${stats.turnovers}, bola keluar: ${stats.outOfPlay}`);
+
+// Rentang di bawah memperhitungkan bahwa simulasi berjalan 90 menit penuh
+// tanpa jeda, sedangkan pertandingan nyata hanya punya ~55–60 menit bola
+// bergulir. Contoh: ~450–550 operan per tim di laga nyata setara ~700–850
+// dalam 90 menit tanpa henti.
+inRange('operan per tim per pertandingan', attempted / 2, 300, 1000, (v) => v.toFixed(0));
+inRange('persentase operan sukses', (completed / attempted) * 100, 55, 95, (v) => `${v.toFixed(0)}%`);
+inRange('penguasaan bola kandang', homeShare, 25, 75, (v) => `${v.toFixed(0)}%`);
+inRange('pergantian penguasaan', stats.turnovers, 40, 500, (v) => v.toFixed(0));
+// Selama operan masih sempurna (belum ada noise eksekusi), bola memang
+// jarang/tidak pernah keluar. Naikkan batas bawah setelah tahap blunder.
+inRange('bola keluar lapangan', stats.outOfPlay, 0, 150, (v) => v.toFixed(0));
+inRange('bola macet terlama (detik)', run1.longestStuck / TICK_RATE, 0, 8);
+inRange('rata-rata pasangan rekan bertumpuk (<1 m) per tick', run1.overlapPerTick, 0, 0.3, (v) => v.toFixed(2));
 
 const run2 = runMatch(7);
-check(
-  'seed sama → pertandingan identik',
-  JSON.stringify(run1.final) === JSON.stringify(run2.final) ? [] : ['hasil berbeda'],
-);
-
+check('seed sama → pertandingan identik', JSON.stringify(run1.final) === JSON.stringify(run2.final) ? [] : ['hasil berbeda']);
 const run3 = runMatch(8);
-check(
-  'seed beda → pertandingan beda',
-  JSON.stringify(run1.final) !== JSON.stringify(run3.final) ? [] : ['hasil sama padahal seed beda'],
-);
+check('seed beda → pertandingan beda', JSON.stringify(run1.final) !== JSON.stringify(run3.final) ? [] : ['hasil sama']);
+check('seed lain juga lolos invariant', run3.errors);
 
 if (failures > 0) {
   console.log(`\n${failures} pemeriksaan gagal.`);
   process.exit(1);
 }
-console.log('\nSemua pemeriksaan lolos.');
+if (warnings > 0) {
+  console.log(`\nSemua invariant lolos. ${warnings} angka kewajaran di luar rentang (AWAS) — tonton dan setel.`);
+} else {
+  console.log('\nSemua pemeriksaan lolos.');
+}

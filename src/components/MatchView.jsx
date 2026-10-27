@@ -70,7 +70,7 @@ export default function MatchView({ simulation, running, speed, onTick }) {
           steps += 1;
         }
         if (steps === MAX_STEPS_PER_FRAME) accumulator = 0;
-        if (steps > 0) onTickRef.current?.(current.tick);
+        if (steps > 0) onTickRef.current?.(current);
       }
 
       if (size.width > 0) {

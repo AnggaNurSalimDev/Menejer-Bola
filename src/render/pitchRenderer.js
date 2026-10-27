@@ -210,6 +210,18 @@ export function renderMatch(ctx, state, cssWidth, cssHeight) {
   const vp = createViewport(cssWidth, cssHeight);
   drawPitch(ctx, vp, cssWidth, cssHeight);
 
+  // Lingkaran di bawah pemegang bola, supaya penguasaan mudah diikuti mata.
+  const holder = state.ball.ownerId ? state.players.find((p) => p.id === state.ball.ownerId) : null;
+  if (holder) {
+    ctx.beginPath();
+    ctx.arc(vp.toX(holder.x), vp.toY(holder.y), vp.px(JERSEY_WIDTH_METERS * 0.85), 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 224, 102, 0.28)';
+    ctx.fill();
+    ctx.lineWidth = Math.max(1.5, vp.px(0.18));
+    ctx.strokeStyle = 'rgba(255, 224, 102, 0.9)';
+    ctx.stroke();
+  }
+
   for (const player of state.players) {
     const team = state.teams[player.teamId];
     if (!team) throw new Error(`renderMatch: tim "${player.teamId}" tidak ditemukan`);

@@ -1,19 +1,36 @@
-// Lapisan KEPUTUSAN (versi tahap 2): menentukan posisi jangkar pemain.
-// Jangkar = posisi formasi yang ikut bergeser mengikuti bola,
-// sehingga tim bergerak sebagai satu unit
+// Lapisan KEPUTUSAN untuk pemain yang tidak sedang mengurus bola:
+// menentukan posisi jangkar. Jangkar = posisi formasi yang ikut bergeser
+// mengikuti bola, sehingga tim bergerak sebagai satu unit
 // (docs/dokumen-arah-game.md, logika gerak prinsip 2).
+//
+// Bentuknya bergantung pada fase:
+//   attack  : tim menguasai bola → melebar dan maju
+//   defend  : lawan menguasai bola → merapat dan mundur
+//   neutral : bola bebas, belum jelas milik siapa
 //
 // Semua hitungan dilakukan dalam "bingkai tim", yaitu seolah-olah tim
 // selalu menyerang ke kanan. Hasilnya lalu dicerminkan untuk tim tamu.
 
 import { PITCH } from './pitch.js';
 
+export const PHASES = Object.freeze({
+  neutral: { push: 0, width: 1.0, lateralPull: 0.3 },
+  attack: { push: 6, width: 1.2, lateralPull: 0.2 },
+  defend: { push: -4, width: 0.8, lateralPull: 0.4 },
+});
+
 // Seberapa jauh blok tim maju/mundur mengikuti bola di sumbu panjang.
 const BLOCK_SHIFT = 0.55;
-// Seberapa kuat pemain condong ke sisi bola di sumbu lebar.
-const LATERAL_PULL = 0.3;
 
-const FIELD_MARGIN = 2; // meter dari garis
+// Formasi di formations.js adalah posisi KICK-OFF: semua pemain rapat di
+// separuh lapangan sendiri. Saat bermain, tim direntangkan menjadi blok
+// yang lebih panjang: garis bek di BACK_LINE_AT_CENTER meter dari gawang
+// sendiri (saat bola di tengah), dan jarak antarlini dikali LINE_STRETCH.
+const BACK_LINE_AT_CENTER = 28; // meter
+const LINE_STRETCH = 1.4;
+
+const FIELD_MARGIN = 2; // meter dari garis samping
+const FRONT_MARGIN = 6; // pemain tidak berdiri lebih dekat dari ini ke garis gawang lawan
 const MIN_OUTFIELD_DEPTH = 6; // garis bek paling dalam tidak mundur melewati ini
 
 // Saat bertahan dalam, tim merapat tapi lini-lininya tetap terpisah.
@@ -41,11 +58,14 @@ function toTeamFrame(point, attacksRight) {
 // Pencerminan bersifat simetris, jadi fungsi yang sama dipakai bolak-balik.
 const fromTeamFrame = toTeamFrame;
 
-export function computeAnchor(player, ball, attacksRight) {
+export function computeAnchor(player, ball, attacksRight, phase = 'neutral') {
   if (!player.slot) throw new Error(`computeAnchor: pemain ${player.id} tidak punya slot`);
+  const shape = PHASES[phase];
+  if (!shape) throw new RangeError(`computeAnchor: fase "${phase}" tidak dikenal`);
 
   const b = toTeamFrame(ball, attacksRight);
-  const baseX = player.slot.depth * PITCH.length;
+  const depthFromBackLine = Math.max(0, player.slot.depth - DEEPEST_LINE_DEPTH) * PITCH.length;
+  const baseX = BACK_LINE_AT_CENTER + depthFromBackLine * LINE_STRETCH;
   const baseY = player.slot.lane * PITCH.width;
   const midY = PITCH.width / 2;
 
@@ -63,9 +83,10 @@ export function computeAnchor(player, ball, attacksRight) {
     const spacingFromDeepestLine = Math.max(0, player.slot.depth - DEEPEST_LINE_DEPTH) * PITCH.length;
     const retreatLimit = MIN_OUTFIELD_DEPTH + spacingFromDeepestLine * LINE_SPACING_KEPT;
 
-    x = baseX + (b.x - PITCH.length / 2) * BLOCK_SHIFT;
-    y = baseY + (b.y - baseY) * LATERAL_PULL;
-    x = clamp(x, retreatLimit, PITCH.length - FIELD_MARGIN);
+    x = baseX + (b.x - PITCH.length / 2) * BLOCK_SHIFT + shape.push;
+    y = midY + (baseY - midY) * shape.width;
+    y += (b.y - y) * shape.lateralPull;
+    x = clamp(x, retreatLimit, PITCH.length - FRONT_MARGIN);
     y = clamp(y, FIELD_MARGIN, PITCH.width - FIELD_MARGIN);
   }
 

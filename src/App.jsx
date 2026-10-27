@@ -18,21 +18,53 @@ function formatClock(tick) {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
+function percent(part, whole) {
+  return whole > 0 ? Math.round((part / whole) * 100) : 0;
+}
+
+function formatPasses({ attempted, completed }) {
+  return `${completed}/${attempted}`;
+}
+
 export default function App() {
   const [matchSeed, setMatchSeed] = useState(randomSeed);
   const [running, setRunning] = useState(true);
   const [speed, setSpeed] = useState(1);
   const clockRef = useRef(null);
+  const statRefs = {
+    homePossession: useRef(null),
+    awayPossession: useRef(null),
+    possessionBar: useRef(null),
+    homePasses: useRef(null),
+    awayPasses: useRef(null),
+  };
 
   const { home, away, simulation } = useMemo(() => {
     const teams = createDemoTeams(TEAM_SEED);
     return { ...teams, simulation: createSimulation(teams.home, teams.away, matchSeed) };
   }, [matchSeed]);
 
-  // Jam diperbarui langsung di DOM, tanpa render ulang React setiap tick.
-  const handleTick = useCallback((tick) => {
-    if (clockRef.current) clockRef.current.textContent = formatClock(tick);
-  }, []);
+  // Jam dan statistik diperbarui langsung di DOM, tanpa render ulang React setiap tick.
+  const handleTick = useCallback(
+    (state) => {
+      if (clockRef.current) clockRef.current.textContent = formatClock(state.tick);
+
+      const { possessionTicks, passes } = state.stats;
+      const total = possessionTicks[home.id] + possessionTicks[away.id];
+      const homeShare = percent(possessionTicks[home.id], total);
+      const set = (ref, text) => {
+        if (ref.current) ref.current.textContent = text;
+      };
+      set(statRefs.homePossession, `${homeShare}%`);
+      set(statRefs.awayPossession, `${total > 0 ? 100 - homeShare : 0}%`);
+      if (statRefs.possessionBar.current) statRefs.possessionBar.current.style.width = `${total > 0 ? homeShare : 50}%`;
+      set(statRefs.homePasses, formatPasses(passes[home.id]));
+      set(statRefs.awayPasses, formatPasses(passes[away.id]));
+    },
+    // statRefs berisi ref yang stabil; home/away berubah hanya saat simulasi baru.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [home.id, away.id],
+  );
 
   function restart() {
     if (clockRef.current) clockRef.current.textContent = formatClock(0);
@@ -55,6 +87,22 @@ export default function App() {
 
       <MatchView simulation={simulation} running={running} speed={speed} onTick={handleTick} />
 
+      <section className="match-stats" aria-label="Statistik pertandingan">
+        <div className="stat-row">
+          <span ref={statRefs.homePossession} className="stat-value">0%</span>
+          <span className="stat-label">Penguasaan bola</span>
+          <span ref={statRefs.awayPossession} className="stat-value stat-value--away">0%</span>
+        </div>
+        <div className="possession-track" style={{ background: away.colors.shirt }}>
+          <div ref={statRefs.possessionBar} className="possession-fill" style={{ background: home.colors.shirt }} />
+        </div>
+        <div className="stat-row">
+          <span ref={statRefs.homePasses} className="stat-value">0/0</span>
+          <span className="stat-label">Operan sukses / dicoba</span>
+          <span ref={statRefs.awayPasses} className="stat-value stat-value--away">0/0</span>
+        </div>
+      </section>
+
       <div className="controls">
         <button type="button" onClick={() => setRunning((r) => !r)}>
           {running ? 'Jeda' : 'Lanjut'}
@@ -74,7 +122,7 @@ export default function App() {
         <button type="button" onClick={restart}>
           Ulang (seed baru)
         </button>
-        <span className="stage-note">Tahap 2 — uji gerak. Seed: {matchSeed}</span>
+        <span className="stage-note">Tahap 3 — penguasaan & operan. Seed: {matchSeed}</span>
       </div>
     </main>
   );

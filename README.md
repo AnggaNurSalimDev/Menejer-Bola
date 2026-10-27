@@ -8,7 +8,8 @@ Proyek ini dibuat untuk senang-senang.
 
 - Tahap 1 selesai: lapangan dan 22 jersey (nomor + nama) di posisi kick-off.
 - Tahap 2 selesai (uji gerak): bola bergerak sendiri secara acak ber-seed, formasi bergeser mengikuti bola dengan lini yang tetap terpisah, pemain bergerak dengan inersia (kecepatan, akselerasi, dan kelincahan dari stat). Kontrol: jeda, kecepatan 1×–8×, ulang dengan seed baru.
-- Berikutnya tahap 3: pemain menghindari rekan agar tidak saling tumpuk, dan hanya 1–2 pemain per tim yang menekan bola.
+- Tahap 3 selesai (penguasaan & operan): bola hanya digerakkan pemain. Satu pemain per tim menjemput atau menekan bola, pemegang bola menggiring lalu mengoper ke rekan terbaik, lawan bisa memotong operan, tim melebar saat menyerang dan menjaga lawan per zona saat bertahan. Tampilan: tanda kuning di bawah pemegang bola, statistik penguasaan dan operan.
+- Berikutnya tahap 4: tembakan, gol, dan tekel ke pemain yang sedang menggiring.
 
 ## Menjalankan
 
@@ -23,13 +24,17 @@ npm run build    # build produksi
 
 - `src/engine/` — simulasi murni (meter, tanpa tampilan), 10 tick per detik:
   - `simulation.js` — memajukan pertandingan satu tick
-  - `shape.js` — lapisan keputusan: posisi jangkar formasi yang mengikuti bola
+  - `ball.js` — fisika bola menggelinding dan prediksi posisinya
+  - `touch.js` — siapa yang menyentuh bola duluan di sepanjang lintasannya
+  - `roles.js` — siapa yang menjemput atau menekan bola di tiap tim
+  - `passing.js` — otak pemegang bola: menilai pilihan operan, arah menggiring
+  - `shape.js` — posisi jangkar formasi per fase (menyerang/bertahan/netral)
+  - `marking.js` — penjagaan lawan per zona saat bertahan
   - `movement.js` — lapisan gerak: tubuh pemain dengan inersia
-  - `ball.js` — bola "tangan dewa" (sementara, sampai pemain bisa menendang di tahap 4)
   - `state.js`, `teams.js`, `formations.js`, `stats.js`, `pitch.js`, `rng.js`
 - `src/render/` — menggambar state ke canvas dan menghaluskan gerakan di antara tick. Hanya membaca state, tidak pernah mengubahnya.
 - `src/components/` — komponen React untuk UI.
-- `scripts/check-engine.js` — pemeriksaan invariant engine.
+- `scripts/check-engine.js` — pemeriksaan engine: invariant (gagal = bug) dan angka kewajaran 90 menit (AWAS = perlu ditonton dan disetel).
 
 ## Dokumen penting
 

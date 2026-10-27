@@ -23,3 +23,26 @@ export function isInsidePitch(x, y) {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
   return x >= 0 && x <= PITCH.length && y >= 0 && y <= PITCH.width;
 }
+
+// Tarik titik ke dalam lapangan, menyisakan jarak `margin` meter dari garis.
+export function clampToPitch(point, margin = 0) {
+  if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+    throw new TypeError(`clampToPitch: titik tidak valid ${JSON.stringify(point)}`);
+  }
+  if (!(margin >= 0) || margin * 2 >= PITCH.width) {
+    throw new RangeError(`clampToPitch: margin tidak valid ${margin}`);
+  }
+  return {
+    x: Math.min(PITCH.length - margin, Math.max(margin, point.x)),
+    y: Math.min(PITCH.width - margin, Math.max(margin, point.y)),
+  };
+}
+
+// Jarak "ke depan" dari sudut pandang tim: 0 = garis gawang sendiri.
+export function forwardOf(point, attacksRight) {
+  return attacksRight ? point.x : PITCH.length - point.x;
+}
+
+export function distance(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}

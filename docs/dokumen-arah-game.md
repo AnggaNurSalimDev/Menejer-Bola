@@ -122,20 +122,26 @@ Prinsip utama: **stat teknis adalah plafon; psikologi menentukan berapa banyak d
 
 Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap berikutnya.
 
-1. Lapangan + 22 jersey diam di posisi formasi.
-2. Bola bergerak; formasi bergeser mengikuti bola. Pemain bergerak dengan inersia.
-3. Pemain menghindari rekan agar tidak saling tumpuk; hanya 1–2 pemain yang menekan bola.
-4. Pemegang bola memilih: oper, giring, atau tembak.
-5. Intersep, tekel, gol → pertandingan bisa selesai dengan skor.
-6. Noise berdasarkan stat teknis (blunder).
-7. Lapisan psikologis dan kelelahan.
-8. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
+1. ✅ Lapangan + 22 jersey diam di posisi formasi.
+2. ✅ Bola bergerak; formasi bergeser mengikuti bola. Pemain bergerak dengan inersia.
+3. ✅ Penguasaan bola & operan (disepakati 27 Okt 2026: gabungan tahap 3 lama + sebagian tahap 4):
+   - status bola: bebas / dikuasai / dalam operan; bola mati untuk kick-off & bola keluar
+   - satu pengejar/penekan per tim, dipilih berdasarkan waktu sampai
+   - pemegang bola menggiring lalu mengoper ke rekan terbaik (aman, bebas, maju)
+   - penerima menjemput bola; lawan bisa memotong (siapa sampai duluan, dia yang menguasai)
+   - bentuk tim per fase (menyerang melebar & maju, bertahan merapat) + penjagaan lawan per zona
+   - penghindaran rekan
+4. Tembakan dan gol; tekel ke pemain yang sedang menggiring → pertandingan bisa selesai dengan skor.
+5. Noise berdasarkan stat teknis (blunder).
+6. Lapisan psikologis dan kelelahan.
+7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
 
 ## 7. Keputusan yang Masih Terbuka
 
 - **Kepercayaan diri: murni nerf, atau bisa memberi bonus kecil** (pemain "on fire")? Murni nerf lebih mudah diseimbangkan; bonus menambah drama. Belum diputuskan.
 - Stat kiper: dimasukkan sejak awal atau menyusul.
 - Angka detail (bobot tarikan, jumlah tick per detik, batas nerf) — ditentukan lewat pengujian prototipe, bukan diskusi.
+- Catatan pengujian tahap 3: jumlah operan (~1.100/tim/90 menit) dan pergantian penguasaan (~580) masih sedikit di atas rentang wajar. Penyebab utamanya tekanan lawan yang selalu berhasil mendekat; ditinjau ulang setelah tekel dan noise stat ada.
 
 ## 8. Aturan Anti-Melenceng
 

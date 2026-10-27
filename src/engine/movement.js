@@ -25,6 +25,17 @@ export function deriveMovementProfile(stats) {
   return { maxSpeed, maxAccel, turnAccel };
 }
 
+// Perkiraan waktu menempuh `distance` meter dari keadaan diam, dengan
+// percepatan maxAccel sampai mencapai maxSpeed. Dipakai otak pemain untuk
+// memperkirakan siapa yang lebih dulu sampai ke bola.
+export function travelTime(profile, distanceMeters) {
+  if (!(distanceMeters >= 0)) throw new RangeError(`travelTime: jarak tidak valid ${distanceMeters}`);
+  const { maxSpeed, maxAccel } = profile;
+  const accelDistance = (maxSpeed * maxSpeed) / (2 * maxAccel);
+  if (distanceMeters <= accelDistance) return Math.sqrt((2 * distanceMeters) / maxAccel);
+  return maxSpeed / maxAccel + (distanceMeters - accelDistance) / maxSpeed;
+}
+
 // Kecepatan jelajah saat sekadar berpindah posisi: pemain tidak sprint
 // untuk urusan menjaga bentuk, kecuali tertinggal jauh dari posnya.
 const CRUISE_FRACTION = 0.6;
@@ -32,11 +43,14 @@ const SPRINT_DISTANCE = 15; // meter
 const ARRIVE_RADIUS = 0.4; // meter, dianggap sudah sampai
 const BRAKE_FACTOR = 0.8; // sisakan ruang pengereman agar tidak kebablasan
 
-function desiredSpeed(distance, profile) {
+// options.speedScale : batas laju sebagai bagian dari maxSpeed (misal 0,75 saat menggiring)
+// options.urgent     : langsung lari penuh (menjemput bola, menekan), bukan jelajah
+function desiredSpeed(distance, profile, options) {
   if (distance < ARRIVE_RADIUS) return 0;
 
-  const urgency = Math.min(1, distance / SPRINT_DISTANCE);
-  const cruise = profile.maxSpeed * (CRUISE_FRACTION + (1 - CRUISE_FRACTION) * urgency);
+  const topSpeed = profile.maxSpeed * options.speedScale;
+  const urgency = options.urgent ? 1 : Math.min(1, distance / SPRINT_DISTANCE);
+  const cruise = topSpeed * (CRUISE_FRACTION + (1 - CRUISE_FRACTION) * urgency);
 
   // Laju tertinggi yang masih bisa direm tepat di target: v² = 2·a·d
   const brakeLimit = Math.sqrt(2 * profile.maxAccel * BRAKE_FACTOR * distance);
@@ -49,14 +63,19 @@ function clampMagnitude(value, max) {
 }
 
 // Satu langkah gerak. Mengembalikan posisi & kecepatan baru (tidak mengubah input).
-export function stepBody(player, target, dt) {
+export function stepBody(player, target, dt, { speedScale = 1, urgent = false } = {}) {
+  if (!(speedScale > 0 && speedScale <= 1)) throw new RangeError(`stepBody: speedScale tidak valid ${speedScale}`);
+  if (!target || !Number.isFinite(target.x) || !Number.isFinite(target.y)) {
+    throw new TypeError(`stepBody: target tidak valid untuk ${player.id}`);
+  }
+
   const { profile } = player;
   const dx = target.x - player.x;
   const dy = target.y - player.y;
   const distance = Math.hypot(dx, dy);
 
   // Kecepatan yang DIINGINKAN otak.
-  const want = desiredSpeed(distance, profile);
+  const want = desiredSpeed(distance, profile, { speedScale, urgent });
   const wantVx = distance > 0 ? (dx / distance) * want : 0;
   const wantVy = distance > 0 ? (dy / distance) * want : 0;
 
