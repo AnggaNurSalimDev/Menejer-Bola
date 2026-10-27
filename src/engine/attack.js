@@ -52,11 +52,45 @@ export const RUN_MAX_TICKS = 30; // 3 detik: lari yang tidak dilayani berakhir
 export const RUN_COOLDOWN_TICKS = 60; // jeda sebelum pemain yang sama berlari lagi
 export const RUN_START_CHANCE = 0.05; // per tick, supaya lari tidak terjadi seperti robot
 
-export function runTarget(runner, line, attacksRight) {
+export function runTarget(runner, line, attacksRight, laneY = null) {
   const depth = Math.min(line + RUN_DEPTH, PITCH.length - RUN_GOAL_MARGIN);
   const x = attacksRight ? depth : PITCH.length - depth;
-  const y = runner.y + (PITCH.width / 2 - runner.y) * RUN_CENTER_PULL;
+  const y = laneY ?? runner.y + (PITCH.width / 2 - runner.y) * RUN_CENTER_PULL;
   return clampToPitch({ x, y }, 2);
+}
+
+// Celah di garis belakang lawan: ruang di antara dua bek yang berdekatan
+// dengan garis offside (dan di antara bek terluar dan garis samping).
+// Mengembalikan daftar { y, width } — y = tengah celah.
+const LINE_BAND = 8; // meter: bek dalam jarak ini dari garis dianggap bagian garis
+const TOUCHLINE_MARGIN = 3;
+const MIN_CHANNEL_WIDTH = 7; // meter
+const MAX_CHANNEL_SHIFT = 18; // meter: seberapa jauh pelari mau bergeser ke samping
+const CHANNEL_SHIFT_COST = 0.3; // nilai berkurang per meter geser ke samping
+
+export function backLineChannels(defenders, line, attacksRight) {
+  const ys = defenders
+    .filter((d) => d.role !== 'GK' && Math.abs(forwardOf(d, attacksRight) - line) <= LINE_BAND)
+    .map((d) => d.y)
+    .sort((a, b) => a - b);
+  const edges = [TOUCHLINE_MARGIN, ...ys, PITCH.width - TOUCHLINE_MARGIN];
+  const channels = [];
+  for (let i = 0; i < edges.length - 1; i += 1) {
+    const width = edges[i + 1] - edges[i];
+    if (width >= MIN_CHANNEL_WIDTH) channels.push({ y: (edges[i] + edges[i + 1]) / 2, width });
+  }
+  return channels;
+}
+
+function bestChannelFor(runner, channels) {
+  let best = null;
+  for (const c of channels) {
+    const shift = Math.abs(c.y - runner.y);
+    if (shift > MAX_CHANNEL_SHIFT) continue;
+    const score = c.width - shift * CHANNEL_SHIFT_COST;
+    if (!best || score > best.score) best = { ...c, score };
+  }
+  return best;
 }
 
 // Pilih pelari terbaik (atau null): penyerang onside, dekat garis, belum lelah
@@ -66,6 +100,7 @@ export function pickRunner({ teammates, holder, defenders, ballPoint, attacksRig
   if (forwardOf(holder, attacksRight) < HOLDER_MIN_DEPTH) return null;
 
   const line = offsideLine(defenders, attacksRight);
+  const channels = backLineChannels(defenders, line, attacksRight);
   let best = null;
   for (const p of teammates) {
     if (p.id === holder.id || !RUNNER_ROLES.includes(p.role) || p.runCooldown > 0) continue;
@@ -73,7 +108,10 @@ export function pickRunner({ teammates, holder, defenders, ballPoint, attacksRig
     const behind = line - forwardOf(p, attacksRight);
     if (behind > MAX_DISTANCE_BEHIND_LINE) continue;
 
-    const target = runTarget(p, line, attacksRight);
+    // Lari diarahkan ke celah antar-bek, bukan lurus ke zona bek.
+    const channel = bestChannelFor(p, channels);
+    if (!channel) continue;
+    const target = runTarget(p, line, attacksRight, channel.y);
     let space = Infinity;
     for (const d of defenders) space = Math.min(space, distance(d, target));
     if (space < MIN_SPACE) continue;
@@ -84,6 +122,30 @@ export function pickRunner({ teammates, holder, defenders, ballPoint, attacksRig
     }
   }
   return best;
+}
+
+// ---------------------------------------------------- satu lawan satu
+
+// Pemegang bola sudah lolos: tidak ada bek lapangan yang lebih dekat ke
+// gawang lawan dalam koridor di depannya. Saatnya lari ke gawang, bukan mengoper.
+const BREAKAWAY_CORRIDOR = 12; // meter ke kiri/kanan arah ke gawang
+const BREAKAWAY_RANGE = 40; // meter ke gawang: lebih jauh dari ini belum dianggap lolos
+
+export function isBreakaway(holder, opponents, attacksRight) {
+  if (holder.role === 'GK') return false;
+  const goal = { x: attacksRight ? PITCH.length : 0, y: PITCH.width / 2 };
+  const toGoal = distance(holder, goal);
+  if (toGoal > BREAKAWAY_RANGE || toGoal === 0) return false;
+  const ux = (goal.x - holder.x) / toGoal;
+  const uy = (goal.y - holder.y) / toGoal;
+  for (const o of opponents) {
+    if (o.role === 'GK') continue;
+    const along = (o.x - holder.x) * ux + (o.y - holder.y) * uy;
+    if (along <= 0) continue; // di belakang pemegang bola
+    const across = Math.abs(-(o.x - holder.x) * uy + (o.y - holder.y) * ux);
+    if (across <= BREAKAWAY_CORRIDOR) return false;
+  }
+  return true;
 }
 
 // ------------------------------------------------------ umpan terobosan
@@ -97,8 +159,12 @@ const THROUGH_MAX_T = 3;
 const THROUGH_EXTRA_RUN = 12; // meter di depan ujung lari
 const THROUGH_WAIT = 0.3; // detik pelari boleh menunggu bola
 const THROUGH_GOAL_MARGIN = 3; // titik temu tidak lebih dekat dari ini ke garis gawang
+// Umpan terobosan harus benar-benar menembus garis: titik temu minimal
+// sejauh ini di belakang garis offside (diukur saat bola dimainkan).
+export const THROUGH_MIN_BEHIND_LINE = 4; // meter
 
-export function throughBallPoint(origin, runner) {
+// line & attacksRight opsional: tanpa itu, syarat "menembus garis" tidak dicek.
+export function throughBallPoint(origin, runner, line = null, attacksRight = true) {
   const dx = runner.target.x - runner.x;
   const dy = runner.target.y - runner.y;
   const runLength = Math.hypot(dx, dy);
@@ -111,6 +177,7 @@ export function throughBallPoint(origin, runner) {
     const point = { x: runner.x + ux * along, y: runner.y + uy * along };
     if (point.x < THROUGH_GOAL_MARGIN || point.x > PITCH.length - THROUGH_GOAL_MARGIN) break;
     if (point.y < 0.5 || point.y > PITCH.width - 0.5) break;
+    if (line !== null && forwardOf(point, attacksRight) < line + THROUGH_MIN_BEHIND_LINE) continue;
     const runnerTime = travelTime(runner.profile, along);
     if (runnerTime < THROUGH_MIN_T || runnerTime > THROUGH_MAX_T) continue;
     const d = distance(origin, point);

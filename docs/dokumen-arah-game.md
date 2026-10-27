@@ -161,6 +161,8 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - lari ke belakang garis bek (tugas `run`): satu pelari per tim, dimulai dari "bahu" bek terakhir, lawan butuh waktu reaksi untuk membacanya
    - umpan terobosan ke titik temu bola & pelari; pemegang bola langsung mempertimbangkannya saat rekan mulai berlari
    - hasil: ~19 lari, ~3,6 umpan terobosan (47% sampai) per laga; ~18% gol lahir dari umpan terobosan. Titik nol gol TIDAK naik (1,6).
+   - lanjutan (27 Okt sore): garis bek terkoordinasi (CB/LB/RB hanya menggeser ke samping, kecuali lawan di kotak penalti), lari ke celah antar-bek, mode satu lawan satu (lolos dari semua bek → lari ke gawang, tidak mengoper)
+   - hasil lanjutan (`npm run calibrate`, 64 laga): titik nol 1,38 ± 0,32 (tidak berubah nyata); umpan terobosan ~4,9 per laga (~48% sampai); kejutan 13 vs 11 membaik ke 19–22%
    - belum: umpan silang/sundulan (butuh bola melambung)
 6. Lapisan psikologis dan kelelahan.
 7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
@@ -179,6 +181,7 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
 - Kenapa titik nol mentok ~1,5: menyetel ambang tembak, kiper, dan kelonggaran bek hanya memberi perubahan kecil (sebagian di dalam rentang ketidakpastian). Hambatannya struktural: belum ada cara menciptakan peluang selain menggiring/mengoper pendek ke kotak penalti yang penuh. Diperkirakan naik setelah ada umpan terobosan, lari ke belakang garis bek, dan umpan silang — sesuai ide bahwa gol bertambah dari pergerakan dan taktik, bukan dari angka.
 - Catatan pola serangan (tahap 5b): penghambat utama umpan terobosan adalah bek yang hampir selalu lebih dulu sampai ke ruang di belakang garis (83% kasus). Lari saat ini lurus ke depan ke zona bek; garis pertahanan bertahan dalam sehingga ruang di belakangnya sempit. Ide lanjutan: lari ke celah antar-bek (channel), garis pertahanan yang naik saat bola jauh (menciptakan ruang di belakang), umpan silang dengan bola melambung.
 - Dicoba lalu dibatalkan (tahap 5b): otak pemain memperhitungkan laju awal pemain. Umpan terobosan tidak membaik, tetapi tim yang lebih bagus jadi terlalu dominan (kejutan 13 vs 11 turun 13% → 6%). Fungsi travelTime tetap mendukung laju awal untuk percobaan nanti.
+- Temuan penting tahap 5b lanjutan: setelah pelari menerima umpan terobosan, rata-rata masih 2–3 bek lebih dekat ke gawang, dan dari 72 penerimaan dalam 32 laga tidak ada satu pun gol (63% dioper lagi). Bek selalu sempat mengejar kembali selama bola menempuh jarak dan pelari mengontrolnya. Mewajibkan titik temu jauh di belakang garis hanya membuat umpan terobosan lebih jarang. Kesimpulan: menambal umpan terobosan sudah tidak efektif; masalahnya ada di hubungan laju bola vs laju pemain dan cara bek mengejar, yang perlu dipikirkan ulang sebagai satu kesatuan, bukan ditambal per bagian.
 - Belum ada: umpan silang/sundulan, pelanggaran & kartu, pergantian pemain.
 
 ## 8. Aturan Anti-Melenceng

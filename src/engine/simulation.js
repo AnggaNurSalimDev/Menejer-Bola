@@ -22,7 +22,7 @@ import {
 } from './state.js';
 import { DT, TICK_RATE, DECISION_INTERVAL_TICKS, KICK_COOLDOWN_TICKS, HALF_TICKS } from './constants.js';
 import { blunder } from './skill.js';
-import { PITCH, clampToPitch, distance, isInsidePitch, isBetweenPosts } from './pitch.js';
+import { PITCH, clampToPitch, distance, isInsidePitch, isBetweenPosts, insideOwnPenaltyArea } from './pitch.js';
 import { rollBall, MAX_KICK_SPEED } from './ball.js';
 import { computeAnchor } from './shape.js';
 import { stepBody } from './movement.js';
@@ -37,11 +37,12 @@ import {
   SUCCESS_COOLDOWN_TICKS,
 } from './tackle.js';
 import { findController } from './touch.js';
-import { assignMarks, blendTowardMark } from './marking.js';
+import { assignMarks, blendTowardMark, BACK_LINE_ROLES } from './marking.js';
 import { catchChance, parryVelocity, isKeeperHandling } from './keeper.js';
 import {
   offsideLine,
   clampOnside,
+  isBreakaway,
   pickRunner,
   RUN_MAX_TICKS,
   RUN_COOLDOWN_TICKS,
@@ -60,6 +61,9 @@ const PRESSURED_MIN_TICKS = 4; // ditekan pun, pemain butuh sejenak untuk melepa
 const PRESSURED_FORCED_TICKS = 8;
 const SHOT_MIN_TICKS = 2; // butuh sentuhan persiapan sebelum menembak
 const RUN_SPOT_MIN_TICKS = 2; // butuh sentuhan persiapan sebelum mengirim umpan terobosan
+const BREAKAWAY_SHOOT_DISTANCE = 14; // meter: lolos satu lawan satu, tembak dari sini
+const BREAKAWAY_SPEED_SCALE = 0.9; // menggiring hampir dengan kecepatan penuh
+const BREAKAWAY_AIM_DEPTH = 6; // meter di depan gawang lawan
 const DRIBBLE_SPEED_SCALE = 0.75;
 const BALL_AHEAD_OF_FEET = 0.6; // meter
 
@@ -135,10 +139,15 @@ function decideHolder(holder, ball, players, rng) {
   const opponents = players.filter((p) => p.teamId !== holder.teamId);
   const pressured = nearestDistance(holder, opponents) < PRESSURE_RADIUS;
 
+  // Lolos satu lawan satu: tidak mengoper, lari ke gawang dan tembak saat cukup dekat.
+  const breakaway = isBreakaway(holder, opponents, holder.attacksRight);
+
   if (ball.heldTicks >= SHOT_MIN_TICKS) {
     const shot = evaluateShot({ origin: ball, opponents, attacksRight: holder.attacksRight, pressured });
     if (shot?.shouldShoot) return { type: 'shoot', shot };
+    if (breakaway && shot && shot.quality > 0 && shot.distance <= BREAKAWAY_SHOOT_DISTANCE) return { type: 'shoot', shot };
   }
+  if (breakaway) return null;
 
   // Rekan mulai berlari ke belakang garis bek: lihat dan layani larinya sekarang.
   const runnerAvailable = players.some((p) => p.teamId === holder.teamId && p.task === 'run');
@@ -541,8 +550,15 @@ export function createSimulation(home, away, seed) {
         const pressing = presser && distance(presser, player) < PRESSURE_RADIUS * 2 ? presser : null;
         const opponentsOfHolder = prev.players.filter((p) => p.teamId !== player.teamId);
         const laneBlocker = shotLaneBlocker(ball, opponentsOfHolder, team.attacksRight);
-        target = dribbleTarget(player, team.attacksRight, pressing, laneBlocker);
-        moveOptions = { speedScale: DRIBBLE_SPEED_SCALE };
+        if (isBreakaway(player, opponentsOfHolder, team.attacksRight)) {
+          // Satu lawan satu: lari secepatnya ke arah gawang.
+          const goalX = team.attacksRight ? PITCH.length - BREAKAWAY_AIM_DEPTH : BREAKAWAY_AIM_DEPTH;
+          target = { x: goalX, y: PITCH.width / 2 };
+          moveOptions = { speedScale: BREAKAWAY_SPEED_SCALE };
+        } else {
+          target = dribbleTarget(player, team.attacksRight, pressing, laneBlocker);
+          moveOptions = { speedScale: DRIBBLE_SPEED_SCALE };
+        }
       } else if (team.runnerId === player.id) {
         task = 'run';
         target = team.runTarget;
@@ -560,7 +576,12 @@ export function createSimulation(home, away, seed) {
           let phase = 'neutral';
           if (possessingTeamId !== null) phase = possessingTeamId === player.teamId ? 'attack' : 'defend';
           target = computeAnchor(player, ball, team.attacksRight, phase);
-          if (phase === 'defend') target = blendTowardMark(target, marksByTeam.get(player.teamId)?.get(player.id));
+          if (phase === 'defend') {
+            const mark = marksByTeam.get(player.teamId)?.get(player.id);
+            const holdLine =
+              BACK_LINE_ROLES.includes(player.role) && mark && !insideOwnPenaltyArea(mark.point, team.attacksRight);
+            target = blendTowardMark(target, mark, { lateralOnly: holdLine });
+          }
           // Penyerang tidak menunggu di posisi offside.
           if (phase === 'attack') target = clampOnside(target, ball, offsideLines[player.teamId], team.attacksRight);
         }

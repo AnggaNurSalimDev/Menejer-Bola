@@ -104,6 +104,8 @@ export function evaluatePassOptions({ holder, origin, teammates, opponents, atta
     const isRun = receiver.task === 'run' && receiver.target;
     let target;
     if (isRun) {
+      // Syarat "titik temu jauh di belakang garis" (throughBallPoint mendukungnya)
+      // sempat dicoba: umpan terobosan jadi lebih jarang tanpa hasil lebih baik.
       target = throughBallPoint(origin, receiver);
       if (!target) continue;
     } else {

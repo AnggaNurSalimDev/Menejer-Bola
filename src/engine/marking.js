@@ -63,11 +63,17 @@ export function assignMarks(defenders, attackers, attacksRight) {
   return marks;
 }
 
-export function blendTowardMark(anchor, mark) {
+// Bek di garis belakang (CB/LB/RB) menjaga garis bersama: mereka hanya menggeser
+// ke samping mengikuti lawan, tidak ikut maju-mundur, supaya garis tetap lurus
+// dan ada ruang di belakangnya. Kalau lawan sudah di kotak penalti, kembali
+// menempel penuh.
+export const BACK_LINE_ROLES = Object.freeze(['CB', 'LB', 'RB']);
+
+export function blendTowardMark(anchor, mark, { lateralOnly = false } = {}) {
   if (!mark) return anchor;
   if (!(mark.pull >= 0 && mark.pull <= 1)) throw new RangeError(`blendTowardMark: pull tidak valid ${mark.pull}`);
   return clampToPitch({
-    x: anchor.x + (mark.point.x - anchor.x) * mark.pull,
+    x: lateralOnly ? anchor.x : anchor.x + (mark.point.x - anchor.x) * mark.pull,
     y: anchor.y + (mark.point.y - anchor.y) * mark.pull,
   });
 }
