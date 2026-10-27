@@ -18,3 +18,11 @@ export const KEEPER_REACH = 1.8; // meter
 
 // Setelah menendang, pemain tidak bisa langsung menguasai bola lagi.
 export const KICK_COOLDOWN_TICKS = 5;
+
+// Durasi pertandingan (disepakati 27 Okt 2026, gaya FIFA):
+// pemain bergerak dengan kecepatan nyata, tetapi satu babak hanya
+// 5 menit waktu nyata, dan jam di layar berjalan 45 menit dalam waktu itu.
+export const HALF_REAL_SECONDS = 5 * 60;
+export const HALF_TICKS = HALF_REAL_SECONDS * TICK_RATE;
+export const GAME_MINUTES_PER_HALF = 45;
+export const PERIODS = Object.freeze(['first', 'halftime', 'second', 'fulltime']);

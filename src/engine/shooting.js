@@ -17,7 +17,7 @@ import { laneMargin, laneOccupied } from './passing.js';
 export const SHOT_SPEED = 25; // m/s
 export const SHOT_SPREAD = 0.08; // radian, simpangan baku meleset (~4,6°)
 
-const MAX_SHOT_DISTANCE = 30; // meter ke tengah gawang
+const MAX_SHOT_DISTANCE = 32; // meter ke tengah gawang
 const MIN_SHOT_ANGLE = 0.2; // radian (~11°) sudut gawang yang terlihat
 const POST_INSET = 0.6; // meter di dalam tiang
 
@@ -30,8 +30,9 @@ const KEEPER_STRETCH_MARGIN = -0.3;
 const KEEPER_FACTOR = { beaten: 1, stretched: 0.6, set: 0.3 };
 const KEEPER_ON_LANE_FACTOR = 0.1; // kiper sudah berdiri di jalur tembakan
 
-export const SHOT_QUALITY_THRESHOLD = 0.18;
-export const PRESSURED_SHOT_QUALITY_THRESHOLD = 0.12;
+// Tempo padat: pemain lebih berani menembak.
+export const SHOT_QUALITY_THRESHOLD = 0.13;
+export const PRESSURED_SHOT_QUALITY_THRESHOLD = 0.09;
 
 function blockFactor(margin) {
   if (margin > 0) return BLOCK_FACTOR.clear;

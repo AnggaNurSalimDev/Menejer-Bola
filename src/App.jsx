@@ -2,7 +2,7 @@ import { useMemo, useState, useCallback, useRef } from 'react';
 import MatchView from './components/MatchView.jsx';
 import { createDemoTeams } from './engine/teams.js';
 import { createSimulation } from './engine/simulation.js';
-import { TICK_RATE } from './engine/constants.js';
+import { gameClock } from './engine/state.js';
 
 const TEAM_SEED = 2026;
 const SPEEDS = [1, 2, 4, 8];
@@ -22,11 +22,11 @@ function initialSeed() {
   return randomSeed();
 }
 
-function formatClock(tick) {
-  const totalSeconds = Math.floor(tick / TICK_RATE);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+// Jam pertandingan: 0'–45' di babak 1, 45'–90' di babak 2 (dipercepat).
+function formatClock(state) {
+  if (state.period === 'halftime') return 'Jeda';
+  if (state.period === 'fulltime') return 'Selesai';
+  return `${gameClock(state).minute}'`;
 }
 
 function percent(part, whole) {
@@ -49,6 +49,9 @@ export default function App() {
   const [matchSeed, setMatchSeed] = useState(initialSeed);
   const [running, setRunning] = useState(true);
   const [speed, setSpeed] = useState(1);
+  // Snapshot state saat jeda babak / peluit akhir (null = sedang bermain).
+  // Hanya berubah dua kali per pertandingan, jadi aman memakai state React.
+  const [breakState, setBreakState] = useState(null);
 
   const clockRef = useRef(null);
   const scoreRef = useRef(null);
@@ -72,7 +75,11 @@ export default function App() {
       };
       const { stats } = state;
 
-      set(clockRef.current, formatClock(state.tick));
+      if (state.period === 'halftime' || state.period === 'fulltime') {
+        setBreakState((current) => (current?.period === state.period ? current : state));
+      }
+
+      set(clockRef.current, formatClock(state));
       set(scoreRef.current, `${stats.goals[home.id]} – ${stats.goals[away.id]}`);
 
       const total = stats.possessionTicks[home.id] + stats.possessionTicks[away.id];
@@ -107,10 +114,18 @@ export default function App() {
   );
 
   function restart() {
-    if (clockRef.current) clockRef.current.textContent = formatClock(0);
+    if (clockRef.current) clockRef.current.textContent = "0'";
     if (scoreRef.current) scoreRef.current.textContent = '0 – 0';
     if (goalBannerRef.current) goalBannerRef.current.hidden = true;
+    setBreakState(null);
     setMatchSeed(randomSeed());
+    setRunning(true);
+  }
+
+  function startSecondHalf() {
+    if (simulation.getState().period !== 'halftime') return;
+    simulation.startSecondHalf();
+    setBreakState(null);
     setRunning(true);
   }
 
@@ -121,7 +136,7 @@ export default function App() {
         <div className="score">
           <span ref={scoreRef}>0 – 0</span>
           <span ref={clockRef} className="clock">
-            00:00
+            0'
           </span>
         </div>
         <TeamLabel team={away} align="left" />
@@ -133,6 +148,14 @@ export default function App() {
           <span className="goal-banner__title">GOL!</span>
           <span className="goal-banner__detail" />
         </div>
+        {breakState && (
+          <BreakScreen
+            state={breakState}
+            home={home}
+            away={away}
+            onContinue={breakState.period === 'halftime' ? startSecondHalf : restart}
+          />
+        )}
       </div>
 
       <section className="match-stats" aria-label="Statistik pertandingan">
@@ -176,9 +199,50 @@ export default function App() {
         <button type="button" onClick={restart}>
           Ulang (seed baru)
         </button>
-        <span className="stage-note">Tahap 4 — tembakan, gol & tekel. Seed: {matchSeed}</span>
+        <span className="stage-note">Tahap 4 — 2 × 5 menit, tempo padat. Seed: {matchSeed}</span>
       </div>
     </main>
+  );
+}
+
+// Layar jeda babak dan layar akhir pertandingan. Di tahap layer manager,
+// layar jeda ini menjadi tempat mengubah taktik dan formasi.
+function BreakScreen({ state, home, away, onContinue }) {
+  const isHalftime = state.period === 'halftime';
+  const { stats } = state;
+  const total = stats.possessionTicks[home.id] + stats.possessionTicks[away.id];
+  const homeShare = percent(stats.possessionTicks[home.id], total);
+  const rows = [
+    { label: 'Penguasaan bola', home: `${homeShare}%`, away: `${100 - homeShare}%` },
+    ...STAT_ROWS.map((row) => ({ label: row.label, home: row.read(stats, home.id), away: row.read(stats, away.id) })),
+  ];
+
+  return (
+    <div className="break-screen" role="dialog" aria-label={isHalftime ? 'Jeda babak' : 'Pertandingan selesai'}>
+      <div className="break-card">
+        <p className="break-title">{isHalftime ? 'Turun minum' : 'Pertandingan selesai'}</p>
+        <p className="break-score">
+          <span>{home.name}</span>
+          <strong>
+            {stats.goals[home.id]} – {stats.goals[away.id]}
+          </strong>
+          <span>{away.name}</span>
+        </p>
+        <dl className="break-stats">
+          {rows.map((row) => (
+            <div key={row.label} className="break-row">
+              <dd>{row.home}</dd>
+              <dt>{row.label}</dt>
+              <dd>{row.away}</dd>
+            </div>
+          ))}
+        </dl>
+        {isHalftime && <p className="break-note">Pengaturan taktik akan tersedia di sini setelah layer manager dibuat.</p>}
+        <button type="button" className="break-button" onClick={onContinue} autoFocus>
+          {isHalftime ? 'Lanjut babak 2' : 'Main lagi (seed baru)'}
+        </button>
+      </div>
+    </div>
   );
 }
 

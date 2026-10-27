@@ -3,15 +3,15 @@
 //
 // Dua jenis pemeriksaan:
 //   - invariant  : hal yang TIDAK BOLEH dilanggar (gagal = bug)
-//   - kewajaran  : angka hasil 90 menit harus masuk rentang yang masuk akal.
+//   - kewajaran  : angka hasil pertandingan harus masuk rentang target desain.
 //                  Rentangnya tebakan awal, boleh disesuaikan setelah ditonton.
 
 import { FORMATIONS, validateFormation } from '../src/engine/formations.js';
 import { createDemoTeams } from '../src/engine/teams.js';
-import { createMatchState, validateMatchState } from '../src/engine/state.js';
+import { createMatchState, validateMatchState, gameClock } from '../src/engine/state.js';
 import { createSimulation } from '../src/engine/simulation.js';
 import { createRng } from '../src/engine/rng.js';
-import { TICK_RATE } from '../src/engine/constants.js';
+import { TICK_RATE, HALF_TICKS } from '../src/engine/constants.js';
 import { computeAnchor, PHASES } from '../src/engine/shape.js';
 import { PITCH } from '../src/engine/pitch.js';
 import { rollBall, predictBallPosition, timeToTravel, passSpeedForDistance } from '../src/engine/ball.js';
@@ -151,27 +151,63 @@ console.log('Bentuk tim (jangkar formasi)');
   check(`lini tidak menumpuk di fase & posisi bola mana pun (min ${MIN_LINE_GAP} m)`, errors);
 }
 
-console.log('Simulasi 90 menit');
-const MATCH_TICKS = 90 * 60 * TICK_RATE;
-
-function runMatch(seed, { validate = true } = {}) {
+console.log('Struktur pertandingan');
+{
+  const errors = [];
   const teams = createDemoTeams(2026);
+  const sim = createSimulation(teams.home, teams.away, 5);
+  const homeSideBefore = sim.getState().teams.home.attacksRight;
+
+  let s = sim.getState();
+  while (s.period === 'first') s = sim.step();
+  if (s.period !== 'halftime') errors.push(`setelah babak 1 seharusnya halftime, dapat ${s.period}`);
+  if (s.tick !== HALF_TICKS) errors.push(`babak 1 seharusnya ${HALF_TICKS} tick, dapat ${s.tick}`);
+  if (gameClock(s).minute !== 45) errors.push(`jam saat jeda seharusnya 45', dapat ${gameClock(s).minute}'`);
+
+  const frozen = sim.step();
+  if (frozen.tick !== s.tick) errors.push('waktu berjalan saat jeda babak');
+
+  s = sim.startSecondHalf();
+  if (s.teams.home.attacksRight === homeSideBefore) errors.push('tim tidak bertukar sisi di babak 2');
+  if (s.ball.restartTeamId !== 'away') errors.push('kick-off babak 2 bukan oleh tim tamu');
+  for (const e of validateMatchState(s)) errors.push(`awal babak 2: ${e}`);
+
+  while (s.period === 'second') s = sim.step();
+  if (s.period !== 'fulltime') errors.push(`setelah babak 2 seharusnya fulltime, dapat ${s.period}`);
+  if (gameClock(s).minute !== 90) errors.push(`jam akhir seharusnya 90', dapat ${gameClock(s).minute}'`);
+  if (sim.step().tick !== s.tick) errors.push('waktu berjalan setelah peluit akhir');
+
+  let threw = false;
+  try {
+    sim.startSecondHalf();
+  } catch {
+    threw = true;
+  }
+  if (!threw) errors.push('startSecondHalf boleh dipanggil setelah peluit akhir');
+
+  check(`2 babak × ${HALF_TICKS / TICK_RATE / 60} menit nyata, jam 0'–90', tukar sisi, jeda membeku`, errors);
+}
+
+// Satu pertandingan penuh (babak 1 + babak 2).
+function runMatch(seed, { validate = true, homeQuality = 12, awayQuality = 12 } = {}) {
+  const teams = createDemoTeams(2026, { homeQuality, awayQuality });
   const sim = createSimulation(teams.home, teams.away, seed);
   const errors = [];
   let stuckTicks = 0;
   let longestStuck = 0;
   let overlapPairs = 0;
+  let ticks = 0;
 
-  for (let i = 0; i < MATCH_TICKS; i += 1) {
-    const s = sim.step();
+  const watch = (s) => {
+    ticks += 1;
     if (validate) for (const e of validateMatchState(s)) errors.push(`tick ${s.tick}: ${e}`);
-    if (errors.length > 50) break;
 
     // Bola macet: bebas, diam, dan bukan bola mati.
     const stuck = s.ball.ownerId === null && s.ball.restartTeamId === null && s.ball.vx === 0 && s.ball.vy === 0;
     stuckTicks = stuck ? stuckTicks + 1 : 0;
     longestStuck = Math.max(longestStuck, stuckTicks);
 
+    if (!validate) return;
     for (let p = 0; p < s.players.length; p += 1) {
       for (let q = p + 1; q < s.players.length; q += 1) {
         const A = s.players[p];
@@ -179,76 +215,109 @@ function runMatch(seed, { validate = true } = {}) {
         if (A.teamId === B.teamId && Math.hypot(A.x - B.x, A.y - B.y) < 1) overlapPairs += 1;
       }
     }
-  }
+  };
 
-  return { final: sim.getState(), errors, longestStuck, overlapPerTick: overlapPairs / MATCH_TICKS };
+  let s = sim.getState();
+  while (s.period === 'first' && errors.length <= 50) watch((s = sim.step()));
+  if (s.period === 'halftime') s = sim.startSecondHalf();
+  while (s.period === 'second' && errors.length <= 50) watch((s = sim.step()));
+
+  return { final: s, errors, longestStuck, overlapPerTick: overlapPairs / Math.max(1, ticks) };
 }
 
-const run1 = runMatch(7);
-check(`invariant terjaga selama ${MATCH_TICKS} tick`, run1.errors);
-
-const { stats } = run1.final;
-const [homeId, awayId] = Object.keys(run1.final.teams);
-const totalPossession = stats.possessionTicks[homeId] + stats.possessionTicks[awayId];
-const homeShare = (stats.possessionTicks[homeId] / totalPossession) * 100;
-
-for (const id of [homeId, awayId]) {
-  const { attempted, completed } = stats.passes[id];
-  console.log(`  info  ${id}: ${completed}/${attempted} operan sukses`);
-}
-const attempted = stats.passes[homeId].attempted + stats.passes[awayId].attempted;
-const completed = stats.passes[homeId].completed + stats.passes[awayId].completed;
-console.log(`  info  pergantian penguasaan: ${stats.turnovers}, bola keluar: ${stats.outOfPlay}`);
-
-// Rentang di bawah memperhitungkan bahwa simulasi berjalan 90 menit penuh
-// tanpa jeda, sedangkan pertandingan nyata hanya punya ~55–60 menit bola
-// bergulir. Contoh: ~450–550 operan per tim di laga nyata setara ~700–850
-// dalam 90 menit tanpa henti.
-inRange('operan per tim per pertandingan', attempted / 2, 300, 1000, (v) => v.toFixed(0));
-inRange('persentase operan sukses', (completed / attempted) * 100, 55, 95, (v) => `${v.toFixed(0)}%`);
-inRange('penguasaan bola kandang', homeShare, 25, 75, (v) => `${v.toFixed(0)}%`);
-inRange('pergantian penguasaan', stats.turnovers, 40, 500, (v) => v.toFixed(0));
-// Selama operan masih sempurna (belum ada noise eksekusi), bola memang
-// jarang/tidak pernah keluar. Naikkan batas bawah setelah tahap blunder.
-inRange('bola keluar lapangan', stats.outOfPlay, 0, 150, (v) => v.toFixed(0));
-inRange('bola macet terlama (detik)', run1.longestStuck / TICK_RATE, 0, 8);
-inRange('rata-rata pasangan rekan bertumpuk (<1 m) per tick', run1.overlapPerTick, 0, 0.3, (v) => v.toFixed(2));
-
-// Gol dan tembakan sangat acak per pertandingan, jadi dinilai dari rata-rata
-// beberapa pertandingan. Rentang memakai faktor ~1,5× dari angka laga nyata
-// (90 menit tanpa jeda vs ~57 menit bola bergulir).
-console.log('Rata-rata 8 pertandingan');
-{
-  const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
-  const totals = { goals: 0, shots: 0, onTarget: 0, tackles: 0, tacklesWon: 0 };
+function summarize(seeds, options) {
+  const t = { goals: 0, homeGoals: 0, awayGoals: 0, homeWins: 0, awayWins: 0, draws: 0 };
+  const sums = { shots: 0, onTarget: 0, passes: 0, passesDone: 0, tackles: 0, tacklesWon: 0, turnovers: 0, homePossession: 0 };
   const scores = [];
-  for (const seed of SEEDS) {
-    const { final } = runMatch(seed, { validate: false });
-    const s = final.stats;
-    scores.push(`${s.goals[homeId]}-${s.goals[awayId]}`);
-    for (const id of [homeId, awayId]) {
-      totals.goals += s.goals[id];
-      totals.shots += s.shots[id].total;
-      totals.onTarget += s.shots[id].onTarget;
-      totals.tackles += s.tackles[id].attempted;
-      totals.tacklesWon += s.tackles[id].won;
+  for (const seed of seeds) {
+    const { final } = runMatch(seed, { ...options, validate: false });
+    const st = final.stats;
+    const h = st.goals.home;
+    const a = st.goals.away;
+    scores.push(`${h}-${a}`);
+    t.goals += h + a;
+    t.homeGoals += h;
+    t.awayGoals += a;
+    if (h > a) t.homeWins += 1;
+    else if (a > h) t.awayWins += 1;
+    else t.draws += 1;
+    for (const id of ['home', 'away']) {
+      sums.shots += st.shots[id].total;
+      sums.onTarget += st.shots[id].onTarget;
+      sums.passes += st.passes[id].attempted;
+      sums.passesDone += st.passes[id].completed;
+      sums.tackles += st.tackles[id].attempted;
+      sums.tacklesWon += st.tackles[id].won;
     }
+    sums.turnovers += st.turnovers;
+    sums.homePossession += st.possessionTicks.home / (st.possessionTicks.home + st.possessionTicks.away);
   }
-  const matches = SEEDS.length;
-  console.log(`  info  skor: ${scores.join(', ')}`);
-  inRange('gol per pertandingan (dua tim)', totals.goals / matches, 1.5, 7);
-  inRange('tembakan per tim', totals.shots / matches / 2, 6, 35);
-  inRange('tembakan tepat sasaran', (totals.onTarget / Math.max(1, totals.shots)) * 100, 20, 60, (v) => `${v.toFixed(0)}%`);
-  inRange('gol per tembakan', (totals.goals / Math.max(1, totals.shots)) * 100, 5, 25, (v) => `${v.toFixed(0)}%`);
-  inRange('tekel dicoba per tim', totals.tackles / matches / 2, 10, 150, (v) => v.toFixed(0));
-  inRange('tekel berhasil', (totals.tacklesWon / Math.max(1, totals.tackles)) * 100, 35, 75, (v) => `${v.toFixed(0)}%`);
+  return { n: seeds.length, scores, ...t, ...sums };
 }
 
+console.log('Satu pertandingan penuh');
+const run1 = runMatch(7);
+check('invariant terjaga di setiap tick kedua babak', run1.errors);
+inRange('bola macet terlama (detik nyata)', run1.longestStuck / TICK_RATE, 0, 8);
+inRange('rata-rata pasangan rekan bertumpuk (<1 m) per tick', run1.overlapPerTick, 0, 0.3, (v) => v.toFixed(2));
 const run2 = runMatch(7);
 check('seed sama → pertandingan identik', JSON.stringify(run1.final) === JSON.stringify(run2.final) ? [] : ['hasil berbeda']);
 const run3 = runMatch(8);
 check('seed beda → pertandingan beda', JSON.stringify(run1.final) !== JSON.stringify(run3.final) ? [] : ['hasil sama']);
 check('seed lain juga lolos invariant', run3.errors);
+
+// Target DESAIN game ini (bukan angka sepak bola nyata): pertandingan
+// 2 × 5 menit nyata yang padat. Titik nol kalibrasi = dua tim rata-rata.
+const SEEDS = Array.from({ length: 16 }, (_, i) => i + 1);
+console.log(`Titik nol: tim rata-rata vs tim rata-rata (${SEEDS.length} pertandingan)`);
+{
+  const r = summarize(SEEDS, {});
+  console.log(`  info  skor: ${r.scores.join(', ')}`);
+  inRange('gol per pertandingan', r.goals / r.n, 2, 4);
+  inRange('tembakan per tim', r.shots / r.n / 2, 5, 15);
+  inRange('tembakan tepat sasaran', (r.onTarget / Math.max(1, r.shots)) * 100, 25, 65, (v) => `${v.toFixed(0)}%`);
+  inRange('gol per tembakan', (r.goals / Math.max(1, r.shots)) * 100, 8, 30, (v) => `${v.toFixed(0)}%`);
+  inRange('operan per tim', r.passes / r.n / 2, 60, 250, (v) => v.toFixed(0));
+  inRange('operan sukses', (r.passesDone / Math.max(1, r.passes)) * 100, 55, 92, (v) => `${v.toFixed(0)}%`);
+  inRange('tekel dicoba per tim', r.tackles / r.n / 2, 5, 40, (v) => v.toFixed(0));
+  inRange('tekel berhasil', (r.tacklesWon / Math.max(1, r.tackles)) * 100, 35, 75, (v) => `${v.toFixed(0)}%`);
+  inRange('penguasaan bola kandang (rata-rata)', (r.homePossession / r.n) * 100, 35, 65, (v) => `${v.toFixed(0)}%`);
+}
+
+// Dinamika: kualitas skuad harus terasa di hasil. Selama stat belum
+// mengatur operan/tembakan/kiper (tahap 5), selisihnya diperkirakan masih kecil.
+console.log(`Tim kuat (15) vs tim lemah (9), bergantian kandang/tamu (${SEEDS.length} pertandingan)`);
+{
+  let strongGoals = 0;
+  let weakGoals = 0;
+  let strongWins = 0;
+  let weakWins = 0;
+  let strongPossession = 0;
+  for (const seed of SEEDS) {
+    const strongIsHome = seed % 2 === 0;
+    const { final } = runMatch(seed, {
+      validate: false,
+      homeQuality: strongIsHome ? 15 : 9,
+      awayQuality: strongIsHome ? 9 : 15,
+    });
+    const strongId = strongIsHome ? 'home' : 'away';
+    const weakId = strongIsHome ? 'away' : 'home';
+    strongGoals += final.stats.goals[strongId];
+    weakGoals += final.stats.goals[weakId];
+    if (final.stats.goals[strongId] > final.stats.goals[weakId]) strongWins += 1;
+    if (final.stats.goals[weakId] > final.stats.goals[strongId]) weakWins += 1;
+    const p = final.stats.possessionTicks;
+    strongPossession += p[strongId] / (p.home + p.away);
+  }
+  const n = SEEDS.length;
+  console.log(
+    `  info  gol rata-rata kuat ${(strongGoals / n).toFixed(2)} vs lemah ${(weakGoals / n).toFixed(2)}; ` +
+      `menang ${strongWins}, kalah ${weakWins}, seri ${n - strongWins - weakWins}`,
+  );
+  inRange('tim kuat menang (persen pertandingan)', (strongWins / n) * 100, 50, 90, (v) => `${v.toFixed(0)}%`);
+  inRange('selisih gol rata-rata (kuat − lemah)', (strongGoals - weakGoals) / n, 0.5, 3);
+  inRange('penguasaan bola tim kuat', (strongPossession / n) * 100, 50, 70, (v) => `${v.toFixed(0)}%`);
+}
 
 if (failures > 0) {
   console.log(`\n${failures} pemeriksaan gagal.`);

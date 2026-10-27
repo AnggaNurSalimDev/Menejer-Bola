@@ -148,6 +148,131 @@ body {
   }
 }
 
+.break-screen {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  background: rgba(10, 12, 15, 0.72);
+  border-radius: 8px;
+}
+
+.break-card {
+  width: min(460px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  background: #1b2026;
+  border: 1px solid #343a40;
+  border-radius: 10px;
+  padding: 18px 20px;
+  display: grid;
+  gap: 12px;
+}
+
+.break-title {
+  margin: 0;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #adb5bd;
+}
+
+.break-score {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  font-weight: 600;
+}
+
+.break-score span:first-child {
+  text-align: right;
+}
+
+.break-score strong {
+  font-size: 1.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.break-stats {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.break-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.break-row dt {
+  color: #868e96;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.break-row dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.break-row dd:last-child {
+  text-align: right;
+}
+
+.break-note {
+  margin: 0;
+  color: #868e96;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.break-button {
+  justify-self: center;
+  background: #1f4fbf;
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  padding: 10px 18px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.break-button:hover {
+  background: #2a5fd6;
+}
+
+/* Di layar kecil, statistik sudah tampil di bawah lapangan: kartu cukup skor + tombol. */
+@media (max-width: 600px) {
+  .break-stats,
+  .break-note {
+    display: none;
+  }
+
+  .break-card {
+    padding: 12px 14px;
+    gap: 8px;
+  }
+
+  .break-score strong {
+    font-size: 1.4rem;
+  }
+}
+
+.break-button:focus-visible,
+.controls button:focus-visible {
+  outline: 2px solid #ffe066;
+  outline-offset: 2px;
+}
+
 .match-stats {
   display: grid;
   gap: 6px;

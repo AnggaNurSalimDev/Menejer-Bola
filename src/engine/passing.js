@@ -20,7 +20,7 @@ const LEAD_FACTOR = 0.6; // seberapa jauh operan diarahkan ke depan lari penerim
 export const SAFE_MARGIN = 0.15; // detik keunggulan minimum atas lawan
 
 const WEIGHTS = {
-  progress: 0.06,
+  progress: 0.14, // tempo padat: operan ke depan lebih diutamakan
   openness: 0.12,
   safety: 1.0,
   distance: 0.01,

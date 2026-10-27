@@ -5,6 +5,7 @@ import { PITCH, isInsidePitch } from './pitch.js';
 import { getFormation } from './formations.js';
 import { validateStats } from './stats.js';
 import { deriveMovementProfile } from './movement.js';
+import { HALF_TICKS, GAME_MINUTES_PER_HALF, PERIODS } from './constants.js';
 
 const SPEED_TOLERANCE = 1e-6;
 const OWNED_BALL_MAX_DISTANCE = 1.5; // meter
@@ -117,6 +118,11 @@ export function createMatchState(home, away) {
     pauseTicks: 0,
     // Gol terakhir, untuk ditampilkan UI: { teamId, scorerId, tick } atau null.
     lastGoal: null,
+    // Babak: first | halftime | second | fulltime. periodTick = tick di babak berjalan.
+    period: 'first',
+    periodTick: 0,
+    // Tim yang melakukan kick-off babak pertama; tim lawannya kick-off di babak kedua.
+    firstKickOffTeamId: home.id,
   };
 
   const errors = validateMatchState(state, [home, away]);
@@ -126,11 +132,29 @@ export function createMatchState(home, away) {
   return state;
 }
 
+// Jam yang ditampilkan: 45 menit per babak, walau satu babak hanya 5 menit nyata.
+export function gameClock(state) {
+  if (!PERIODS.includes(state.period)) throw new RangeError(`gameClock: babak tidak dikenal "${state.period}"`);
+  const fraction = Math.min(1, state.periodTick / HALF_TICKS);
+  const half = state.period === 'first' ? 0 : state.period === 'halftime' ? 0 : 1;
+  const elapsedInHalf = state.period === 'halftime' || state.period === 'fulltime' ? 1 : fraction;
+  const totalSeconds = Math.floor((half + elapsedInHalf) * GAME_MINUTES_PER_HALF * 60);
+  return { minute: Math.floor(totalSeconds / 60), second: totalSeconds % 60 };
+}
+
 // Invariant yang harus selalu benar di setiap tick.
 export function validateMatchState(state, teams = []) {
   const errors = [];
 
   if (!Number.isInteger(state.tick) || state.tick < 0) errors.push(`tick tidak valid: ${state.tick}`);
+  if (!PERIODS.includes(state.period)) errors.push(`babak tidak dikenal: ${state.period}`);
+  if (!Number.isInteger(state.periodTick) || state.periodTick < 0 || state.periodTick > HALF_TICKS) {
+    errors.push(`periodTick tidak valid: ${state.periodTick}`);
+  }
+  const [firstTeam, secondTeam] = Object.values(state.teams);
+  if (firstTeam && secondTeam && firstTeam.attacksRight === secondTeam.attacksRight) {
+    errors.push('kedua tim menyerang ke arah yang sama');
+  }
   if (state.players.length !== 22) errors.push(`jumlah pemain ${state.players.length}, harus 22`);
 
   const ids = state.players.map((p) => p.id);

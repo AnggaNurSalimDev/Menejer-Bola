@@ -105,8 +105,9 @@ export function createTeam({
   return { id, name, colors, formation, players };
 }
 
-// Dua tim contoh untuk tahap awal.
-export function createDemoTeams(seed = 2026) {
+// Dua tim contoh untuk tahap awal. Kualitas (1–20) bisa diatur untuk
+// menguji apakah tim yang lebih bagus memang lebih sering menang.
+export function createDemoTeams(seed = 2026, { homeQuality = 12, awayQuality = 12 } = {}) {
   const usedShortNames = new Set();
 
   const home = createTeam({
@@ -115,7 +116,7 @@ export function createDemoTeams(seed = 2026) {
     name: 'Persada Bandung',
     colors: { shirt: '#1f4fbf', number: '#ffffff', goalkeeper: '#2f9e44' },
     formation: '4-4-2',
-    quality: 12,
+    quality: homeQuality,
     seed,
   });
 
@@ -125,7 +126,7 @@ export function createDemoTeams(seed = 2026) {
     name: 'Garuda Merah',
     colors: { shirt: '#c92a2a', number: '#ffffff', goalkeeper: '#f08c00' },
     formation: '4-3-3',
-    quality: 12,
+    quality: awayQuality,
     seed: seed + 1,
   });
 

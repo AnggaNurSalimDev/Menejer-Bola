@@ -2,7 +2,7 @@
 
 Dokumen ini adalah pegangan utama proyek. Sebelum menambah fitur atau mengubah sistem, cek dulu ke sini. Kalau sebuah ide bertentangan dengan dokumen ini, ubah dokumennya secara sadar dulu, jangan diam-diam di kode.
 
-Terakhir disepakati: 26 Oktober 2026
+Terakhir disepakati: 27 Oktober 2026
 
 ---
 
@@ -30,6 +30,15 @@ Tujuan proyek: **untuk senang-senang.** Bukan portofolio, bukan produk komersial
 - Nama, klub, atau logo asli.
 
 Catatan istilah: kata "AI" dalam diskusi proyek ini berarti logika perilaku karakter (seperti di game klasik), **bukan** model bahasa atau machine learning. Agar tidak rancu, gunakan istilah **"otak pemain"** atau **"logika gerak"**.
+
+### Durasi dan tempo pertandingan (disepakati 27 Okt 2026)
+
+- **2 babak × 5 menit waktu nyata.** Jam di layar berjalan 0'–45' dan 45'–90' (gaya FIFA).
+- **Pemain tetap bergerak dengan kecepatan nyata.** Waktu nyata TIDAK dipercepat agar gerakan tetap terlihat wajar; yang dipadatkan adalah tempo permainan (keputusan lebih cepat, operan lebih vertikal, lebih berani menembak).
+- **Jeda babak = layar taktik** dengan tombol lanjut (tidak ada waktu tunggu tetap). Untuk sekarang hanya skor dan statistik; ubah formasi, man-to-man marking, dan sebagainya masuk bersama layer manager.
+- Babak kedua: kedua tim bertukar sisi; tim yang tidak kick-off di babak pertama memulai.
+- **Rata-rata gol tidak diatur langsung**; gol harus muncul dari stat, taktik, dan pergerakan. Yang dikalibrasi hanya **titik nol**: dua tim rata-rata (kualitas 12) ≈ 2–4 gol per pertandingan. Tim kuat vs lemah, taktik, dan stat menggeser hasil dari titik nol itu.
+- Hasilnya adalah "sepak bola versi padat", bukan simulasi setia seperti Football Manager. Rentang wajar di `npm run check` adalah target desain game ini, bukan angka sepak bola nyata.
 
 ## 3. Prinsip Arsitektur
 
@@ -138,7 +147,8 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - tekel dari stat: Tackling vs Dribbling + Kekuatan; gagal = penekan terhuyung
    - gol → jeda 4 detik, pemain kembali ke posisi, kick-off oleh tim yang kebobolan
    - bola keluar lewat garis gawang → tendangan gawang atau sepak pojok
-5. Noise berdasarkan stat teknis (blunder).
+   - ✅ (27 Okt) 2 babak × 5 menit nyata, jam 0'–90', layar jeda + layar akhir, tukar sisi; tempo dipadatkan (tuas 1–3)
+5. Noise berdasarkan stat teknis (blunder). Setelah ini: kalibrasi ulang titik nol gol (tuas 4–5: kelonggaran pertahanan, kekuatan kiper) bila masih di bawah 2–4.
 6. Lapisan psikologis dan kelelahan.
 7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
 
@@ -150,7 +160,8 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
 - Catatan pengujian tahap 3: jumlah operan (~1.100/tim/90 menit) dan pergantian penguasaan (~580) masih sedikit di atas rentang wajar. Penyebab utamanya tekanan lawan yang selalu berhasil mendekat; ditinjau ulang setelah tekel dan noise stat ada.
 - Catatan pengujian tahap 4 (rata-rata 8 pertandingan): 3,5 gol per laga, 18 tembakan per tim, 55% tepat sasaran, 10% tembakan jadi gol, tekel berhasil 44%. Jumlah operan & pergantian penguasaan masih sedikit di atas rentang (tekel tidak mengubahnya banyak).
 - Parameter yang sangat sensitif: jangkauan kiper (KEEPER_REACH). Mengubahnya dari 2,2 m ke 1,8 m menaikkan tembakan dari ~7 ke ~18 per tim. Hati-hati saat menyetelnya, dan saat menambahkan stat kiper di tahap 5.
-- Belum ada: umpan terobosan, lari ke belakang garis bek, umpan silang/sundulan, pelanggaran & kartu, offside, babak kedua.
+- Catatan pengujian tempo padat (16 pertandingan, 2 × 5 menit): titik nol 1,3 gol per laga (target 2–4, sisanya diharapkan datang dari blunder tahap 5), 8 tembakan per tim, operan sukses 59%. Tim kualitas 15 vs 9: menang 13, kalah 2, seri 1 (rata-rata gol 1,94 vs 0,25) — kualitas skuad sudah terasa walau stat baru memengaruhi gerak dan tekel.
+- Belum ada: umpan terobosan, lari ke belakang garis bek, umpan silang/sundulan, pelanggaran & kartu, offside, pergantian pemain.
 
 ## 8. Aturan Anti-Melenceng
 

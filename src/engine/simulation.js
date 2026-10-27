@@ -12,8 +12,8 @@
 //   5. Statistik dicatat.
 
 import { createRng } from './rng.js';
-import { createMatchState, createInitialBall, slotToPitch, GOAL_PAUSE_TICKS } from './state.js';
-import { DT, DECISION_INTERVAL_TICKS, KICK_COOLDOWN_TICKS } from './constants.js';
+import { createMatchState, createInitialBall, slotToPitch, validateMatchState, GOAL_PAUSE_TICKS } from './state.js';
+import { DT, DECISION_INTERVAL_TICKS, KICK_COOLDOWN_TICKS, HALF_TICKS } from './constants.js';
 import { PITCH, clampToPitch, distance, isInsidePitch, isBetweenPosts } from './pitch.js';
 import { rollBall } from './ball.js';
 import { computeAnchor } from './shape.js';
@@ -33,14 +33,15 @@ import { assignMarks, blendTowardMark } from './marking.js';
 import { catchChance, parryVelocity, isKeeperHandling } from './keeper.js';
 
 // Pemegang bola
-const HOLD_MIN_TICKS = 10; // menggiring paling sedikit 1 detik sebelum mempertimbangkan operan
-const HOLD_MAX_TICKS = 30;
-const KEEPER_HOLD_MIN_TICKS = 8;
-const KEEPER_HOLD_MAX_TICKS = 15;
-const FORCED_PASS_TICKS = 35; // terlalu lama tanpa opsi aman → oper yang terbaik saja
+// Tempo padat (pertandingan 2 × 5 menit): bola dilepas dalam 0,5–1,5 detik.
+const HOLD_MIN_TICKS = 5;
+const HOLD_MAX_TICKS = 15;
+const KEEPER_HOLD_MIN_TICKS = 5;
+const KEEPER_HOLD_MAX_TICKS = 10;
+const FORCED_PASS_TICKS = 25; // terlalu lama tanpa opsi aman → oper yang terbaik saja
 const PRESSURE_RADIUS = 3; // meter
-const PRESSURED_MIN_TICKS = 5; // ditekan pun, pemain butuh setengah detik untuk melepas operan
-const PRESSURED_FORCED_TICKS = 10;
+const PRESSURED_MIN_TICKS = 4; // ditekan pun, pemain butuh sejenak untuk melepas operan
+const PRESSURED_FORCED_TICKS = 8;
 const SHOT_MIN_TICKS = 2; // butuh sentuhan persiapan sebelum menembak
 const DRIBBLE_SPEED_SCALE = 0.75;
 const BALL_AHEAD_OF_FEET = 0.6; // meter
@@ -293,7 +294,8 @@ export function createSimulation(home, away, seed) {
     return { ...prev, tick, players, stats, pauseTicks: prev.pauseTicks - 1 };
   }
 
-  function step() {
+  // Satu tick permainan (dipanggil hanya saat babak sedang berjalan).
+  function advance() {
     const prev = state;
     const tick = prev.tick + 1;
     const stats = cloneStats(prev.stats);
@@ -531,8 +533,62 @@ export function createSimulation(home, away, seed) {
     return state;
   }
 
+  // Maju satu tick. Saat jeda babak atau setelah peluit akhir, tidak ada yang bergerak.
+  function step() {
+    if (state.period === 'halftime' || state.period === 'fulltime') return state;
+
+    advance();
+    const periodTick = state.periodTick + 1;
+    if (periodTick < HALF_TICKS) {
+      state = { ...state, periodTick };
+      return state;
+    }
+
+    // Peluit akhir babak.
+    state = {
+      ...state,
+      periodTick: HALF_TICKS,
+      pauseTicks: 0,
+      period: state.period === 'first' ? 'halftime' : 'fulltime',
+    };
+    return state;
+  }
+
+  // Mulai babak kedua: kedua tim bertukar sisi, pemain kembali ke posisi
+  // kick-off, dan tim yang tidak kick-off di babak pertama memulai.
+  function startSecondHalf() {
+    if (state.period !== 'halftime') {
+      throw new Error(`startSecondHalf: hanya bisa saat jeda babak, sekarang "${state.period}"`);
+    }
+
+    const teams = Object.fromEntries(
+      teamIds.map((id) => [id, { ...state.teams[id], attacksRight: !state.teams[id].attacksRight, chaserId: null }]),
+    );
+    const players = state.players.map((player) => {
+      const attacksRight = teams[player.teamId].attacksRight;
+      const spot = slotToPitch(player.slot, attacksRight);
+      return { ...player, attacksRight, ...spot, vx: 0, vy: 0, target: spot, task: 'shape', tackleCooldown: 0 };
+    });
+    const kickOffTeamId = teamIds.find((id) => id !== state.firstKickOffTeamId);
+
+    const next = {
+      ...state,
+      teams,
+      players,
+      ball: createInitialBall(kickOffTeamId),
+      pauseTicks: 0,
+      period: 'second',
+      periodTick: 0,
+    };
+    const errors = validateMatchState(next);
+    if (errors.length > 0) throw new Error(`startSecondHalf: state tidak valid:\n- ${errors.join('\n- ')}`);
+    state = next;
+    return state;
+  }
+
   return {
     getState: () => state,
     step,
+    startSecondHalf,
   };
 }
