@@ -117,6 +117,7 @@ function createStats(teamIds) {
     clearances: perTeam(() => 0),
     crosses: perTeam(() => ({ attempted: 0, won: 0 })),
     headers: perTeam(() => ({ shots: 0, goals: 0 })),
+    longShots: perTeam(() => ({ shots: 0, goals: 0 })), // tembakan kaki dari luar kotak penalti
     aerialsWon: perTeam(() => 0),
     turnovers: 0,
     outOfPlay: 0,
@@ -290,7 +291,7 @@ export function validateMatchState(state, teams = []) {
   errors.push(...validateAirBall(ball));
   for (const id of teamIds) for (const e of validatePhilosophy(state.teams[id].philosophy)) errors.push(`tim ${id}: ${e}`);
   if ((ball.shotKind === null) !== (ball.shotTeamId === null)) errors.push('shotKind harus terisi tepat saat ada tembakan');
-  if (ball.shotKind !== null && ball.shotKind !== 'foot' && ball.shotKind !== 'header') errors.push(`shotKind tidak dikenal "${ball.shotKind}"`);
+  if (ball.shotKind !== null && !['foot', 'long', 'header'].includes(ball.shotKind)) errors.push(`shotKind tidak dikenal "${ball.shotKind}"`);
   if (ball.crossTeamId !== null && !teamIds.includes(ball.crossTeamId)) errors.push('crossTeamId tidak valid');
   if (ball.crossTeamId !== null && ball.passTargetId !== null) errors.push('umpan silang sekaligus operan tanah');
   if (ball.lastTouchTeamId !== null && !teamIds.includes(ball.lastTouchTeamId)) {
@@ -354,6 +355,10 @@ export function validateMatchState(state, teams = []) {
       const headers = state.stats.headers[id];
       if (!(headers.goals >= 0 && headers.goals <= headers.shots)) errors.push(`tim ${id}: gol sundulan > sundulan`);
       if (!(headers.goals <= state.stats.goals[id])) errors.push(`tim ${id}: gol sundulan > total gol`);
+      const longShots = state.stats.longShots[id];
+      if (!(longShots.goals >= 0 && longShots.goals <= longShots.shots)) errors.push(`tim ${id}: gol jarak jauh > tembakan jarak jauh`);
+      if (!(longShots.shots <= state.stats.shots[id].total)) errors.push(`tim ${id}: tembakan jarak jauh > total tembakan`);
+      if (!(longShots.goals + headers.goals <= state.stats.goals[id])) errors.push(`tim ${id}: gol jarak jauh + sundulan > total gol`);
       if (!(state.stats.aerialsWon[id] >= 0)) errors.push(`tim ${id}: duel udara tidak valid`);
     }
   } else {

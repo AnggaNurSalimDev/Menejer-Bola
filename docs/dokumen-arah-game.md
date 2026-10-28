@@ -120,7 +120,8 @@ Prinsip utama: **stat teknis adalah plafon; psikologi menentukan berapa banyak d
 | Konsistensi | Awal pertandingan: "form hari ini" diacak | Konsistensi rendah = rentang form lebar. Nerf kecil ke semua stat teknis |
 | Temperamen | Tim tertinggal; baru dilanggar | Tackling lebih nekat → peluang pelanggaran & kartu naik (pergeseran perilaku, bukan nerf murni) |
 | Determinasi | Menit akhir; tim tertinggal | Menahan nerf dari kelelahan |
-| Egoisme / Kerja sama | Selalu aktif | Kecenderungan, bukan nerf: pemain egois lebih sering menembak/menggiring daripada mengoper |
+| Egoisme / Kerja sama | Selalu aktif | Kecenderungan, bukan nerf: pemain egois lebih sering menembak/menggiring daripada mengoper (di mana saja) |
+| Insting gol | Makin dekat gawang lawan (mulai ±32 m, penuh di 20 m) | Kecenderungan, bukan nerf: "adrenalin" — ambang tembak turun sesuai jarak, jadi pemain berinsting tinggi berani menembak dari luar kotak. Ditambahkan 28 Okt atas permintaan. Beda dengan Egoisme: Egoisme berlaku di mana saja, Insting gol bergantung jarak |
 
 **Kelelahan** (kondisi, bukan stat): saat stamina menipis, Kecepatan, Akselerasi, dan terutama Keputusan turun.
 
@@ -200,6 +201,13 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - percobaan 3 tidak dilakukan: hasil sudah di dalam rentang ketidakpastian target. Langkah berikut lebih berharga ditonton dulu
    - KOREKSI (28 Okt malam, 200 laga, kedua tim "seimbang"): rata-rata sebenarnya ~2,1–2,2 gol per laga; angka 2,34 dari 64 laga adalah sampel yang kebetulan tinggi. Titik nol masih sedikit di bawah target 2,4. Pelajaran: untuk keputusan penting, pakai ≥ 200 laga
    - persiapan kick-off dengan jam berhenti tidak mengubah rata-rata gol (200 laga: 2,17 sebelum vs 2,08 sesudah, dalam derau); gol "murah" tepat setelah kick-off ulang memang hanya ~1%
+6e. ✅ Insting gol & tembakan jarak jauh (28 Okt malam; masukan: "tidak pernah ada sepakan dari luar kotak"):
+   - akar masalah: tembakan jarak jauh tidak pernah masuk (kiper selalu sempat), jadi pemain diajari tidak menembak dari jauh. Menambah dorongan menembak saja akan membuang serangan
+   - A. stat psikologis baru **Insting gol**: ambang tembak × (1,1 … 0,45 menurut stat) saat dekat gawang (mulai 32 m, penuh 20 m). Bias peran: ST +3, sayap +2, CB −3, kiper −6
+   - B1. tenaga tendangan: laju tembakan 21,5–28,5 m/s dari Finishing (60%) + Kekuatan (40%); stat 12 ≈ 25,5 m/s (sama dengan dulu)
+   - B2. pandangan kiper terhalang: pemain lapangan siapa pun di jalur tembakan (±1,2 m, ≥ 3 m di depan kiper) → kiper bereaksi 0,2 dtk lebih lambat; penembak ikut memperhitungkannya
+   - hasil (200 laga, kedua tim "seimbang"): 34% tembakan dari luar kotak (target 30–40%), masuk 5,2% (target 3–5%), 20% gol dari luar kotak, ~25 tembakan per laga, gol 2,18 ± 0,21 (sebelumnya 2,08 — tidak turun), 0–0 12%. Kejutan 13 vs 11 (200 laga): 17% (sebelumnya 18%)
+   - tampilan: baris "Tembakan luar kotak", "(dari luar kotak)" di tulisan GOL
 7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
 
 ## 7. Keputusan yang Masih Terbuka

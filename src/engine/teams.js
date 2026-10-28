@@ -29,17 +29,17 @@ const LAST_NAMES = [
 
 // Kecenderungan stat per peran, ditambahkan ke kualitas dasar tim.
 const ROLE_BIAS = {
-  GK: { posisi: 2, antisipasi: 2, ketenangan: 1, duelUdara: 1 },
-  CB: { tackling: 3, kekuatan: 3, posisi: 2, dribbling: -2, finishing: -3, duelUdara: 4 },
+  GK: { posisi: 2, antisipasi: 2, ketenangan: 1, duelUdara: 1, instingGol: -6 },
+  CB: { tackling: 3, kekuatan: 3, posisi: 2, dribbling: -2, finishing: -3, duelUdara: 4, instingGol: -3 },
   RB: { kecepatan: 2, stamina: 2, tackling: 1 },
   LB: { kecepatan: 2, stamina: 2, tackling: 1 },
   DM: { tackling: 2, posisi: 2, passing: 1, finishing: -2, duelUdara: 1 },
   CM: { passing: 2, visi: 2, stamina: 1 },
   RM: { kecepatan: 2, dribbling: 2, stamina: 1 },
   LM: { kecepatan: 2, dribbling: 2, stamina: 1 },
-  RW: { kecepatan: 3, dribbling: 3, tackling: -2, duelUdara: -2 },
-  LW: { kecepatan: 3, dribbling: 3, tackling: -2, duelUdara: -2 },
-  ST: { finishing: 3, kekuatan: 1, tackling: -3, egoisme: 2, duelUdara: 2 },
+  RW: { kecepatan: 3, dribbling: 3, tackling: -2, duelUdara: -2, instingGol: 2 },
+  LW: { kecepatan: 3, dribbling: 3, tackling: -2, duelUdara: -2, instingGol: 2 },
+  ST: { finishing: 3, kekuatan: 1, tackling: -3, egoisme: 2, duelUdara: 2, instingGol: 3 },
 };
 
 // statBias: geseran dari filosofi pelatih (jumlahnya nol, lihat philosophy.js).

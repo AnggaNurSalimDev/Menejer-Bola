@@ -58,7 +58,14 @@ export const CONDITION = Object.freeze({
   fireBlunderBonus: 0.15, // besar blunder paling banyak −15% di percaya diri 1
   fireShotThreshold: 0.9, // ambang tembak ×0,9 di percaya diri 1 (lebih berani menembak)
 
-  // --- Egoisme: kecenderungan menembak (bukan nerf) ---
+  // --- Insting gol (28 Okt): dorongan menembak naik makin dekat gawang lawan (bukan nerf) ---
+  // Pengali ambang tembak pada jarak dekat penuh: Insting 1 … 20. Efeknya mulai terasa di
+  // instinctStart meter dan penuh di instinctFull meter dari tengah gawang.
+  instinctShotThreshold: { worst: 1.1, best: 0.45 },
+  instinctStart: 32,
+  instinctFull: 20,
+
+  // --- Egoisme: kecenderungan menembak sendiri ketimbang mengoper (bukan nerf, di mana saja) ---
   egoShotThreshold: { worst: 1.2, best: 0.8 }, // pengali ambang tembak: egois rendah … tinggi
 });
 
@@ -177,6 +184,15 @@ export function shotThresholdScale(player) {
   const fire = onFireAmount(player.condition);
   const fireScale = 1 - fire * (1 - CONDITION.fireShotThreshold);
   return lerpByStat(CONDITION.egoShotThreshold, player.skills.egoisme) * fireScale;
+}
+
+// Insting gol: pengali ambang tembak menurut jarak ke tengah gawang lawan (< 1 = lebih berani).
+export function instinctShotScale(player, distanceToGoal) {
+  if (!(distanceToGoal >= 0)) throw new RangeError(`instinctShotScale: jarak tidak valid ${distanceToGoal}`);
+  const span = CONDITION.instinctStart - CONDITION.instinctFull;
+  const proximity = clamp01((CONDITION.instinctStart - distanceToGoal) / span);
+  const full = lerpByStat(CONDITION.instinctShotThreshold, player.skills.instingGol);
+  return 1 + (full - 1) * proximity;
 }
 
 // Kondisi setelah sebuah peristiwa (sukses atau blunder).

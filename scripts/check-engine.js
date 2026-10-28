@@ -31,6 +31,8 @@ import {
 } from '../src/engine/condition.js';
 import { canPanicClear } from '../src/engine/simulation.js';
 import { PHILOSOPHIES, validatePhilosophy } from '../src/engine/philosophy.js';
+import { instinctShotScale } from '../src/engine/condition.js';
+import { shotSpeedFor, isScreened, SHOT_POWER } from '../src/engine/shooting.js';
 import { createTeam } from '../src/engine/teams.js';
 import { blunderFromStats } from '../src/engine/skill.js';
 import { AERIAL, CROSS, airStep, loftVelocity, dropPoint, resolveAerial, isAirborne } from '../src/engine/aerial.js';
@@ -248,6 +250,26 @@ console.log('Filosofi pelatih & tempo');
     `tempo dari stat: operan tiba ${soft}–${sharp} m/s, lama menahan ×${slow}–×${quick}`,
     sharp > soft && quick < slow && slow / quick < 1.3 ? [] : ['arah atau rentang tempo dari stat salah'],
   );
+}
+
+console.log('Insting gol & tembakan jarak jauh');
+{
+  const e = [];
+  const hungry = { skills: { instingGol: 20 } };
+  const shy = { skills: { instingGol: 1 } };
+  if (instinctShotScale(hungry, 40) !== 1) e.push('insting berpengaruh padahal masih jauh dari gawang');
+  if (!(instinctShotScale(hungry, 18) < instinctShotScale(hungry, 28))) e.push('dorongan tidak naik saat makin dekat');
+  if (!(instinctShotScale(hungry, 18) < instinctShotScale(shy, 18))) e.push('Insting 20 tidak lebih berani dari Insting 1');
+  const strong = shotSpeedFor({ skills: { finishing: 20, kekuatan: 20 } });
+  const weak = shotSpeedFor({ skills: { finishing: 1, kekuatan: 1 } });
+  if (!(strong === SHOT_POWER.max && weak === SHOT_POWER.min)) e.push(`rentang tenaga tendangan salah (${weak}–${strong})`);
+  const keeper = { role: 'GK', x: 103, y: 34 };
+  const origin = { x: 75, y: 34 };
+  const aim = { x: 105, y: 31 };
+  if (!isScreened(origin, aim, keeper, [{ role: 'CB', x: 90, y: 33 }])) e.push('pemain di jalur tembakan tidak menghalangi');
+  if (isScreened(origin, aim, keeper, [{ role: 'CB', x: 90, y: 40 }])) e.push('pemain jauh dari jalur dianggap menghalangi');
+  if (isScreened(origin, aim, keeper, [{ role: 'CB', x: 101.5, y: 31.5 }])) e.push('pemain tepat di depan kiper dianggap menghalangi pandangan');
+  check(`dorongan menembak naik dekat gawang; tenaga tendangan ${weak}–${strong} m/s; pandangan kiper terhalang`, e);
 }
 
 console.log('Bola udara (umpan silang & sundulan)');

@@ -18,6 +18,7 @@ Proyek ini dibuat untuk senang-senang.
 - Filosofi pelatih (28 Okt): tiap tim punya gaya. Persada Bandung "Fisik & bola udara" (kuat, jago udara, tempo lambat, sering umpan silang), Garuda Merah "Cepat & mengalir" (lebih kencang, melepas bola lebih cepat). Filosofi hanya memindahkan kekuatan, tidak menambahnya. Ketajaman operan ikut stat Passing, lama menahan bola ikut stat Keputusan.
 - Sentuhan pertama disetel ke kisaran nyata (28 Okt): dulu 18% operan berakhir bola memantul lepas dari kaki, sekarang ~6%. Rata-rata gol naik ke ~2,3 per laga dan laga 0–0 turun ke ~10% (patokan liga besar Eropa: 2,6–3,2 gol).
 - Persiapan kick-off (28 Okt): di awal babak dan setelah gol, jam berhenti, pemain berjalan ke posisi formasinya, menunggu 2 detik, lalu bola dimainkan.
+- Insting gol & tembakan jarak jauh (28 Okt): stat psikologis baru **Insting gol** membuat pemain makin berani menembak saat dekat gawang; tenaga tendangan dari Finishing + Kekuatan; pandangan kiper bisa terhalang pemain di jalur tembakan. Sekitar sepertiga tembakan sekarang dari luar kotak, dan ~20% gol lahir dari sana.
 - Berikutnya: layer manager (taktik saat jeda, termasuk memilih filosofi).
 
 Tip: tambahkan `?seed=13` di alamat (misalnya `http://localhost:5173/?seed=13`) untuk memutar ulang pertandingan tertentu.

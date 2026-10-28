@@ -47,7 +47,7 @@ import { computeAnchor } from './shape.js';
 import { stepBody } from './movement.js';
 import { pickChaser, pickPresser } from './roles.js';
 import { evaluatePassOptions, dribbleTarget, shotLaneBlocker } from './passing.js';
-import { evaluateShot, shotVelocity } from './shooting.js';
+import { evaluateShot, shotVelocity, shotSpeedFor, SCREEN } from './shooting.js';
 import {
   pickTackler,
   tackleSuccessChance,
@@ -69,6 +69,7 @@ import {
   progressWeightScale,
   shotThresholdScale,
   physicalScale,
+  instinctShotScale,
 } from './condition.js';
 import {
   AERIAL,
@@ -137,6 +138,7 @@ function cloneStats(stats) {
     clearances: { ...stats.clearances },
     crosses: perTeam(stats.crosses),
     headers: perTeam(stats.headers),
+    longShots: perTeam(stats.longShots),
     aerialsWon: { ...stats.aerialsWon },
     turnovers: stats.turnovers,
     outOfPlay: stats.outOfPlay,
@@ -359,12 +361,16 @@ function decideHolder(holder, ball, players, rng, match) {
   const breakaway = isBreakaway(holder, opponents, holder.attacksRight);
 
   if (ball.heldTicks >= SHOT_MIN_TICKS) {
+    // Insting gol: makin dekat gawang lawan, makin besar dorongan menembak.
+    const toGoal = distance(ball, opponentGoalPoint(holder.attacksRight));
     const shot = evaluateShot({
       origin: ball,
       opponents,
       attacksRight: holder.attacksRight,
       pressured,
-      thresholdScale: shotThresholdScale(holder),
+      thresholdScale: shotThresholdScale(holder) * instinctShotScale(holder, toGoal),
+      shotSpeed: shotSpeedFor(holder),
+      screeners: players.filter((p) => p.id !== holder.id),
     });
     if (shot?.shouldShoot) return { type: 'shoot', shot, context };
     if (breakaway && shot && shot.quality > 0 && shot.distance <= BREAKAWAY_SHOOT_DISTANCE) {
@@ -721,6 +727,7 @@ export function createSimulation(home, away, seed) {
     // Siapa yang melepas bola di tick ini (operan, tembakan, tekel): pemain lain
     // butuh waktu reaksi (stat Antisipasi) sebelum mengubah arah larinya.
     let ballReleasedBy = null;
+    let screenedKeeperId = null; // kiper yang pandangannya terhalang pada tembakan tick ini
 
     // Kondisi (tahap 6): skor & menit untuk konteks, dan peristiwa percaya diri
     // yang dikumpulkan sepanjang tick lalu diterapkan di akhir.
@@ -771,10 +778,17 @@ export function createSimulation(home, away, seed) {
           // kiper), sesuai definisi statistik sepak bola; tembakan terblok tidak termasuk.
           const bigChance = decision.shot.distance <= BIG_CHANCE_DISTANCE;
           const spread = blunder(holder, 'shotSpread') * blunderScale(holder, { ...decision.context, bigChance });
-          const velocity = shotVelocity(ball, decision.shot.aim, holder.attacksRight, rng, spread);
+          const velocity = shotVelocity(ball, decision.shot.aim, holder.attacksRight, rng, spread, decision.shot.speed);
           stats.shots[holder.teamId].total += 1;
-          ball = releaseBall(ball, holder, velocity, { shotTeamId: holder.teamId, shotKind: 'foot' });
+          const long = !inOpponentBox(ball, holder.attacksRight);
+          if (long) stats.longShots[holder.teamId].shots += 1;
+          ball = releaseBall(ball, holder, velocity, { shotTeamId: holder.teamId, shotKind: long ? 'long' : 'foot' });
           ballReleasedBy = holder.id;
+          // Pandangan kiper terhalang: kiper bereaksi lebih lambat dari biasanya.
+          if (decision.shot.screened) {
+            const keeper = prev.players.find((p) => p.role === 'GK' && p.teamId !== holder.teamId);
+            if (keeper) screenedKeeperId = keeper.id;
+          }
         } else if (decision?.type === 'cross') {
           // Guard: umpan silang hanya dari zona sayap dekat garis gawang lawan.
           if (!inCrossZone(ball, holder.attacksRight)) throw new Error(`umpan silang di luar zona oleh ${holder.id}`);
@@ -929,6 +943,7 @@ export function createSimulation(home, away, seed) {
       // Bola baru saja dilepas: semua orang kecuali pelepas dan penerima yang dituju harus bereaksi.
       if (ballReleasedBy !== null && player.id !== ballReleasedBy && player.id !== ball.passTargetId) {
         reactionDelay = reactionTicks(player);
+        if (player.id === screenedKeeperId) reactionDelay += Math.round(SCREEN.delay * TICK_RATE);
       }
       // Lari tanpa bola tidak langsung terbaca oleh lawan (stat Antisipasi).
       for (const teamId of runStartedBy) {
@@ -956,11 +971,14 @@ export function createSimulation(home, away, seed) {
       if (ball.shotTeamId === scoringTeamId) stats.shots[scoringTeamId].onTarget += 1;
       const header = ball.shotTeamId === scoringTeamId && ball.shotKind === 'header';
       if (header) stats.headers[scoringTeamId].goals += 1;
+      const longShot = ball.shotTeamId === scoringTeamId && ball.shotKind === 'long';
+      if (longShot) stats.longShots[scoringTeamId].goals += 1;
       lastGoal = {
         teamId: scoringTeamId,
         scorerId: ball.kickerId,
         ownGoal: ball.lastTouchTeamId !== scoringTeamId,
         header,
+        longShot,
         tick,
       };
       ball = createInitialBall(concedingTeamId);

@@ -34,6 +34,7 @@ export const PSYCHOLOGICAL_STATS = Object.freeze([
   'temperamen',
   'determinasi',
   'egoisme',
+  'instingGol', // dorongan menembak yang naik makin dekat gawang lawan (ditambahkan 28 Okt)
 ]);
 
 export function clampStat(value) {

@@ -12,10 +12,45 @@
 // Di tahap blunder, besar meleset ini akan diturunkan dari stat Finishing.
 
 import { PITCH, distance, opponentGoalX, isBetweenPosts } from './pitch.js';
+import { normalizeStat } from './skill.js';
 import { timeToTravel } from './ball.js';
 import { laneMargin, laneOccupied } from './passing.js';
 
-export const SHOT_SPEED = 25; // m/s
+export const SHOT_SPEED = 25; // m/s, cadangan bila penembak tidak diketahui
+
+// Tenaga tendangan (28 Okt): laju tembakan dari Finishing (teknik) dan Kekuatan.
+// Stat 12 ≈ 25,5 m/s, sama dengan sebelumnya; stat 20 → 28,5 m/s.
+export const SHOT_POWER = Object.freeze({ min: 21.5, max: 28.5, finishingWeight: 0.6, strengthWeight: 0.4 });
+
+// Pandangan kiper terhalang (28 Okt): pemain lapangan (siapa pun) di jalur tembakan,
+// cukup jauh dari kiper, membuat kiper terlambat melihat bola.
+export const SCREEN = Object.freeze({ laneWidth: 1.2, minGapToKeeper: 3, delay: 0.2 });
+
+export function shotSpeedFor(player) {
+  if (!player?.skills) return SHOT_SPEED;
+  const mix =
+    SHOT_POWER.finishingWeight * normalizeStat(player.skills.finishing) +
+    SHOT_POWER.strengthWeight * normalizeStat(player.skills.kekuatan);
+  return SHOT_POWER.min + (SHOT_POWER.max - SHOT_POWER.min) * mix;
+}
+
+// Apakah ada pemain lapangan di jalur origin→aim yang menghalangi pandangan kiper?
+export function isScreened(origin, aim, keeper, others) {
+  if (!keeper) return false;
+  const length = distance(origin, aim);
+  if (!(length > 0)) return false;
+  const ux = (aim.x - origin.x) / length;
+  const uy = (aim.y - origin.y) / length;
+  const keeperAlong = (keeper.x - origin.x) * ux + (keeper.y - origin.y) * uy;
+  for (const p of others) {
+    if (p.role === 'GK') continue;
+    const along = (p.x - origin.x) * ux + (p.y - origin.y) * uy;
+    if (along <= 1 || along >= keeperAlong - SCREEN.minGapToKeeper) continue;
+    const across = Math.abs(-(p.x - origin.x) * uy + (p.y - origin.y) * ux);
+    if (across <= SCREEN.laneWidth) return true;
+  }
+  return false;
+}
 export const SHOT_SPREAD = 0.08; // radian, simpangan baku meleset (~4,6°)
 
 const MAX_SHOT_DISTANCE = 32; // meter ke tengah gawang
@@ -65,8 +100,19 @@ export function goalAngle(origin, attacksRight) {
 }
 
 // thresholdScale: pengali ambang tembak (< 1 = lebih cepat menembak, dari stat Egoisme).
-export function evaluateShot({ origin, opponents, attacksRight, pressured, thresholdScale = 1 }) {
+// shotSpeed: laju tembakan si penembak; screeners: pemain lain (kedua tim) yang bisa
+// menghalangi pandangan kiper di jalur tembakan (kiper lalu bereaksi lebih lambat).
+export function evaluateShot({
+  origin,
+  opponents,
+  attacksRight,
+  pressured,
+  thresholdScale = 1,
+  shotSpeed = SHOT_SPEED,
+  screeners = [],
+}) {
   if (!(thresholdScale > 0)) throw new RangeError(`evaluateShot: thresholdScale tidak valid ${thresholdScale}`);
+  if (!(shotSpeed > 0)) throw new RangeError(`evaluateShot: shotSpeed tidak valid ${shotSpeed}`);
   if (!origin) throw new TypeError('evaluateShot: origin wajib ada');
 
   const goalX = opponentGoalX(attacksRight);
@@ -86,14 +132,19 @@ export function evaluateShot({ origin, opponents, attacksRight, pressured, thres
   const aim = { x: goalX, y: aimY };
 
   const aimDistance = distance(origin, aim);
-  const ballTime = timeToTravel(aimDistance, SHOT_SPEED);
+  const ballTime = timeToTravel(aimDistance, shotSpeed);
   if (!Number.isFinite(ballTime)) return null;
 
   const outfield = opponents.filter((p) => p.role !== 'GK');
-  const blockMargin = laneMargin(origin, aim, SHOT_SPEED, outfield);
+  const blockMargin = laneMargin(origin, aim, shotSpeed, outfield);
   // Kiper dicek di sepanjang jalur, bukan hanya di titik bidikan:
   // kiper bisa memotong bola di mana saja selama masih di kotaknya.
-  const keeperMargin = keeper ? laneMargin(origin, aim, SHOT_SPEED, [keeper]) : Infinity;
+  const screened = isScreened(origin, aim, keeper, screeners);
+  const seenKeeper =
+    keeper && screened
+      ? { ...keeper, profile: { ...keeper.profile, reaction: (keeper.profile?.reaction ?? 0.3) + SCREEN.delay } }
+      : keeper;
+  const keeperMargin = keeper ? laneMargin(origin, aim, shotSpeed, [seenKeeper]) : Infinity;
 
   // Lawan yang sudah berdiri di jalur = bola pasti mengenainya.
   const outfieldOnLane = laneOccupied(origin, aim, outfield);
@@ -106,13 +157,14 @@ export function evaluateShot({ origin, opponents, attacksRight, pressured, thres
   const threshold = (pressured ? PRESSURED_SHOT_QUALITY_THRESHOLD : SHOT_QUALITY_THRESHOLD) * thresholdScale;
   const shouldShoot = quality >= threshold;
 
-  return { aim, angle, distance: toGoal, blockMargin, keeperMargin, quality, shouldShoot };
+  return { aim, angle, distance: toGoal, blockMargin, keeperMargin, quality, shouldShoot, screened, speed: shotSpeed };
 }
 
 // Arah tendangan setelah diberi meleset. Mengembalikan kecepatan bola
 // dan apakah arahnya masih mengarah di antara tiang (tepat sasaran).
-export function shotVelocity(origin, aim, attacksRight, rng, spread = SHOT_SPREAD) {
+export function shotVelocity(origin, aim, attacksRight, rng, spread = SHOT_SPREAD, speed = SHOT_SPEED) {
   if (!(spread >= 0)) throw new RangeError(`shotVelocity: spread tidak valid ${spread}`);
+  if (!(speed > 0)) throw new RangeError(`shotVelocity: laju tidak valid ${speed}`);
   const dx = aim.x - origin.x;
   const dy = aim.y - origin.y;
   const length = Math.hypot(dx, dy);
@@ -130,5 +182,5 @@ export function shotVelocity(origin, aim, attacksRight, rng, spread = SHOT_SPREA
   const crossingY = towardGoal ? origin.y + uy * ((goalX - origin.x) / ux) : NaN;
   const onTarget = towardGoal && isBetweenPosts(crossingY);
 
-  return { vx: ux * SHOT_SPEED, vy: uy * SHOT_SPEED, onTarget };
+  return { vx: ux * speed, vy: uy * speed, onTarget };
 }

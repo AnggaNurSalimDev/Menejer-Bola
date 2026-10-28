@@ -42,6 +42,7 @@ const STAT_ROWS = [
   { key: 'offsides', label: 'Offside', read: (s, id) => `${s.offsides[id]}` },
   { key: 'crosses', label: 'Umpan silang (sampai)', read: (s, id) => `${s.crosses[id].attempted} (${s.crosses[id].won})` },
   { key: 'headers', label: 'Sundulan ke gawang', read: (s, id) => `${s.headers[id].shots}` },
+  { key: 'longShots', label: 'Tembakan luar kotak', read: (s, id) => `${s.longShots[id].shots}` },
   { key: 'clearances', label: 'Sapuan panik', read: (s, id) => `${s.clearances[id]}` },
   {
     key: 'saves',
@@ -107,7 +108,7 @@ export default function App() {
           const goal = state.lastGoal;
           const team = goal.teamId === home.id ? home : away;
           const scorer = goal.scorerId ? namesById.get(goal.scorerId) : null;
-          const who = goal.ownGoal ? 'gol bunuh diri' : `${scorer ?? team.name}${goal.header ? ' (sundulan)' : ''}`;
+          const who = goal.ownGoal ? 'gol bunuh diri' : `${scorer ?? team.name}${goal.header ? ' (sundulan)' : goal.longShot ? ' (dari luar kotak)' : ''}`;
           set(banner.querySelector('.goal-banner__detail'), `${who} · ${team.name}`);
           banner.style.setProperty('--goal-color', team.colors.shirt);
         }
