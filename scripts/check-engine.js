@@ -30,6 +30,7 @@ import {
   shotThresholdScale,
 } from '../src/engine/condition.js';
 import { canPanicClear } from '../src/engine/simulation.js';
+import { AERIAL, CROSS, airStep, loftVelocity, dropPoint, resolveAerial, isAirborne } from '../src/engine/aerial.js';
 
 let failures = 0;
 
@@ -221,6 +222,57 @@ console.log('Kondisi pemain (tahap 6)');
     e3.push('on fire seharusnya lebih berani menembak');
   }
   check(`on fire: blunder ×${onFire.toFixed(2)} di percaya diri 1, tetap dalam batas ${BLUNDER_SCALE_MIN}–${BLUNDER_SCALE_MAX}`, e3);
+}
+
+console.log('Bola udara (umpan silang & sundulan)');
+{
+  // Lambungan tiba setinggi kepala di titik bidikan.
+  const from = { x: 80, y: 5 };
+  const to = { x: 98, y: 30 };
+  const v = loftVelocity(from, to);
+  let b = { ...from, z: 0, vx: v.vx, vy: v.vy, vz: v.vz };
+  const steps = Math.round(v.flightTime / 0.01);
+  for (let i = 0; i < steps; i += 1) b = { ...b, ...airStep(b, 0.01) };
+  const miss = Math.hypot(b.x - to.x, b.y - to.y);
+  check(
+    `lambungan tiba di bidikan (meleset ${miss.toFixed(2)} m, tinggi ${b.z.toFixed(2)} m)`,
+    miss < 0.5 && Math.abs(b.z - CROSS.arrivalHeight) < 0.2 ? [] : ['lintasan lambungan tidak sesuai perhitungan'],
+  );
+
+  // Titik jatuh konsisten dengan lintasan, tinggi tidak pernah negatif, pantulan berhenti.
+  const drop = dropPoint({ ...from, z: 0, vx: v.vx, vy: v.vy, vz: v.vz });
+  const e1 = [];
+  if (Math.hypot(drop.point.x - to.x, drop.point.y - to.y) > 0.5) e1.push('titik jatuh tidak di bidikan');
+  let c = { ...from, z: 0, vx: v.vx, vy: v.vy, vz: v.vz };
+  let settledAt = null;
+  for (let i = 0; i < 200; i += 1) {
+    c = { ...c, ...airStep(c, 0.1) };
+    if (!(c.z >= 0)) e1.push(`tinggi negatif di langkah ${i}`);
+    if (!isAirborne(c)) {
+      settledAt = i;
+      break;
+    }
+  }
+  if (settledAt === null) e1.push('bola tidak pernah berhenti memantul');
+  check('titik jatuh cocok, tinggi ≥ 0, pantulan berhenti', e1);
+
+  // Duel udara: stat Duel udara tinggi lebih sering menang (posisi sama).
+  const rng = createRng(77);
+  const mk = (id, duelUdara) => ({
+    player: { id, role: 'CB', attacksRight: true, skills: { duelUdara, kekuatan: 10, antisipasi: 10 } },
+    u: 0.5,
+    d: 0.5,
+    point: { x: 50, y: 34 },
+    z: 1.8,
+  });
+  let strongWins = 0;
+  const trials = 400;
+  for (let i = 0; i < trials; i += 1) if (resolveAerial([mk('a', 18), mk('b', 6)], rng).player.id === 'a') strongWins += 1;
+  const rate = strongWins / trials;
+  check(
+    `duel udara: stat 18 vs 6 menang ${(rate * 100).toFixed(0)}% (harus jelas unggul tapi tidak mutlak)`,
+    rate > 0.7 && rate < 0.95 ? [] : ['pengaruh stat Duel udara tidak wajar'],
+  );
 }
 
 console.log('Struktur pertandingan');

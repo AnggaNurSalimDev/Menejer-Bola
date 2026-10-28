@@ -85,6 +85,7 @@ Skala semua stat: **1–20** (10 = rata-rata, 15 = bagus, 18+ = kelas bintang).
 | Kelincahan | Ketajaman berbelok (mengatur inersia) |
 | Stamina | Seberapa lambat tenaga habis |
 | Kekuatan | Peluang menang adu badan / duel |
+| Duel udara | Peluang menang bola udara (umpan silang, sepak pojok) dan ketepatan sundulan. Ditambahkan 28 Okt atas keputusan bersama, supaya ada tipe pemain "jago udara" (bek tengah jangkung, striker target) yang tidak harus cepat |
 
 **Olah bola**
 | Stat | Mengendalikan |
@@ -176,6 +177,12 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - tampilan: bar tenaga di bawah nama saat tenaga < 60%, titik merah di bahu jersey saat percaya diri < 40%, baris "Sapuan panik" di statistik
    - Temperamen ditunda sampai ada pelanggaran & kartu (efeknya memang ke sana)
    - on fire (28 Okt siang): percaya diri ≥ 0,9 (biasanya setelah mencetak gol) → blunder mengecil sampai −15% dan lebih berani menembak; luntur perlahan (~10–20 menit permainan). Tampilan: titik oranye di bahu jersey. Hasil uji 32 laga: ~0,9 pemain on fire per laga, 0,3% waktu pemain
+6b. ✅ Penciptaan peluang (28 Okt, opsi A: dibatasi 2–3 percobaan):
+   - diagnosis: 70% tembakan dari ≥ 20 m dengan hasil 2 gol dari 391; penembak salah menilai kiper (mengira kiper telat padahal hampir selalu sampai). Serangan sepertiga akhir berakhir: 39% operan dipotong, 26% direbut, 22% tembakan
+   - percobaan 1 — kalibrasi penilaian kiper dari hasil nyata: tembakan/laga 17,5 → 8,9, tembakan jadi gol 6% → 12%, tetapi gol per laga tetap ~1,2
+   - percobaan 2 — bola udara: bola punya tinggi (gravitasi, pantulan); umpan silang dari sayap dekat garis gawang lawan ke rekan di kotak (sasaran dipilih dari keunggulan Duel udara), sepak pojok dilambungkan, 3 penyerang menyerbu kotak (tiang dekat, titik penalti, tiang jauh), duel udara (Duel udara + Kekuatan + Antisipasi + jarak + acak; kiper unggul tangan di kotaknya), sundulan ke gawang dalam 14 m, sapuan sundulan, kiper menangkap/meninju bola udara. Stat baru: Duel udara. Tampilan: bayangan bola saat melambung, statistik umpan silang & sundulan, "(sundulan)" di tulisan GOL
+   - hasil percobaan 2 (`npm run calibrate`, 64 laga): titik nol 1,88 ± 0,37 (dari 1,19 ± 0,26 — kenaikan nyata), kejutan 13 vs 11 16%, 15 vs 9 menang 98%. Per laga (32 laga): ~17 umpan silang (~39% sampai ke rekan), ~2,7 sundulan ke gawang, ~0,13 gol sundulan; sebagian besar tambahan gol datang dari bola kedua setelah duel udara, bukan sundulan langsung
+   - catatan: menambah stat mengubah urutan angka acak pembuat tim, jadi tim contoh berubah sedikit (perbandingan memakai 64 laga, bukan seed tertentu)
 7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
 
 ## 7. Keputusan yang Masih Terbuka
@@ -194,7 +201,8 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
 - Dicoba lalu dibatalkan (tahap 5b): otak pemain memperhitungkan laju awal pemain. Umpan terobosan tidak membaik, tetapi tim yang lebih bagus jadi terlalu dominan (kejutan 13 vs 11 turun 13% → 6%). Fungsi travelTime tetap mendukung laju awal untuk percobaan nanti.
 - Temuan penting tahap 5b lanjutan: setelah pelari menerima umpan terobosan, rata-rata masih 2–3 bek lebih dekat ke gawang, dan dari 72 penerimaan dalam 32 laga tidak ada satu pun gol (63% dioper lagi). Bek selalu sempat mengejar kembali selama bola menempuh jarak dan pelari mengontrolnya. Mewajibkan titik temu jauh di belakang garis hanya membuat umpan terobosan lebih jarang. Kesimpulan: menambal umpan terobosan sudah tidak efektif; masalahnya ada di hubungan laju bola vs laju pemain dan cara bek mengejar, yang perlu dipikirkan ulang sebagai satu kesatuan, bukan ditambal per bagian.
 - Catatan pengujian tahap 6 (32–64 laga): tenaga akhir pemain lapangan p10/p50/p90 = 0,42 / 0,52 / 0,64 (korelasi dengan Stamina 0,52); pemain berada di percaya diri < 0,4 sekitar 4% waktu; gol babak 1 vs babak 2 = 0,56 vs 0,81 (lelah membuka pertandingan di akhir); sapuan panik ~3,7 per laga, ~40% keluar lapangan. Titik nol 1,28 ± 0,29 (tidak berubah nyata). Kejutan 13 vs 11 turun sedikit ke 11% (dari 19–22%) — masih di dalam rentang sehat, belum disetel; awasi. Setelah on fire: titik nol 1,09 ± 0,23 dan kejutan 13% — selisih dengan sebelumnya masih di dalam rentang ketidakpastian (on fire hanya 0,3% waktu, jadi kemungkinan besar derau).
-- Belum ada: umpan silang/sundulan, pelanggaran & kartu (dan Temperamen), pergantian pemain.
+- Titik nol masih sedikit di bawah target 2–4 (1,88). Percobaan ke-3 sengaja belum dilakukan; diputuskan setelah ditonton. Kandidat: operan dipotong di sepertiga akhir (penilaian keamanan operan juga meleset — operan yang dinilai "tidak aman" tetap sukses 61%, yang "aman" gagal 20%), tim kuat 15 vs 9 jadi lebih dominan (gol 4,2 vs 0,1).
+- Belum ada: pelanggaran & kartu (dan Temperamen), tendangan bebas, pergantian pemain.
 
 ## 8. Aturan Anti-Melenceng
 

@@ -219,9 +219,24 @@ function drawConditionCues(ctx, cx, cy, w, barY, condition) {
   }
 }
 
+// Bola udara: bayangan tetap di tanah, bola digambar naik dan sedikit membesar
+// sesuai tingginya, supaya umpan silang terbaca dari atas.
+const BALL_LIFT_PER_METER = 0.6; // meter layar per meter tinggi
+const BALL_GROW_PER_METER = 0.12;
+
 function drawBall(ctx, vp, ball) {
+  const z = Math.max(0, ball.z ?? 0);
+  const gx = vp.toX(ball.x);
+  const gy = vp.toY(ball.y);
+  const r = Math.max(3, vp.px(BALL_RADIUS_METERS));
+  if (z > 0.05) {
+    ctx.beginPath();
+    ctx.ellipse(gx, gy, r, r * 0.6, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.fill();
+  }
   ctx.beginPath();
-  ctx.arc(vp.toX(ball.x), vp.toY(ball.y), Math.max(3, vp.px(BALL_RADIUS_METERS)), 0, Math.PI * 2);
+  ctx.arc(gx, gy - vp.px(z * BALL_LIFT_PER_METER), r * (1 + z * BALL_GROW_PER_METER), 0, Math.PI * 2);
   ctx.fillStyle = '#ffffff';
   ctx.fill();
   ctx.lineWidth = 1;
@@ -245,6 +260,7 @@ export function interpolateState(previous, current, alpha) {
       ...current.ball,
       x: lerp(previous.ball.x, current.ball.x, t),
       y: lerp(previous.ball.y, current.ball.y, t),
+      z: lerp(previous.ball.z ?? 0, current.ball.z ?? 0, t),
     },
     players: current.players.map((player, i) => {
       const before = previous.players[i];

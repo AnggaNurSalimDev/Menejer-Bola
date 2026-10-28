@@ -11,6 +11,7 @@ export const TECHNICAL_STATS = Object.freeze([
   'kelincahan',
   'stamina',
   'kekuatan',
+  'duelUdara', // menang bola udara & ketepatan sundulan (ditambahkan 28 Okt)
   // Olah bola
   'passing',
   'kontrol',

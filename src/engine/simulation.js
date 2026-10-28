@@ -58,9 +58,25 @@ import {
   effectiveProfile,
   progressWeightScale,
   shotThresholdScale,
+  physicalScale,
 } from './condition.js';
 import {
+  AERIAL,
+  isAirborne,
+  airStep,
+  heightAt,
+  aerialCandidates,
+  resolveAerial,
+  keeperCatchChance,
+  crossVelocity,
+  headerShotVelocity,
+  headerClearVelocity,
+  headerKnockVelocity,
+  inHeaderShotRange,
+} from './aerial.js';
+import {
   offsideLine,
+  isOffside,
   clampOnside,
   isBreakaway,
   pickRunner,
@@ -108,6 +124,9 @@ function cloneStats(stats) {
     blocks: { ...stats.blocks },
     offsides: { ...stats.offsides },
     clearances: { ...stats.clearances },
+    crosses: perTeam(stats.crosses),
+    headers: perTeam(stats.headers),
+    aerialsWon: { ...stats.aerialsWon },
     turnovers: stats.turnovers,
     outOfPlay: stats.outOfPlay,
   };
@@ -218,8 +237,106 @@ function clearVelocity(holder, ball, rng, scale) {
   return { vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed };
 }
 
+// ---- Umpan silang & sepak pojok (percobaan 2, 28 Okt) -----------------------
+// Pemegang bola di sayap dekat garis gawang lawan, dengan rekan di kotak penalti,
+// bisa melambungkan bola ke kepala rekan itu. Sepak pojok selalu dilambungkan
+// kalau ada rekan di kotak.
+const CROSS_ZONE_DEPTH = 30; // m dari garis gawang lawan
+const CROSS_ZONE_MIN_WIDE = 10; // m dari garis tengah memanjang
+const CROSS_PREFERENCE = 0.5; // peluang memilih umpan silang saat ada sasaran
+const CORNER_RADIUS = 3; // m dari titik pojok
+const CORNER_HOLD_TICKS = 20; // menunggu rekan masuk kotak
+const CROSS_AIM_MIN_DEPTH = 4; // m dari garis gawang
+const CROSS_AIM_MAX_DEPTH = 15;
+const CROSS_AIM_TOWARD_GOAL = 1.5; // m: bidik sedikit di depan sasaran, ke arah gawang
+// Penyerang yang menyerbu kotak saat umpan silang akan / sedang datang.
+const BOX_RUN_ROLES = Object.freeze(['ST', 'LW', 'RW', 'LM', 'RM', 'AM', 'CM']);
+const BOX_RUN_COUNT = 3;
+
+function opponentGoalPoint(attacksRight) {
+  return { x: attacksRight ? PITCH.length : 0, y: PITCH.width / 2 };
+}
+
+function depthToGoalLine(point, attacksRight) {
+  return attacksRight ? PITCH.length - point.x : point.x;
+}
+
+export function inCrossZone(ball, attacksRight) {
+  return (
+    depthToGoalLine(ball, attacksRight) <= CROSS_ZONE_DEPTH && Math.abs(ball.y - PITCH.width / 2) >= CROSS_ZONE_MIN_WIDE
+  );
+}
+
+function atCornerSpot(ball, attacksRight) {
+  const goalLineX = attacksRight ? PITCH.length : 0;
+  return Math.min(Math.hypot(ball.x - goalLineX, ball.y), Math.hypot(ball.x - goalLineX, ball.y - PITCH.width)) <= CORNER_RADIUS;
+}
+
+function inOpponentBox(point, attacksRight) {
+  return insideOwnPenaltyArea(point, !attacksRight);
+}
+
+// Sasaran umpan silang terbaik: rekan di kotak lawan, tidak offside,
+// dengan keunggulan udara terbesar atas bek terdekatnya. null kalau tidak ada.
+function pickCrossTarget(holder, ball, players) {
+  const opponents = players.filter((p) => p.teamId !== holder.teamId);
+  const line = offsideLine(opponents, holder.attacksRight);
+  const goal = opponentGoalPoint(holder.attacksRight);
+  let best = null;
+  for (const mate of players) {
+    if (mate.teamId !== holder.teamId || mate.id === holder.id || mate.role === 'GK') continue;
+    if (!inOpponentBox(mate, holder.attacksRight)) continue;
+    if (isOffside(mate, ball, line, holder.attacksRight)) continue;
+    let marker = null;
+    for (const o of opponents) {
+      if (o.role === 'GK') continue;
+      if (!marker || distance(o, mate) < distance(marker, mate)) marker = o;
+    }
+    const gap = marker ? Math.min(4, distance(marker, mate)) : 4;
+    const edge =
+      (mate.skills.duelUdara - (marker ? marker.skills.duelUdara : 1)) / 19 + gap * 0.15 - distance(mate, goal) * 0.02;
+    if (!best || edge > best.edge) best = { mate, edge };
+  }
+  if (!best) return null;
+
+  // Bidik sedikit di depan sasaran (ke arah gawang), dalam rentang kedalaman yang wajar.
+  const toGoal = distance(best.mate, goal);
+  const lead = toGoal > 0 ? CROSS_AIM_TOWARD_GOAL / toGoal : 0;
+  const raw = { x: best.mate.x + (goal.x - best.mate.x) * lead, y: best.mate.y + (goal.y - best.mate.y) * lead };
+  const depth = Math.min(CROSS_AIM_MAX_DEPTH, Math.max(CROSS_AIM_MIN_DEPTH, depthToGoalLine(raw, holder.attacksRight)));
+  const aim = { x: holder.attacksRight ? PITCH.length - depth : depth, y: raw.y };
+  if (distance(ball, aim) < 6) return null; // terlalu dekat untuk dilambungkan
+  return { target: best.mate, aim };
+}
+
+// Titik-titik serbuan kotak: tiang dekat, titik penalti, tiang jauh (dilihat dari sisi bola).
+function boxRunSpots(ball, attacksRight) {
+  const mid = PITCH.width / 2;
+  const side = ball.y < mid ? -1 : 1;
+  const at = (depth, y) => ({ x: attacksRight ? PITCH.length - depth : depth, y });
+  return [at(6, mid + side * 3), at(11, mid), at(6.5, mid - side * 3.5)];
+}
+
+// Penyerang mana menuju titik serbuan mana. Map playerId → titik.
+function assignBoxRuns(players, teamId, ball, attacksRight, excluded) {
+  const runs = new Map();
+  const free = players.filter(
+    (p) => p.teamId === teamId && BOX_RUN_ROLES.includes(p.role) && !excluded.has(p.id),
+  );
+  for (const spot of boxRunSpots(ball, attacksRight).slice(0, BOX_RUN_COUNT)) {
+    let best = null;
+    for (const p of free) {
+      if (runs.has(p.id)) continue;
+      if (!best || distance(p, spot) < distance(best, spot)) best = p;
+    }
+    if (best) runs.set(best.id, spot);
+  }
+  return runs;
+}
+
 // Keputusan pemegang bola:
-//   { type: 'clear' } | { type: 'shoot', shot } | { type: 'pass', option } | null (terus menggiring)
+//   { type: 'clear' } | { type: 'shoot', shot } | { type: 'cross', aim } | { type: 'pass', option }
+//   | null (terus menggiring)
 function decideHolder(holder, ball, players, rng, match) {
   const opponents = players.filter((p) => p.teamId !== holder.teamId);
   const context = conditionContext(holder, players, match);
@@ -245,6 +362,12 @@ function decideHolder(holder, ball, players, rng, match) {
   }
   if (breakaway) return null;
 
+  // Sepak pojok: tunggu rekan masuk kotak, lalu lambungkan.
+  const corner = atCornerSpot(ball, holder.attacksRight);
+  if (corner && ball.heldTicks < CORNER_HOLD_TICKS) return null;
+  const cross = holder.role !== 'GK' && inCrossZone(ball, holder.attacksRight) ? pickCrossTarget(holder, ball, players) : null;
+  if (cross && corner) return { type: 'cross', aim: cross.aim, context };
+
   // Rekan mulai berlari ke belakang garis bek: lihat dan layani larinya sekarang.
   const runnerAvailable = players.some((p) => p.teamId === holder.teamId && p.task === 'run');
   const ready =
@@ -252,6 +375,8 @@ function decideHolder(holder, ball, players, rng, match) {
     (pressured && ball.heldTicks >= PRESSURED_MIN_TICKS) ||
     (runnerAvailable && ball.heldTicks >= RUN_SPOT_MIN_TICKS);
   if (!ready) return null;
+
+  if (cross && rng.chance(CROSS_PREFERENCE)) return { type: 'cross', aim: cross.aim, context };
 
   const options = evaluatePassOptions({
     holder,
@@ -264,9 +389,11 @@ function decideHolder(holder, ball, players, rng, match) {
     misjudgeScale: blunderScale(holder, context),
     progressScale: progressWeightScale(holder),
   });
-  if (options.length === 0) return null;
+  const best = options[0] ?? null;
+  // Tidak ada operan aman: umpan silang jadi jalan keluar sebelum dipaksa mengoper.
+  if (cross && !best?.safe) return { type: 'cross', aim: cross.aim, context };
+  if (!best) return null;
 
-  const best = options[0];
   const forced =
     ball.heldTicks >= FORCED_PASS_TICKS || (pressured && ball.heldTicks >= PRESSURED_FORCED_TICKS);
   return best.safe || forced ? { type: 'pass', option: best, context } : null;
@@ -290,6 +417,10 @@ function releaseBall(ball, kicker, velocity, extra) {
     offsideReceiverId: null,
     lastTouchTeamId: kicker.teamId,
     restartTeamId: null,
+    z: 0,
+    vz: 0,
+    crossTeamId: null,
+    shotKind: null,
     ...extra,
   };
 }
@@ -393,6 +524,10 @@ function gainControl(ball, controller, stats, rng, note) {
     offsideReceiverId: null,
     lastTouchTeamId: controller.teamId,
     restartTeamId: null,
+    z: 0,
+    vz: 0,
+    crossTeamId: null,
+    shotKind: null,
   };
 }
 
@@ -452,6 +587,10 @@ function restartFromOut(ball, from, outPoint, teams, teamIds) {
     shotTeamId: null,
     offsideReceiverId: null,
     restartTeamId,
+    z: 0,
+    vz: 0,
+    crossTeamId: null,
+    shotKind: null,
   };
 }
 
@@ -595,7 +734,14 @@ export function createSimulation(home, away, seed) {
           const spread = blunder(holder, 'shotSpread') * blunderScale(holder, { ...decision.context, bigChance });
           const velocity = shotVelocity(ball, decision.shot.aim, holder.attacksRight, rng, spread);
           stats.shots[holder.teamId].total += 1;
-          ball = releaseBall(ball, holder, velocity, { shotTeamId: holder.teamId });
+          ball = releaseBall(ball, holder, velocity, { shotTeamId: holder.teamId, shotKind: 'foot' });
+          ballReleasedBy = holder.id;
+        } else if (decision?.type === 'cross') {
+          // Guard: umpan silang hanya dari zona sayap dekat garis gawang lawan.
+          if (!inCrossZone(ball, holder.attacksRight)) throw new Error(`umpan silang di luar zona oleh ${holder.id}`);
+          stats.crosses[holder.teamId].attempted += 1;
+          const v = crossVelocity(ball, decision.aim, holder, rng, blunderScale(holder, decision.context));
+          ball = releaseBall(ball, holder, { vx: v.vx, vy: v.vy }, { vz: v.vz, crossTeamId: holder.teamId });
           ballReleasedBy = holder.id;
         } else if (decision?.type === 'pass') {
           stats.passes[holder.teamId].attempted += 1;
@@ -647,7 +793,19 @@ export function createSimulation(home, away, seed) {
     // 3. Tugas, target, lalu gerak.
     const possessingTeamId = owner
       ? owner.teamId
-      : (ball.passTeamId ?? ball.shotTeamId ?? ball.restartTeamId ?? null);
+      : (ball.passTeamId ?? ball.shotTeamId ?? ball.crossTeamId ?? ball.restartTeamId ?? null);
+
+    // Serbuan kotak: umpan silang sedang/akan datang (pemegang di zona sayap,
+    // sepak pojok, atau bola silang di udara). Paling banyak BOX_RUN_COUNT penyerang.
+    let boxRuns = new Map();
+    const crossingTeamId =
+      ball.crossTeamId ??
+      (owner && owner.role !== 'GK' && inCrossZone(ball, teams[owner.teamId].attacksRight) ? owner.teamId : null) ??
+      (ball.restartTeamId !== null && atCornerSpot(ball, teams[ball.restartTeamId].attacksRight) ? ball.restartTeamId : null);
+    if (crossingTeamId !== null) {
+      const excluded = new Set([ball.ownerId, teams[crossingTeamId].chaserId, teams[crossingTeamId].runnerId]);
+      boxRuns = assignBoxRuns(prev.players, crossingTeamId, ball, teams[crossingTeamId].attacksRight, excluded);
+    }
 
     // Tim yang bertahan membagi penjagaan lawan (tidak termasuk pemegang bola,
     // yang sudah diurus penekan).
@@ -701,7 +859,7 @@ export function createSimulation(home, away, seed) {
         if (isDecisionTick || player.task !== 'shape') {
           let phase = 'neutral';
           if (possessingTeamId !== null) phase = possessingTeamId === player.teamId ? 'attack' : 'defend';
-          target = computeAnchor(player, ball, team.attacksRight, phase);
+          target = boxRuns.get(player.id) ?? computeAnchor(player, ball, team.attacksRight, phase);
           if (phase === 'defend') {
             const mark = marksByTeam.get(player.teamId)?.get(player.id);
             const holdLine =
@@ -748,10 +906,119 @@ export function createSimulation(home, away, seed) {
       }
     };
 
+    // Gol: tim yang menyerang ke garis itu mencetak angka.
+    const scoreGoal = (crossing) => {
+      const scoringTeamId = teamIds.find((id) => teams[id].attacksRight === (crossing.lineX === PITCH.length));
+      const concedingTeamId = teamIds.find((id) => id !== scoringTeamId);
+      stats.goals[scoringTeamId] += 1;
+      if (ball.kickerId && ball.lastTouchTeamId === scoringTeamId) note(ball.kickerId, 'goal');
+      const concedingKeeper = players.find((p) => p.teamId !== scoringTeamId && p.role === 'GK');
+      if (concedingKeeper) note(concedingKeeper.id, 'conceded');
+      if (ball.shotTeamId === scoringTeamId) stats.shots[scoringTeamId].onTarget += 1;
+      const header = ball.shotTeamId === scoringTeamId && ball.shotKind === 'header';
+      if (header) stats.headers[scoringTeamId].goals += 1;
+      lastGoal = {
+        teamId: scoringTeamId,
+        scorerId: ball.kickerId,
+        ownGoal: ball.lastTouchTeamId !== scoringTeamId,
+        header,
+        tick,
+      };
+      ball = createInitialBall(concedingTeamId);
+      pauseTicks = GOAL_PAUSE_TICKS;
+      for (let i = 0; i < players.length; i += 1) {
+        if (players[i].task !== 'shape') players[i] = { ...players[i], task: 'shape' };
+      }
+      for (const id of teamIds) Object.assign(teams[id], emptyTeamRoles());
+    };
+
+    // Pemain menguasai bola: tugas semua pemain menyesuaikan di tick yang sama.
+    const takeControl = (controller, at = null) => {
+      ball = gainControl(at ? { ...ball, ...at } : ball, controller, stats, rng, note);
+      for (let i = 0; i < players.length; i += 1) {
+        const p = players[i];
+        if (p.id === controller.id) players[i] = { ...p, task: 'hold' };
+        else if (p.task !== 'shape' && p.task !== 'run') players[i] = { ...p, task: 'shape' };
+      }
+      for (const id of teamIds) teams[id].chaserId = null;
+    };
+
+    // Pemenang duel udara memakai bolanya: kiper tangkap/tinju, sundulan ke gawang,
+    // sapuan di separuh sendiri, atau sundulan pendek ke depan.
+    const winAerial = (winner) => {
+      const w = winner.player;
+      const contact = clampToPitch(winner.point);
+      stats.aerialsWon[w.teamId] += 1;
+      if (ball.crossTeamId === w.teamId) stats.crosses[w.teamId].won += 1;
+
+      if (w.role === 'GK' && insideOwnPenaltyArea(contact, w.attacksRight)) {
+        if (rng.chance(keeperCatchChance(w))) {
+          takeControl(w, contact);
+        } else {
+          const v = headerClearVelocity(w, rng); // ditinju menjauh
+          ball = releaseBall({ ...ball, ...contact }, w, v, { vz: v.vz });
+          startReactions(w.id);
+        }
+        return;
+      }
+      if (inHeaderShotRange(contact, w.attacksRight)) {
+        const keeper = players.find((p) => p.role === 'GK' && p.teamId !== w.teamId) ?? null;
+        const scale = blunderScale(w, conditionContext(w, players, match, { bigChance: true }));
+        const v = headerShotVelocity(contact, w.attacksRight, keeper, rng, scale, w);
+        stats.shots[w.teamId].total += 1;
+        stats.headers[w.teamId].shots += 1;
+        ball = releaseBall({ ...ball, ...contact }, w, { vx: v.vx, vy: v.vy }, { shotTeamId: w.teamId, shotKind: 'header' });
+      } else if (forwardOf(contact, w.attacksRight) < PITCH.length / 2) {
+        const v = headerClearVelocity(w, rng);
+        ball = releaseBall({ ...ball, ...contact }, w, v, { vz: v.vz });
+      } else {
+        const v = headerKnockVelocity(w, rng);
+        ball = releaseBall({ ...ball, ...contact }, w, v, {});
+      }
+      startReactions(w.id);
+    };
+
     // 4. Bola.
     if (ball.ownerId !== null) {
       const holder = players.find((p) => p.id === ball.ownerId);
       ball = { ...ball, ...ballAtFeet(holder), vx: holder.vx, vy: holder.vy };
+    } else if (ball.restartTeamId === null && isAirborne(ball)) {
+      // Bola di udara: hanya kepala (atau tangan kiper) yang menjangkau; jatuh rendah = kaki.
+      const from = { x: ball.x, y: ball.y };
+      const flight = airStep(ball, DT);
+      const cooldown = Math.max(0, ball.kickCooldown - 1);
+      const canTouch = (p) => !(p.id === ball.kickerId && ball.kickCooldown > 0);
+      const candidates = aerialCandidates(ball, flight, DT, players, canTouch);
+      const crossing = goalLineCrossing(from, flight);
+      const firstContact = candidates.length > 0 ? Math.min(...candidates.map((c) => c.u)) : Infinity;
+
+      if (crossing && crossing.u < firstContact) {
+        if (isBetweenPosts(crossing.y) && heightAt(ball, DT, crossing.u) <= AERIAL.crossbar) {
+          scoreGoal(crossing);
+        } else {
+          stats.outOfPlay += 1;
+          ball = restartFromOut(ball, from, flight, teams, teamIds);
+        }
+      } else if (candidates.length > 0) {
+        // Yang berduel: pemain yang menjangkau bola di saat paling awal (±0,3 langkah).
+        const contest = candidates.filter((c) => c.u <= firstContact + 0.3);
+        const winner = resolveAerial(contest, rng, (p) => physicalScale(p, conditionContext(p, players, match)));
+        winAerial(winner);
+      } else if (!isInsidePitch(flight.x, flight.y)) {
+        stats.outOfPlay += 1;
+        ball = restartFromOut(ball, from, flight, teams, teamIds);
+      } else if (flight.z <= AERIAL.footMax) {
+        const touch = findController(from, flight, players, canTouch);
+        if (touch) {
+          if (ball.crossTeamId === touch.player.teamId) stats.crosses[touch.player.teamId].won += 1;
+          takeControl(touch.player);
+        } else {
+          const settled = flight.z === 0 && flight.vz === 0;
+          ball = { ...ball, ...flight, kickCooldown: cooldown, crossTeamId: settled ? null : ball.crossTeamId };
+        }
+      } else {
+        ball = { ...ball, ...flight, kickCooldown: cooldown };
+      }
     } else {
       const from = { x: ball.x, y: ball.y };
       const rolled = ball.restartTeamId !== null ? { ...from, vx: 0, vy: 0 } : rollBall(ball, DT);
@@ -769,26 +1036,7 @@ export function createSimulation(home, away, seed) {
       const isGoal = crossing && isBetweenPosts(crossing.y) && (!touch || crossing.u < touch.u);
 
       if (isGoal) {
-        // Gol: tim yang menyerang ke garis itu mencetak angka.
-        const scoringTeamId = teamIds.find((id) => teams[id].attacksRight === (crossing.lineX === PITCH.length));
-        const concedingTeamId = teamIds.find((id) => id !== scoringTeamId);
-        stats.goals[scoringTeamId] += 1;
-        if (ball.kickerId && ball.lastTouchTeamId === scoringTeamId) note(ball.kickerId, 'goal');
-        const concedingKeeper = players.find((p) => p.teamId !== scoringTeamId && p.role === 'GK');
-        if (concedingKeeper) note(concedingKeeper.id, 'conceded');
-        if (ball.shotTeamId === scoringTeamId) stats.shots[scoringTeamId].onTarget += 1;
-        lastGoal = {
-          teamId: scoringTeamId,
-          scorerId: ball.kickerId,
-          ownGoal: ball.lastTouchTeamId !== scoringTeamId,
-          tick,
-        };
-        ball = createInitialBall(concedingTeamId);
-        pauseTicks = GOAL_PAUSE_TICKS;
-        for (let i = 0; i < players.length; i += 1) {
-          if (players[i].task !== 'shape') players[i] = { ...players[i], task: 'shape' };
-        }
-        for (const id of teamIds) Object.assign(teams[id], emptyTeamRoles());
+        scoreGoal(crossing);
       } else if (touch && touch.player.id === ball.offsideReceiverId) {
         const offender = touch.player;
         const defendingTeamId = teamIds.find((id) => id !== offender.teamId);
@@ -810,6 +1058,10 @@ export function createSimulation(home, away, seed) {
           offsideReceiverId: null,
           lastTouchTeamId: offender.teamId,
           restartTeamId: defendingTeamId,
+          z: 0,
+          vz: 0,
+          crossTeamId: null,
+          shotKind: null,
         };
         for (let i = 0; i < players.length; i += 1) {
           if (players[i].task !== 'shape' && players[i].task !== 'run') players[i] = { ...players[i], task: 'shape' };

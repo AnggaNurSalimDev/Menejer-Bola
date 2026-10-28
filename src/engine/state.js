@@ -7,6 +7,7 @@ import { validateStats } from './stats.js';
 import { deriveMovementProfile } from './movement.js';
 import { HALF_TICKS, GAME_MINUTES_PER_HALF, PERIODS } from './constants.js';
 import { CONDITION, validateCondition } from './condition.js';
+import { validateAirBall } from './aerial.js';
 
 const SPEED_TOLERANCE = 1e-6;
 const OWNED_BALL_MAX_DISTANCE = 1.5; // meter
@@ -69,6 +70,7 @@ export const TASKS = Object.freeze(['shape', 'hold', 'chase', 'receive', 'press'
 //   dalam operan : ownerId kosong, passTargetId terisi
 //   tembakan     : ownerId kosong, shotTeamId terisi
 //   bebas        : semuanya kosong
+//   di udara     : z > 0 atau vz > 0 (tidak dikuasai; crossTeamId = tim pengirim umpan silang)
 // restartTeamId terisi = bola mati (kick-off / keluar lapangan),
 // hanya tim itu yang boleh mengambilnya.
 export function createInitialBall(kickOffTeamId) {
@@ -77,6 +79,12 @@ export function createInitialBall(kickOffTeamId) {
     y: PITCH.width / 2,
     vx: 0,
     vy: 0,
+    // Tinggi (m) dan laju naik (m/s): bola lambung (percobaan 2, 28 Okt).
+    z: 0,
+    vz: 0,
+    crossTeamId: null,
+    // Jenis tembakan yang sedang berjalan: 'foot' | 'header' | null.
+    shotKind: null,
     ownerId: null,
     heldTicks: 0,
     holdTarget: 0,
@@ -106,6 +114,9 @@ function createStats(teamIds) {
     blocks: perTeam(() => 0),
     offsides: perTeam(() => 0),
     clearances: perTeam(() => 0),
+    crosses: perTeam(() => ({ attempted: 0, won: 0 })),
+    headers: perTeam(() => ({ shots: 0, goals: 0 })),
+    aerialsWon: perTeam(() => 0),
     turnovers: 0,
     outOfPlay: 0,
   };
@@ -260,6 +271,11 @@ export function validateMatchState(state, teams = []) {
     if (!teamIds.includes(ball.restartTeamId)) errors.push('restartTeamId tidak valid');
     if (ball.vx !== 0 || ball.vy !== 0) errors.push('bola mati tetapi bergerak');
   }
+  errors.push(...validateAirBall(ball));
+  if ((ball.shotKind === null) !== (ball.shotTeamId === null)) errors.push('shotKind harus terisi tepat saat ada tembakan');
+  if (ball.shotKind !== null && ball.shotKind !== 'foot' && ball.shotKind !== 'header') errors.push(`shotKind tidak dikenal "${ball.shotKind}"`);
+  if (ball.crossTeamId !== null && !teamIds.includes(ball.crossTeamId)) errors.push('crossTeamId tidak valid');
+  if (ball.crossTeamId !== null && ball.passTargetId !== null) errors.push('umpan silang sekaligus operan tanah');
   if (ball.lastTouchTeamId !== null && !teamIds.includes(ball.lastTouchTeamId)) {
     errors.push('lastTouchTeamId tidak valid');
   }
@@ -314,6 +330,12 @@ export function validateMatchState(state, teams = []) {
       if (!(state.stats.blocks[id] >= 0)) errors.push(`tim ${id}: blok tidak valid`);
       if (!(state.stats.offsides[id] >= 0)) errors.push(`tim ${id}: offside tidak valid`);
       if (!(state.stats.clearances[id] >= 0)) errors.push(`tim ${id}: sapuan tidak valid`);
+      const crosses = state.stats.crosses[id];
+      if (!(crosses.won >= 0 && crosses.won <= crosses.attempted)) errors.push(`tim ${id}: umpan silang dimenangkan > dicoba`);
+      const headers = state.stats.headers[id];
+      if (!(headers.goals >= 0 && headers.goals <= headers.shots)) errors.push(`tim ${id}: gol sundulan > sundulan`);
+      if (!(headers.goals <= state.stats.goals[id])) errors.push(`tim ${id}: gol sundulan > total gol`);
+      if (!(state.stats.aerialsWon[id] >= 0)) errors.push(`tim ${id}: duel udara tidak valid`);
     }
   } else {
     errors.push('stats tidak ada');

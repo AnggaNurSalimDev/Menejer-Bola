@@ -10,6 +10,7 @@ import { ballSpeed, predictBallPosition, STOP_SPEED } from './ball.js';
 import { DT, REACTION_TIME } from './constants.js';
 import { travelTime } from './movement.js';
 import { controlRadiusAt } from './control.js';
+import { isAirborne, dropPoint } from './aerial.js';
 
 const MAX_LOOKAHEAD = 4; // detik
 // Komitmen (prinsip 4): pengejar lama hanya diganti kalau ada rekan
@@ -33,6 +34,11 @@ export function reachTime(player, point) {
 
 // Titik paling awal di lintasan bola yang bisa dicapai pemain tepat waktu.
 export function interceptFor(player, ball) {
+  // Bola di udara: tidak bisa dipotong di tengah jalan, tunggu di titik jatuhnya.
+  if (isAirborne(ball)) {
+    const drop = dropPoint(ball);
+    return { point: drop.point, time: Math.max(drop.time, reachTime(player, drop.point)) };
+  }
   if (ballSpeed(ball) < STOP_SPEED) {
     const point = clampToPitch(ball);
     return { point, time: reachTime(player, point) };
