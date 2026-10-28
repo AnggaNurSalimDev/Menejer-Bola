@@ -26,9 +26,12 @@ const POST_INSET = 0.6; // meter di dalam tiang
 const LIKELY_BLOCKED_MARGIN = -0.2; // bek jelas lebih dulu → kemungkinan besar terblok
 const BLOCK_FACTOR = { clear: 1, risky: 0.6, likely: 0.25 };
 // Faktor kiper: dari selisih waktu kiper terhadap bola di jalur (detik).
-const KEEPER_BEATEN_MARGIN = 0;
-const KEEPER_STRETCH_MARGIN = -0.3;
-const KEEPER_FACTOR = { beaten: 1, stretched: 0.6, set: 0.3 };
+// Dikalibrasi 28 Okt dari hasil nyata (32 laga): selisih 0..0,2 dtk hanya 4% gol,
+// di bawah 0 hampir 0%, di atas 0,2 dtk 24%. Batas lama (0 / −0,3) membuat
+// pemain terlalu optimis dan menembak dari 25–33 m (0 gol dari 273 tembakan).
+const KEEPER_BEATEN_MARGIN = 0.2;
+const KEEPER_STRETCH_MARGIN = 0;
+const KEEPER_FACTOR = { beaten: 1, stretched: 0.6, set: 0.1 };
 const KEEPER_ON_LANE_FACTOR = 0.1; // kiper sudah berdiri di jalur tembakan
 
 // Tempo padat: pemain lebih berani menembak.
