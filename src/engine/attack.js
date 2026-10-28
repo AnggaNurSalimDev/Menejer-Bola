@@ -7,6 +7,7 @@
 import { PITCH, clampToPitch, distance, forwardOf } from './pitch.js';
 import { passSpeedForDistance, timeToTravel } from './ball.js';
 import { travelTime } from './movement.js';
+import { normalizeStat } from './skill.js';
 
 // ---------------------------------------------------------------- offside
 
@@ -30,12 +31,37 @@ export function isOffside(player, ballPoint, line, attacksRight) {
 // (atau sejajar bola kalau bola sudah lebih jauh).
 const ONSIDE_MARGIN = 1; // meter
 
-export function clampOnside(target, ballPoint, line, attacksRight) {
-  const limit = Math.max(line - ONSIDE_MARGIN, forwardOf(ballPoint, attacksRight), PITCH.length / 2);
+// Disiplin menjaga garis (tahap 7a): penyerang dengan Antisipasi rendah sering
+// berdiri sedikit kelewatan dan baru sadar terlambat. Meter di belakang garis:
+// Antisipasi 1 → 1 m KELEWATAN, Antisipasi 20 → 1 m di belakang garis.
+export const LINE_DISCIPLINE = Object.freeze({ worst: -1, best: 1 });
+
+export function onsideMarginFor(player) {
+  const a = player?.skills?.antisipasi;
+  if (!Number.isFinite(a)) return ONSIDE_MARGIN;
+  return LINE_DISCIPLINE.worst + (LINE_DISCIPLINE.best - LINE_DISCIPLINE.worst) * normalizeStat(a);
+}
+
+export function clampOnside(target, ballPoint, line, attacksRight, margin = ONSIDE_MARGIN) {
+  if (!Number.isFinite(margin)) throw new RangeError(`clampOnside: margin tidak valid ${margin}`);
+  const limit = Math.max(line - margin, forwardOf(ballPoint, attacksRight), PITCH.length / 2);
   const depth = forwardOf(target, attacksRight);
   if (depth <= limit) return target;
   const x = attacksRight ? limit : PITCH.length - limit;
   return { x, y: target.y };
+}
+
+// Striker bermain "di bahu" bek terakhir (tahap 7a): saat tim menyerang, striker
+// maju sampai sejajar garis offside (dikurangi disiplin garisnya), bukan menunggu
+// jauh di belakang. Inilah yang membuat offside — dan salah lihat hakim garis — mungkin.
+export const SHOULDER_ROLES = Object.freeze(['ST']);
+const SHOULDER_GOAL_MARGIN = 6; // jangan lebih dekat dari ini ke garis gawang lawan
+
+export function toShoulder(target, line, attacksRight, margin) {
+  if (!Number.isFinite(line) || !Number.isFinite(margin)) throw new RangeError('toShoulder: input tidak valid');
+  const want = Math.min(line - margin, PITCH.length - SHOULDER_GOAL_MARGIN);
+  if (forwardOf(target, attacksRight) >= want || want <= PITCH.length / 2) return target;
+  return { x: attacksRight ? want : PITCH.length - want, y: target.y };
 }
 
 // ------------------------------------------------------- lari ke belakang

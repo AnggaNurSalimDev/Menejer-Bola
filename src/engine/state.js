@@ -9,6 +9,8 @@ import { HALF_TICKS, GAME_MINUTES_PER_HALF, PERIODS, KICKOFF_WAIT_TICKS, MAX_RET
 import { CONDITION, validateCondition } from './condition.js';
 import { validateAirBall } from './aerial.js';
 import { validatePhilosophy } from './philosophy.js';
+import { createOfficials, validateOfficials } from './officials.js';
+import { createRng } from './rng.js';
 
 const SPEED_TOLERANCE = 1e-6;
 const OWNED_BALL_MAX_DISTANCE = 1.5; // meter
@@ -84,7 +86,7 @@ export function createInitialBall(kickOffTeamId) {
     z: 0,
     vz: 0,
     crossTeamId: null,
-    // Jenis tembakan yang sedang berjalan: 'foot' | 'header' | null.
+    // Jenis tembakan yang sedang berjalan: 'foot' | 'long' | 'header' | null.
     shotKind: null,
     ownerId: null,
     heldTicks: 0,
@@ -95,10 +97,18 @@ export function createInitialBall(kickOffTeamId) {
     passTargetId: null,
     passTeamId: null,
     shotTeamId: null,
-    // Penerima operan yang sudah offside saat bola dimainkan (atau null).
-    offsideReceiverId: null,
+    // Offside (tahap 7a): saat seorang pemain memainkan bola, rekan-rekannya yang
+    // akan dibenderai hakim garis bila ikut bermain (flag) dan yang benar-benar
+    // offside (true). Keduanya bisa berbeda: hakim garis bisa salah.
+    offsideFlagIds: [],
+    offsideTrueIds: [],
+    offsideTeamId: null, // tim pemain yang ditandai
     lastTouchTeamId: kickOffTeamId,
     restartTeamId: kickOffTeamId,
+    // Jenis bola mati: 'kickoff' | 'throwIn' | 'goalKick' | 'corner' | 'freeKick' | null.
+    restartKind: 'kickoff',
+    // Bola mati yang sedang dieksekusi pemegang bola (untuk pengecualian offside).
+    setPieceKind: null,
   };
 }
 
@@ -123,6 +133,9 @@ function createStats(teamIds) {
     outOfPlay: 0,
     // Tick persiapan kick-off (jam berhenti, tidak dihitung sebagai penguasaan bola).
     pauseTicks: 0,
+    // Keputusan offside yang salah (untuk diukur; tidak tampil): lolos & salah bendera.
+    offsideMissed: perTeam(() => 0),
+    offsideWrong: perTeam(() => 0),
   };
 }
 
@@ -158,6 +171,10 @@ export function createMatchState(home, away) {
     ...kickoffPause('kickoff'),
     // Gol terakhir, untuk ditampilkan UI: { teamId, scorerId, tick } atau null.
     lastGoal: null,
+    // Perangkat pertandingan (officials.js). Simulasi mengacaknya ulang dengan seed laga.
+    officials: createOfficials(createRng(1)),
+    // Peluit terakhir untuk UI: { tick, kind: 'kickoff' | 'offside', teamId?, playerId? } atau null.
+    whistle: null,
     // Babak: first | halftime | second | fulltime. periodTick = tick di babak berjalan.
     period: 'first',
     periodTick: 0,
@@ -327,8 +344,33 @@ export function validateMatchState(state, teams = []) {
     if (!Number.isInteger(p.runCooldown) || p.runCooldown < 0) errors.push(`pemain ${p.id}: runCooldown tidak valid`);
     for (const e of validateCondition(p.condition)) errors.push(`pemain ${p.id}: kondisi — ${e}`);
   }
-  if (ball.offsideReceiverId !== null && ball.offsideReceiverId !== ball.passTargetId) {
-    errors.push('penanda offside bukan penerima operan yang sedang berjalan');
+  // Offside: penanda hanya berlaku saat bola sedang bergerak bebas setelah dimainkan.
+  for (const key of ['offsideFlagIds', 'offsideTrueIds']) {
+    const ids = ball[key];
+    if (!Array.isArray(ids)) {
+      errors.push(`${key} bukan daftar`);
+      continue;
+    }
+    if (ids.length > 0 && (ball.ownerId !== null || ball.restartTeamId !== null)) {
+      errors.push(`${key} terisi padahal bola dikuasai / bola mati`);
+    }
+    for (const id of ids) {
+      const p = byId.get(id);
+      if (!p) errors.push(`${key}: pemain "${id}" tidak ada`);
+      else if (p.teamId !== ball.offsideTeamId) errors.push(`${key}: ${id} bukan anggota tim yang ditandai (${ball.offsideTeamId})`);
+    }
+  }
+  if (ball.offsideTeamId !== null && !teamIds.includes(ball.offsideTeamId)) errors.push('offsideTeamId tidak valid');
+  for (const id of ball.offsideFlagIds ?? []) if (ball.offsideFlagIds.indexOf(id) !== ball.offsideFlagIds.lastIndexOf(id)) errors.push('offsideFlagIds ganda');
+  const RESTART_KINDS = ['kickoff', 'throwIn', 'goalKick', 'corner', 'freeKick'];
+  if ((ball.restartTeamId === null) !== (ball.restartKind === null)) errors.push('restartKind harus terisi tepat saat bola mati');
+  if (ball.restartKind !== null && !RESTART_KINDS.includes(ball.restartKind)) errors.push(`restartKind tidak dikenal "${ball.restartKind}"`);
+  if (ball.setPieceKind !== null && (ball.ownerId === null || !RESTART_KINDS.includes(ball.setPieceKind))) {
+    errors.push('setPieceKind hanya untuk pemegang bola yang mengeksekusi bola mati');
+  }
+  for (const e of validateOfficials(state.officials)) errors.push(`perangkat: ${e}`);
+  if (state.whistle !== null && !(Number.isInteger(state.whistle.tick) && ['kickoff', 'offside'].includes(state.whistle.kind))) {
+    errors.push('catatan peluit tidak valid');
   }
 
   if (state.stats) {
@@ -360,6 +402,8 @@ export function validateMatchState(state, teams = []) {
       if (!(longShots.shots <= state.stats.shots[id].total)) errors.push(`tim ${id}: tembakan jarak jauh > total tembakan`);
       if (!(longShots.goals + headers.goals <= state.stats.goals[id])) errors.push(`tim ${id}: gol jarak jauh + sundulan > total gol`);
       if (!(state.stats.aerialsWon[id] >= 0)) errors.push(`tim ${id}: duel udara tidak valid`);
+      if (!(state.stats.offsideMissed[id] >= 0 && state.stats.offsideWrong[id] >= 0)) errors.push(`tim ${id}: catatan salah offside tidak valid`);
+      if (!(state.stats.offsideWrong[id] <= state.stats.offsides[id])) errors.push(`tim ${id}: offside salah bendera > offside dinyatakan`);
     }
   } else {
     errors.push('stats tidak ada');

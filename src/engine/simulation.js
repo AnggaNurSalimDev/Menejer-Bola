@@ -72,6 +72,14 @@ import {
   instinctShotScale,
 } from './condition.js';
 import {
+  createOfficials,
+  stepOfficials,
+  assistantFor,
+  offsideReferenceX,
+  flagChance,
+  ASSISTANT,
+} from './officials.js';
+import {
   AERIAL,
   isAirborne,
   airStep,
@@ -89,6 +97,9 @@ import {
   offsideLine,
   isOffside,
   clampOnside,
+  onsideMarginFor,
+  toShoulder,
+  SHOULDER_ROLES,
   isBreakaway,
   pickRunner,
   RUN_MAX_TICKS,
@@ -143,6 +154,8 @@ function cloneStats(stats) {
     turnovers: stats.turnovers,
     outOfPlay: stats.outOfPlay,
     pauseTicks: stats.pauseTicks,
+    offsideMissed: { ...stats.offsideMissed },
+    offsideWrong: { ...stats.offsideWrong },
   };
 }
 
@@ -265,6 +278,8 @@ const CROSS_AIM_TOWARD_GOAL = 1.5; // m: bidik sedikit di depan sasaran, ke arah
 // Penyerang yang menyerbu kotak saat umpan silang akan / sedang datang.
 const BOX_RUN_ROLES = Object.freeze(['ST', 'LW', 'RW', 'LM', 'RM', 'AM', 'CM']);
 const BOX_RUN_COUNT = 3;
+// Striker menempel di bahu bek terakhir hanya saat bola sedekat ini ke garis gawang lawan.
+const SHOULDER_BALL_RANGE = 40; // meter
 
 function opponentGoalPoint(attacksRight) {
   return { x: attacksRight ? PITCH.length : 0, y: PITCH.width / 2 };
@@ -434,9 +449,13 @@ function releaseBall(ball, kicker, velocity, extra) {
     passTargetId: null,
     passTeamId: null,
     shotTeamId: null,
-    offsideReceiverId: null,
+    offsideFlagIds: [],
+    offsideTrueIds: [],
+    offsideTeamId: null,
     lastTouchTeamId: kicker.teamId,
     restartTeamId: null,
+    restartKind: null,
+    setPieceKind: null,
     z: 0,
     vz: 0,
     crossTeamId: null,
@@ -546,9 +565,15 @@ function gainControl(ball, controller, stats, rng, note, tempo = 1) {
     passTargetId: null,
     passTeamId: null,
     shotTeamId: null,
-    offsideReceiverId: null,
+    offsideFlagIds: [],
+    offsideTrueIds: [],
+    offsideTeamId: null,
     lastTouchTeamId: controller.teamId,
     restartTeamId: null,
+    restartKind: null,
+    // Pemegang bola yang mengeksekusi bola mati (pojok, lemparan, tendangan gawang
+    // dibebaskan dari offside saat bola itu dimainkan).
+    setPieceKind: isRestart ? ball.restartKind : null,
     z: 0,
     vz: 0,
     crossTeamId: null,
@@ -578,9 +603,11 @@ function restartFromOut(ball, from, outPoint, teams, teamIds) {
   const crossing = goalLineCrossing(from, outPoint);
   const mid = PITCH.width / 2;
   let spot;
+  let restartKind = 'throwIn';
 
   if (crossing) {
     const defendingTeamId = teamIds.find((id) => teams[id].attacksRight === (crossing.lineX === 0));
+    restartKind = restartTeamId === defendingTeamId ? 'goalKick' : 'corner';
     if (restartTeamId === defendingTeamId) {
       const halfGoalArea = PITCH.goalAreaWidth / 2;
       spot = {
@@ -610,13 +637,71 @@ function restartFromOut(ball, from, outPoint, teams, teamIds) {
     passTargetId: null,
     passTeamId: null,
     shotTeamId: null,
-    offsideReceiverId: null,
+    offsideFlagIds: [],
+    offsideTrueIds: [],
+    offsideTeamId: null,
     restartTeamId,
+    restartKind,
+    setPieceKind: null,
     z: 0,
     vz: 0,
     crossTeamId: null,
     shotKind: null,
   };
+}
+
+// Bola mati yang dibebaskan dari offside saat dimainkan (Laws of the Game, hukum 11).
+const OFFSIDE_EXEMPT = Object.freeze(['corner', 'throwIn', 'goalKick']);
+
+// Titik acuan offside di tiap separuh (untuk posisi hakim garis).
+function offsideReferences(players, ball) {
+  const ref = (attacksRight) => {
+    const defenders = players.filter((p) => p.attacksRight !== attacksRight);
+    return offsideReferenceX(offsideLine(defenders, attacksRight), ball, attacksRight);
+  };
+  return { right: ref(true), left: ref(false) };
+}
+
+// Posisi kick-off: penendang berdiri di belakang bola di titik tengah, rekannya di
+// posisi formasi, lawan di luar lingkaran tengah. Map playerId → titik.
+const KICKOFF_TAKER_GAP = 0.7; // meter di belakang bola
+const CIRCLE_CLEARANCE = 0.5; // meter di luar lingkaran tengah
+export function pickKickoffTaker(players, kickOffTeamId) {
+  const center = { x: PITCH.length / 2, y: PITCH.width / 2 };
+  const candidates = players
+    .filter((p) => p.teamId === kickOffTeamId && p.role !== 'GK')
+    .map((p) => ({ p, d: distance(slotToPitch(p.slot, p.attacksRight), center) }))
+    .sort((a, b) => (a.p.role === 'ST' ? 0 : 1) - (b.p.role === 'ST' ? 0 : 1) || a.d - b.d || a.p.id.localeCompare(b.p.id));
+  if (candidates.length === 0) throw new Error(`pickKickoffTaker: tim ${kickOffTeamId} tanpa pemain lapangan`);
+  return candidates[0].p;
+}
+
+export function kickoffTargets(players, kickOffTeamId) {
+  const center = { x: PITCH.length / 2, y: PITCH.width / 2 };
+  const taker = pickKickoffTaker(players, kickOffTeamId);
+  const minRadius = PITCH.centerCircleRadius + CIRCLE_CLEARANCE;
+  const targets = new Map();
+  for (const p of players) {
+    if (p.id === taker.id) {
+      targets.set(p.id, { x: center.x + (p.attacksRight ? -KICKOFF_TAKER_GAP : KICKOFF_TAKER_GAP), y: center.y });
+      continue;
+    }
+    let spot = slotToPitch(p.slot, p.attacksRight);
+    // Semua pemain di separuh sendiri.
+    const ownMaxX = PITCH.length / 2 - 0.5;
+    if (p.attacksRight && spot.x > ownMaxX) spot = { ...spot, x: ownMaxX };
+    if (!p.attacksRight && spot.x < PITCH.length - ownMaxX) spot = { ...spot, x: PITCH.length - ownMaxX };
+    // Lawan di luar lingkaran tengah (ke arah gawangnya sendiri).
+    if (p.teamId !== kickOffTeamId) {
+      const d = distance(spot, center);
+      if (d < minRadius) {
+        const dir = d > 1e-6 ? { x: (spot.x - center.x) / d, y: (spot.y - center.y) / d } : { x: p.attacksRight ? -1 : 1, y: 0 };
+        spot = { x: center.x + dir.x * minRadius, y: center.y + dir.y * minRadius };
+      }
+    }
+    targets.set(p.id, spot);
+  }
+  return targets;
 }
 
 export function createSimulation(home, away, seed) {
@@ -626,6 +711,32 @@ export function createSimulation(home, away, seed) {
   let state = createMatchState(home, away);
   const teamIds = Object.keys(state.teams);
   state = { ...state, players: state.players.map((p) => ({ ...p, condition: initialCondition(p.skills, rng) })) };
+  state = { ...state, officials: createOfficials(rng) };
+
+  // Hakim garis menilai posisi offside saat seorang pemain memainkan bola.
+  // exempt: bola mati yang dibebaskan dari offside (pojok, lemparan, tendangan gawang).
+  function markPlay(b, kicker, positions, exempt, officials) {
+    const empty = { ...b, offsideFlagIds: [], offsideTrueIds: [], offsideTeamId: null };
+    if (exempt) return empty;
+    const ar = kicker.attacksRight;
+    const defenders = positions.filter((p) => p.teamId !== kicker.teamId);
+    const refX = offsideReferenceX(offsideLine(defenders, ar), b, ar);
+    const refDepth = ar ? refX : PITCH.length - refX;
+    const assistant = assistantFor(officials, ar);
+    const misalignment = Math.abs(assistant.x - refX);
+    const flagged = [];
+    const truly = [];
+    for (const p of positions) {
+      if (p.teamId !== kicker.teamId || p.id === kicker.id || p.role === 'GK') continue;
+      const depth = forwardOf(p, ar);
+      if (depth <= PITCH.length / 2) continue; // separuh sendiri: tidak bisa offside
+      const margin = depth - refDepth;
+      if (margin > 0) truly.push(p.id);
+      if (margin < -ASSISTANT.maxError) continue;
+      if (rng.chance(flagChance({ margin, misalignment, ketelitian: assistant.skills.ketelitian }))) flagged.push(p.id);
+    }
+    return { ...b, offsideFlagIds: flagged, offsideTrueIds: truly, offsideTeamId: kicker.teamId };
+  }
 
   // Lari ke belakang garis bek: lanjutkan, akhiri, atau mulai lari baru.
   // Hanya untuk tim yang sedang menguasai bola; satu pelari per tim.
@@ -665,8 +776,9 @@ export function createSimulation(home, away, seed) {
   //    berjalan ke posisi formasinya. Hitung mundur tunggu baru berjalan setelah
   //    semua sampai (atau setelah MAX_RETURN_TICKS, supaya tidak menunggu selamanya).
   function stepPause(prev, tick, stats) {
+    const targets = kickoffTargets(prev.players, prev.ball.restartTeamId);
     const players = prev.players.map((player) => {
-      const target = slotToPitch(player.slot, player.attacksRight);
+      const target = targets.get(player.id);
       const body = stepBody(player, target, DT);
       const condition = driftConfidence(
         { ...player.condition, energy: drainEnergy(player, Math.hypot(body.vx, body.vy), DT) },
@@ -685,20 +797,21 @@ export function createSimulation(home, away, seed) {
     stats.pauseTicks += 1;
     const settled =
       prev.pauseElapsed >= MAX_RETURN_TICKS ||
-      players.every(
-        (p) =>
-          distance(p, slotToPitch(p.slot, p.attacksRight)) <= SETTLE_DISTANCE && Math.hypot(p.vx, p.vy) <= SETTLE_SPEED,
-      );
+      players.every((p) => distance(p, targets.get(p.id)) <= SETTLE_DISTANCE && Math.hypot(p.vx, p.vy) <= SETTLE_SPEED);
     const pauseTicks = settled ? prev.pauseTicks - 1 : prev.pauseTicks;
     const done = pauseTicks === 0;
+    const officials = stepOfficials(prev.officials, prev.ball, offsideReferences(players, prev.ball), true, DT);
     return {
       ...prev,
       tick,
       players,
       stats,
+      officials,
       pauseTicks,
       pauseReason: done ? null : prev.pauseReason,
       pauseElapsed: done ? 0 : prev.pauseElapsed + 1,
+      // Peluit kick-off saat persiapan selesai.
+      whistle: done ? { tick, kind: 'kickoff', teamId: prev.ball.restartTeamId } : prev.whistle,
     };
   }
 
@@ -717,6 +830,7 @@ export function createSimulation(home, away, seed) {
     const byId = new Map(prev.players.map((p) => [p.id, p]));
     let ball = { ...prev.ball };
     let lastGoal = prev.lastGoal;
+    let whistle = prev.whistle;
     let pause = { pauseTicks: 0, pauseReason: null, pauseElapsed: 0 };
 
     const cooldownOverrides = new Map();
@@ -747,6 +861,7 @@ export function createSimulation(home, away, seed) {
       // Bola di tangan kiper tidak boleh ditekel.
       const tackler = isKeeperHandling(holder, ball) ? null : pickTackler(holder, opponents, rng);
       let tackled = false;
+      const setPiece = ball.setPieceKind;
 
       if (tackler) {
         stats.tackles[tackler.teamId].attempted += 1;
@@ -801,9 +916,12 @@ export function createSimulation(home, away, seed) {
           ball = releaseBall(ball, holder, passVelocity(ball, decision.option, holder, rng, blunderScale(holder, decision.context)), {
             passTargetId: decision.option.receiver.id,
             passTeamId: holder.teamId,
-            offsideReceiverId: decision.option.offside ? decision.option.receiver.id : null,
           });
           ballReleasedBy = holder.id;
+        }
+        // Offside dinilai saat bola dimainkan: tandai rekan yang offside / akan dibenderai.
+        if (ballReleasedBy === holder.id) {
+          ball = markPlay(ball, holder, prev.players, OFFSIDE_EXEMPT.includes(setPiece), prev.officials);
         }
       }
     }
@@ -920,7 +1038,16 @@ export function createSimulation(home, away, seed) {
             target = blendTowardMark(target, mark, { lateralOnly: holdLine });
           }
           // Penyerang tidak menunggu di posisi offside.
-          if (phase === 'attack') target = clampOnside(target, ball, offsideLines[player.teamId], team.attacksRight);
+          if (phase === 'attack') {
+            const line = offsideLines[player.teamId];
+            const margin = onsideMarginFor(player);
+            // Di bahu bek hanya saat bola sudah dekat gawang lawan; saat membangun serangan, striker ikut turun.
+            const ballNearGoal = forwardOf(ball, team.attacksRight) >= PITCH.length - SHOULDER_BALL_RANGE;
+            if (ballNearGoal && SHOULDER_ROLES.includes(player.role) && !boxRuns.has(player.id)) {
+              target = toShoulder(target, line, team.attacksRight, margin);
+            }
+            target = clampOnside(target, ball, line, team.attacksRight, margin);
+          }
         }
       }
 
@@ -1035,6 +1162,56 @@ export function createSimulation(home, away, seed) {
       startReactions(w.id);
     };
 
+    // Offside dibenderai hakim garis: tendangan bebas untuk lawan di posisi pelanggar.
+    const callOffside = (offender) => {
+      const defendingTeamId = teamIds.find((id) => id !== offender.teamId);
+      stats.offsides[offender.teamId] += 1;
+      if (!ball.offsideTrueIds.includes(offender.id)) stats.offsideWrong[offender.teamId] += 1;
+      note(offender.id, 'offside');
+      ball = {
+        ...ball,
+        ...clampToPitch(offender, 0.5),
+        vx: 0,
+        vy: 0,
+        ownerId: null,
+        heldTicks: 0,
+        holdTarget: 0,
+        kickerId: null,
+        kickCooldown: 0,
+        passTargetId: null,
+        passTeamId: null,
+        shotTeamId: null,
+        offsideFlagIds: [],
+        offsideTrueIds: [],
+        offsideTeamId: null,
+        lastTouchTeamId: offender.teamId,
+        restartTeamId: defendingTeamId,
+        restartKind: 'freeKick',
+        setPieceKind: null,
+        z: 0,
+        vz: 0,
+        crossTeamId: null,
+        shotKind: null,
+      };
+      for (let i = 0; i < players.length; i += 1) {
+        if (players[i].task !== 'shape' && players[i].task !== 'run') players[i] = { ...players[i], task: 'shape' };
+      }
+      for (const id of teamIds) teams[id].chaserId = null;
+      whistle = { tick, kind: 'offside', teamId: offender.teamId, playerId: offender.id };
+    };
+    // Pemain yang sebenarnya offside ikut bermain, tetapi hakim garis tidak mengangkat bendera.
+    const noteMissedOffside = (player) => {
+      if (ball.offsideTrueIds.includes(player.id) && !ball.offsideFlagIds.includes(player.id)) {
+        stats.offsideMissed[player.teamId] += 1;
+      }
+    };
+    // Tepisan kiper dan blok bek bukan "memainkan bola": penanda offside tetap berlaku.
+    const keepOffside = () => ({
+      offsideFlagIds: ball.offsideFlagIds,
+      offsideTrueIds: ball.offsideTrueIds,
+      offsideTeamId: ball.offsideTeamId,
+    });
+
     // 4. Bola.
     if (ball.ownerId !== null) {
       const holder = players.find((p) => p.id === ball.ownerId);
@@ -1060,13 +1237,22 @@ export function createSimulation(home, away, seed) {
         // Yang berduel: pemain yang menjangkau bola di saat paling awal (±0,3 langkah).
         const contest = candidates.filter((c) => c.u <= firstContact + 0.3);
         const winner = resolveAerial(contest, rng, (p) => physicalScale(p, conditionContext(p, players, match)));
-        winAerial(winner);
+        if (ball.offsideFlagIds.includes(winner.player.id)) {
+          callOffside(winner.player);
+        } else {
+          noteMissedOffside(winner.player);
+          winAerial(winner);
+          if (ball.ownerId === null && ball.kickerId === winner.player.id) ball = markPlay(ball, winner.player, players, false, prev.officials);
+        }
       } else if (!isInsidePitch(flight.x, flight.y)) {
         stats.outOfPlay += 1;
         ball = restartFromOut(ball, from, flight, teams, teamIds);
       } else if (flight.z <= AERIAL.footMax) {
         const touch = findController(from, flight, players, canTouch);
-        if (touch) {
+        if (touch && ball.offsideFlagIds.includes(touch.player.id)) {
+          callOffside(touch.player);
+        } else if (touch) {
+          noteMissedOffside(touch.player);
           if (ball.crossTeamId === touch.player.teamId) stats.crosses[touch.player.teamId].won += 1;
           takeControl(touch.player);
         } else {
@@ -1091,39 +1277,12 @@ export function createSimulation(home, away, seed) {
       );
       const crossing = goalLineCrossing(from, rolled);
       const isGoal = crossing && isBetweenPosts(crossing.y) && (!touch || crossing.u < touch.u);
+      if (!isGoal && touch) noteMissedOffside(touch.player);
 
       if (isGoal) {
         scoreGoal(crossing);
-      } else if (touch && touch.player.id === ball.offsideReceiverId) {
-        const offender = touch.player;
-        const defendingTeamId = teamIds.find((id) => id !== offender.teamId);
-        stats.offsides[offender.teamId] += 1;
-        note(offender.id, 'offside');
-        ball = {
-          ...ball,
-          ...clampToPitch(offender, 0.5),
-          vx: 0,
-          vy: 0,
-          ownerId: null,
-          heldTicks: 0,
-          holdTarget: 0,
-          kickerId: null,
-          kickCooldown: 0,
-          passTargetId: null,
-          passTeamId: null,
-          shotTeamId: null,
-          offsideReceiverId: null,
-          lastTouchTeamId: offender.teamId,
-          restartTeamId: defendingTeamId,
-          z: 0,
-          vz: 0,
-          crossTeamId: null,
-          shotKind: null,
-        };
-        for (let i = 0; i < players.length; i += 1) {
-          if (players[i].task !== 'shape' && players[i].task !== 'run') players[i] = { ...players[i], task: 'shape' };
-        }
-        for (const id of teamIds) teams[id].chaserId = null;
+      } else if (touch && ball.offsideFlagIds.includes(touch.player.id)) {
+        callOffside(touch.player);
       } else if (touch && isShotReachingKeeper(ball, touch.player, from)) {
         // Kiper menjangkau tembakan: tangkap, atau tepis jadi bola muntah.
         const keeper = touch.player;
@@ -1143,7 +1302,7 @@ export function createSimulation(home, away, seed) {
         } else {
           stats.saves[keeper.teamId].parried += 1;
           note(keeper.id, 'save');
-          ball = releaseBall({ ...ball, ...clampToPitch(contact) }, keeper, parryVelocity(keeper, speed, rng), {});
+          ball = releaseBall({ ...ball, ...clampToPitch(contact) }, keeper, parryVelocity(keeper, speed, rng), keepOffside());
           startReactions(keeper.id);
         }
       } else if (
@@ -1156,7 +1315,7 @@ export function createSimulation(home, away, seed) {
         const blocker = touch.player;
         const contact = { x: from.x + (rolled.x - from.x) * touch.u, y: from.y + (rolled.y - from.y) * touch.u };
         stats.blocks[blocker.teamId] += 1;
-        ball = releaseBall({ ...ball, ...clampToPitch(contact) }, blocker, deflectVelocity(ball, rng), {});
+        ball = releaseBall({ ...ball, ...clampToPitch(contact) }, blocker, deflectVelocity(ball, rng), keepOffside());
         startReactions(blocker.id);
       } else if (
         touch &&
@@ -1178,6 +1337,7 @@ export function createSimulation(home, away, seed) {
         stats.heavyTouches[player.teamId] += 1;
         note(player.id, 'heavyTouch');
         ball = releaseBall({ ...ball, ...clampToPitch(contact) }, player, heavyTouchVelocity(ball, rng), {});
+        ball = markPlay(ball, player, players, false, prev.officials);
         startReactions(player.id);
       } else if (touch) {
         ball = gainControl(ball, touch.player, stats, rng, note, tempoOf(touch.player));
@@ -1217,7 +1377,8 @@ export function createSimulation(home, away, seed) {
       players[i] = { ...players[i], condition: applyConfidenceEvent(players[i].condition, players[i].skills, event) };
     }
 
-    state = { ...prev, tick, teams, ball, players, stats, ...pause, lastGoal };
+    const officials = stepOfficials(prev.officials, ball, offsideReferences(players, ball), false, DT);
+    state = { ...prev, tick, teams, ball, players, stats, ...pause, lastGoal, officials, whistle };
     return state;
   }
 

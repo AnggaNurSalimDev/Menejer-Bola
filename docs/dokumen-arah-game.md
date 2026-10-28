@@ -208,6 +208,16 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - B2. pandangan kiper terhalang: pemain lapangan siapa pun di jalur tembakan (±1,2 m, ≥ 3 m di depan kiper) → kiper bereaksi 0,2 dtk lebih lambat; penembak ikut memperhitungkannya
    - hasil (200 laga, kedua tim "seimbang"): 34% tembakan dari luar kotak (target 30–40%), masuk 5,2% (target 3–5%), 20% gol dari luar kotak, ~25 tembakan per laga, gol 2,18 ± 0,21 (sebelumnya 2,08 — tidak turun), 0–0 12%. Kejutan 13 vs 11 (200 laga): 17% (sebelumnya 18%)
    - tampilan: baris "Tembakan luar kotak", "(dari luar kotak)" di tulisan GOL
+7a. ✅ Wasit, hakim garis, kick-off dengan peluit, offside menyeluruh (28 Okt malam; `src/engine/officials.js`):
+   - wasit (stat Ketegasan, dipakai di 7b) mengikuti bola dari samping; dua hakim garis (stat Ketelitian), masing-masing menjaga satu separuh di garis samping berseberangan, berlari sejajar titik acuan offside
+   - kick-off: jam berhenti, penendang (striker terdekat ke tengah) berdiri di belakang bola di titik tengah, semua pemain di separuh sendiri, lawan di luar lingkaran tengah, lalu "PRIIIT!" (uji 100 laga: 100% sentuhan pertama oleh penendang, 0% lawan di lingkaran)
+   - offside dinilai setiap kali pemain memainkan bola (operan, umpan silang, tembakan, sundulan, sentuhan buruk); pojok, lemparan, tendangan gawang dibebaskan; tepisan kiper & blok bek tidak menghapus penanda (rebound ke pemain offside tetap offside)
+   - hakim garis BISA SALAH (keputusan 28 Okt: tanpa VAR — VAR mungkin di masa depan): hanya pada kejadian tipis (≤ 1,5 m dari garis), lebih sering bila hakim garis tidak sejajar garis atau Ketelitiannya rendah; ke dua arah (offside lolos, bendera salah)
+   - offside sebelumnya hampir mustahil (penerima operan 81% berada > 6 m di belakang garis). Ditambah: disiplin menjaga garis dari Antisipasi (1 m kelewatan … 1 m di belakang garis) dan striker "di bahu" bek terakhir saat bola ≤ 40 m dari gawang lawan. Versi striker selalu di bahu bek menurunkan gol (2,35 → 1,87) dan terlalu banyak bendera salah (29%) — dibatalkan
+   - hasil (100–200 laga): offside ~0,5 per laga (sepak bola nyata ~3–4 — masih jarang), bendera salah ~14% dari bendera, offside lolos ~0,08 per laga; gol 2,18 ± 0,21 (sama dengan sebelum 7a), 0–0 16%, kejutan 13 vs 11 13%
+   - tampilan: wasit & hakim garis berbaju hitam-kuning, bendera terangkat saat offside, tulisan "PRIIIT! Kick-off / Offside — nama"
+7b. Rencana (disepakati 28 Okt): pelanggaran dari tekel, keuntungan (advantage), tendangan bebas, kartu kuning, stat Temperamen, Ketegasan wasit (wasit bisa tidak melihat), ~12–16 pelanggaran per laga. Tambahan permintaan: **pertikaian antarpemain** dan **kartu untuk protes berlebihan** — desain disepakati saat 7b dimulai
+7c. Rencana: penalti, kartu merah (tim main dengan 10 orang)
 7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
 
 ## 7. Keputusan yang Masih Terbuka

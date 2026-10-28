@@ -107,6 +107,26 @@ body {
   position: relative;
 }
 
+.whistle-banner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(17, 17, 17, 0.85);
+  border: 1px solid #f5d90a;
+  color: #f5d90a;
+  font-weight: 700;
+  font-size: 0.9rem;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.whistle-banner[hidden] {
+  display: none;
+}
+
 .goal-banner {
   position: absolute;
   inset: 0;

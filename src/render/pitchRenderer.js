@@ -267,7 +267,83 @@ export function interpolateState(previous, current, alpha) {
       if (before.id !== player.id) return player;
       return { ...player, x: lerp(before.x, player.x, t), y: lerp(before.y, player.y, t) };
     }),
+    officials: interpolateOfficials(previous.officials, current.officials, t),
   };
+}
+
+function interpolateOfficials(previous, current, t) {
+  if (!previous || !current) return current;
+  const mix = (a, b) => (a && b ? { ...b, x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) } : b);
+  return {
+    referee: mix(previous.referee, current.referee),
+    assistants: current.assistants.map((a, i) => mix(previous.assistants[i], a)),
+  };
+}
+
+// Perangkat pertandingan (tahap 7a): wasit berbaju hitam-kuning, hakim garis lebih kecil
+// dengan bendera. Bendera terangkat sesaat setelah offside di separuh yang dijaganya.
+const OFFICIAL_COLORS = Object.freeze({ shirt: '#111111', trim: '#f5d90a', flagA: '#f5d90a', flagB: '#e03131' });
+const FLAG_UP_TICKS = 20;
+
+function drawOfficialBody(ctx, vp, o, scale, label) {
+  const cx = vp.toX(o.x);
+  const cy = vp.toY(o.y);
+  const w = vp.px(JERSEY_WIDTH_METERS) * scale;
+  jerseyPath(ctx, cx, cy, w);
+  ctx.fillStyle = OFFICIAL_COLORS.shirt;
+  ctx.fill();
+  ctx.lineWidth = Math.max(1, w * 0.08);
+  ctx.strokeStyle = OFFICIAL_COLORS.trim;
+  ctx.stroke();
+  if (label) {
+    const size = Math.max(6, Math.round(w * 0.36));
+    ctx.font = `600 ${size}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = COLORS.nameStroke;
+    ctx.strokeText(label, cx, cy + w * 0.62);
+    ctx.fillStyle = OFFICIAL_COLORS.trim;
+    ctx.fillText(label, cx, cy + w * 0.62);
+  }
+  return { cx, cy, w };
+}
+
+function drawFlag(ctx, cx, cy, w, raised) {
+  const poleX = cx + w * 0.55;
+  const poleTop = raised ? cy - w * 1.3 : cy + w * 0.1;
+  const poleBottom = raised ? cy - w * 0.1 : cy + w * 0.9;
+  ctx.beginPath();
+  ctx.moveTo(poleX, poleBottom);
+  ctx.lineTo(poleX, poleTop);
+  ctx.lineWidth = Math.max(1, w * 0.08);
+  ctx.strokeStyle = '#dddddd';
+  ctx.stroke();
+  const fw = w * 0.55;
+  const fh = w * 0.4;
+  ctx.fillStyle = OFFICIAL_COLORS.flagA;
+  ctx.fillRect(poleX, poleTop, fw / 2, fh / 2);
+  ctx.fillRect(poleX + fw / 2, poleTop + fh / 2, fw / 2, fh / 2);
+  ctx.fillStyle = OFFICIAL_COLORS.flagB;
+  ctx.fillRect(poleX + fw / 2, poleTop, fw / 2, fh / 2);
+  ctx.fillRect(poleX, poleTop + fh / 2, fw / 2, fh / 2);
+}
+
+function drawOfficials(ctx, vp, state) {
+  const officials = state.officials;
+  if (!officials) return;
+  const w = state.whistle;
+  const flagHalf =
+    w && w.kind === 'offside' && state.tick - w.tick < FLAG_UP_TICKS && state.teams[w.teamId]
+      ? state.teams[w.teamId].attacksRight
+        ? 'right'
+        : 'left'
+      : null;
+  for (const a of officials.assistants) {
+    const body = drawOfficialBody(ctx, vp, a, 0.8, null);
+    drawFlag(ctx, body.cx, body.cy, body.w, a.half === flagHalf);
+  }
+  drawOfficialBody(ctx, vp, officials.referee, 1, 'Wasit');
 }
 
 export function renderMatch(ctx, state, cssWidth, cssHeight) {
@@ -295,5 +371,6 @@ export function renderMatch(ctx, state, cssWidth, cssHeight) {
     drawPlayer(ctx, vp, player, team.colors);
   }
 
+  drawOfficials(ctx, vp, state);
   drawBall(ctx, vp, state.ball);
 }

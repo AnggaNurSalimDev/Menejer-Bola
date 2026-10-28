@@ -31,6 +31,8 @@ import {
 } from '../src/engine/condition.js';
 import { canPanicClear } from '../src/engine/simulation.js';
 import { PHILOSOPHIES, validatePhilosophy } from '../src/engine/philosophy.js';
+import { flagChance } from '../src/engine/officials.js';
+import { kickoffTargets, pickKickoffTaker } from '../src/engine/simulation.js';
 import { instinctShotScale } from '../src/engine/condition.js';
 import { shotSpeedFor, isScreened, SHOT_POWER } from '../src/engine/shooting.js';
 import { createTeam } from '../src/engine/teams.js';
@@ -270,6 +272,40 @@ console.log('Insting gol & tembakan jarak jauh');
   if (isScreened(origin, aim, keeper, [{ role: 'CB', x: 90, y: 40 }])) e.push('pemain jauh dari jalur dianggap menghalangi');
   if (isScreened(origin, aim, keeper, [{ role: 'CB', x: 101.5, y: 31.5 }])) e.push('pemain tepat di depan kiper dianggap menghalangi pandangan');
   check(`dorongan menembak naik dekat gawang; tenaga tendangan ${weak}–${strong} m/s; pandangan kiper terhalang`, e);
+}
+
+console.log('Wasit, hakim garis & offside (tahap 7a)');
+{
+  const e = [];
+  // Hakim garis: jelas offside hampir selalu dibenderai; jelas sah tidak pernah; kejadian tipis bisa salah.
+  const clearOff = flagChance({ margin: 3, misalignment: 0, ketelitian: 12 });
+  const clearOn = flagChance({ margin: -3, misalignment: 0, ketelitian: 12 });
+  const tightOff = flagChance({ margin: 0.1, misalignment: 0, ketelitian: 12 });
+  const tightOn = flagChance({ margin: -0.1, misalignment: 0, ketelitian: 12 });
+  const tightOffMisaligned = flagChance({ margin: 0.1, misalignment: 5, ketelitian: 12 });
+  const tightOffSharp = flagChance({ margin: 0.1, misalignment: 0, ketelitian: 20 });
+  if (!(clearOff > 0.99)) e.push(`offside jelas tidak selalu dibenderai (${clearOff})`);
+  if (clearOn !== 0) e.push(`pemain jelas sah dibenderai (${clearOn})`);
+  if (!(tightOff < 0.99 && tightOff > 0.5)) e.push(`kejadian tipis offside tidak wajar (${tightOff})`);
+  if (!(tightOn > 0 && tightOn < 0.2)) e.push(`kejadian tipis sah tidak wajar (${tightOn})`);
+  if (!(tightOffMisaligned < tightOff)) e.push('hakim garis yang tidak sejajar tidak lebih sering salah');
+  if (!(tightOffSharp > tightOff)) e.push('Ketelitian tinggi tidak lebih akurat');
+
+  // Kick-off: penendang di belakang bola di titik tengah, lawan di luar lingkaran.
+  const st = createMatchState(createDemoTeams(2026).home, createDemoTeams(2026).away);
+  const kickTeam = st.ball.restartTeamId;
+  const targets = kickoffTargets(st.players, kickTeam);
+  const taker = pickKickoffTaker(st.players, kickTeam);
+  const c = { x: PITCH.length / 2, y: PITCH.width / 2 };
+  const tt = targets.get(taker.id);
+  if (Math.hypot(tt.x - c.x, tt.y - c.y) > 1) e.push('penendang tidak di titik tengah');
+  for (const p of st.players) {
+    const t = targets.get(p.id);
+    if (p.teamId !== kickTeam && Math.hypot(t.x - c.x, t.y - c.y) < PITCH.centerCircleRadius) e.push(`${p.id} (lawan) di dalam lingkaran`);
+    const ownHalf = p.attacksRight ? t.x <= c.x + 0.01 : t.x >= c.x - 0.01;
+    if (!ownHalf) e.push(`${p.id} tidak di separuh sendiri saat kick-off`);
+  }
+  check('hakim garis: jelas = benar, tipis = bisa salah; kick-off: penendang di titik tengah, lawan di luar lingkaran', e);
 }
 
 console.log('Bola udara (umpan silang & sundulan)');

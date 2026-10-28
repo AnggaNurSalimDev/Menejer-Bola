@@ -35,6 +35,8 @@ function percent(part, whole) {
 }
 
 // Baris statistik: label + cara membaca angka satu tim dari state.stats.
+const WHISTLE_SHOW_TICKS = 15; // 1,5 detik
+
 const STAT_ROWS = [
   { key: 'shots', label: 'Tembakan (tepat sasaran)', read: (s, id) => `${s.shots[id].total} (${s.shots[id].onTarget})` },
   { key: 'passes', label: 'Operan sukses / dicoba', read: (s, id) => `${s.passes[id].completed}/${s.passes[id].attempted}` },
@@ -62,6 +64,7 @@ export default function App() {
   const clockRef = useRef(null);
   const scoreRef = useRef(null);
   const goalBannerRef = useRef(null);
+  const whistleRef = useRef(null);
   const possessionRefs = { home: useRef(null), away: useRef(null), bar: useRef(null) };
   const rowRefs = useRef({});
 
@@ -99,6 +102,18 @@ export default function App() {
         set(rowRefs.current[`${row.key}-away`], row.read(stats, away.id));
       }
 
+      // Peluit (tahap 7a): tampil sesaat setelah wasit meniup peluit.
+      const whistleEl = whistleRef.current;
+      if (whistleEl) {
+        const w = state.whistle;
+        const showing = w !== null && state.tick - w.tick < WHISTLE_SHOW_TICKS;
+        whistleEl.hidden = !showing;
+        if (showing) {
+          const offender = w.playerId ? namesById.get(w.playerId) : null;
+          set(whistleEl, w.kind === 'offside' ? `🚩 PRIIIT! Offside${offender ? ` — ${offender}` : ''}` : 'PRIIIT! Kick-off');
+        }
+      }
+
       // Tulisan GOL! selama jeda setelah gol.
       const banner = goalBannerRef.current;
       if (banner) {
@@ -123,6 +138,7 @@ export default function App() {
     if (clockRef.current) clockRef.current.textContent = "0'";
     if (scoreRef.current) scoreRef.current.textContent = '0 – 0';
     if (goalBannerRef.current) goalBannerRef.current.hidden = true;
+    if (whistleRef.current) whistleRef.current.hidden = true;
     setBreakState(null);
     setMatchSeed(randomSeed());
     setRunning(true);
@@ -150,6 +166,7 @@ export default function App() {
 
       <div className="pitch-wrap">
         <MatchView simulation={simulation} running={running} speed={speed} onTick={handleTick} />
+        <div ref={whistleRef} className="whistle-banner" hidden aria-live="polite" />
         <div ref={goalBannerRef} className="goal-banner" hidden aria-live="polite">
           <span className="goal-banner__title">GOL!</span>
           <span className="goal-banner__detail" />
@@ -205,7 +222,7 @@ export default function App() {
         <button type="button" onClick={restart}>
           Ulang (seed baru)
         </button>
-        <span className="stage-note">Filosofi pelatih + bola udara (bayangan = bola melambung; bar = tenaga menipis, titik merah = kurang percaya diri, titik oranye = on fire). Seed: {matchSeed}</span>
+        <span className="stage-note">Wasit & hakim garis + filosofi pelatih + bola udara (bayangan = bola melambung; bar = tenaga menipis, titik merah = kurang percaya diri, titik oranye = on fire). Seed: {matchSeed}</span>
       </div>
     </main>
   );
