@@ -80,11 +80,26 @@ function nearestDistance(point, others) {
 }
 
 // rng opsional: tanpa rng, penilaian dilakukan sempurna (dipakai uji dan alat ukur).
-export function evaluatePassOptions({ holder, origin, teammates, opponents, attacksRight, previousOwnerId, rng = null }) {
+// misjudgeScale : pengali salah kira dari kondisi (lelah, tekanan, percaya diri) — ≥ 1
+// progressScale  : pengali bobot operan ke depan (ragu saat percaya diri rendah) — ≤ 1
+export function evaluatePassOptions({
+  holder,
+  origin,
+  teammates,
+  opponents,
+  attacksRight,
+  previousOwnerId,
+  rng = null,
+  misjudgeScale = 1,
+  progressScale = 1,
+}) {
   if (!holder || !origin) throw new TypeError('evaluatePassOptions: holder dan origin wajib ada');
 
   const vision = blunder(holder, 'passVision');
-  const misjudge = rng ? blunder(holder, 'riskMisjudge') : 0;
+  if (!(misjudgeScale >= 1) || !(progressScale > 0 && progressScale <= 1)) {
+    throw new RangeError(`evaluatePassOptions: skala kondisi tidak valid (${misjudgeScale}, ${progressScale})`);
+  }
+  const misjudge = rng ? blunder(holder, 'riskMisjudge') * misjudgeScale : 0;
   const trueLine = offsideLine(opponents, attacksRight);
 
   const options = [];
@@ -129,7 +144,7 @@ export function evaluatePassOptions({ holder, origin, teammates, opponents, atta
     const progress = forwardOf(target, attacksRight) - forwardOf(origin, attacksRight);
 
     const score =
-      WEIGHTS.progress * progress +
+      WEIGHTS.progress * progressScale * progress +
       WEIGHTS.openness * openness +
       WEIGHTS.safety * Math.min(margin, MAX_SAFETY_CREDIT) -
       WEIGHTS.distance * passDistance -

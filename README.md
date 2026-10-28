@@ -13,7 +13,8 @@ Proyek ini dibuat untuk senang-senang.
 - Format pertandingan: 2 babak × 5 menit nyata (jam 0'–90'), pemain tetap bergerak dengan kecepatan nyata, tempo dipadatkan. Layar jeda dengan tombol "Lanjut babak 2" (nanti tempat mengubah taktik), layar akhir dengan "Main lagi". Babak kedua tukar sisi.
 - Tahap 5 selesai (blunder dari stat): operan meleset (Passing), sentuhan pertama terlalu jauh (Kontrol), tembakan meleset (Finishing), salah menilai risiko (Keputusan), jangkauan operan (Visi), waktu reaksi nyata (Antisipasi), ketat/longgarnya menjaga (Posisi), jangkauan dan tangkapan kiper. Penyerang mencari ruang tembak, tembakan yang kena bek memantul liar.
 - Pola serangan tahap awal: aturan offside, lari ke belakang garis bek (ke celah antar-bek), umpan terobosan, mode satu lawan satu. Bek bertahan sebagai satu garis. Umpan silang belum (butuh bola melambung).
-- Berikutnya: memperkuat pola serangan (lari ke celah antar-bek, garis pertahanan yang naik) atau lapisan psikologis dan kelelahan (tahap 6).
+- Tahap 6 selesai (kelelahan & psikologi): tenaga terkuras (Stamina), lelah memperlambat dan menambah blunder, Determinasi menahannya saat tertinggal atau di menit akhir. Kepercayaan diri naik-turun dari aksi sukses/gagal (Stabilitas mental), form hari ini (Konsistensi), gugup saat ditekan atau di peluang besar (Ketenangan), Egoisme membuat pemain lebih cepat menembak. Bek yang pernah blunder dan timnya tertinggal cenderung membuang bola jauh (sapuan panik). Tampilan: bar tenaga saat < 60%, titik merah saat kurang percaya diri.
+- Berikutnya: layer manager (taktik saat jeda), atau memperbaiki hubungan laju bola vs laju pemain agar peluang lebih banyak.
 
 Tip: tambahkan `?seed=13` di alamat (misalnya `http://localhost:5173/?seed=13`) untuk memutar ulang pertandingan tertentu.
 
@@ -40,6 +41,7 @@ npm run build    # build produksi
   - `keeper.js` — tangkap/tepis, bola di tangan kiper
   - `control.js` — jangkauan pemain terhadap bola (kaki atau tangan kiper)
   - `skill.js` — SEMUA angka blunder dari stat (tabel BLUNDER)
+  - `condition.js` — kondisi pemain: tenaga, kepercayaan diri, form, tekanan (tabel CONDITION)
   - `shape.js` — posisi jangkar formasi per fase (menyerang/bertahan/netral)
   - `marking.js` — penjagaan lawan per zona saat bertahan
   - `attack.js` — garis offside, lari ke belakang garis bek, titik umpan terobosan

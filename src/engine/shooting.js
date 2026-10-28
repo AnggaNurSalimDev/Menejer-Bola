@@ -61,7 +61,9 @@ export function goalAngle(origin, attacksRight) {
   return Math.acos(Math.min(1, Math.max(-1, dot / lengths)));
 }
 
-export function evaluateShot({ origin, opponents, attacksRight, pressured }) {
+// thresholdScale: pengali ambang tembak (< 1 = lebih cepat menembak, dari stat Egoisme).
+export function evaluateShot({ origin, opponents, attacksRight, pressured, thresholdScale = 1 }) {
+  if (!(thresholdScale > 0)) throw new RangeError(`evaluateShot: thresholdScale tidak valid ${thresholdScale}`);
   if (!origin) throw new TypeError('evaluateShot: origin wajib ada');
 
   const goalX = opponentGoalX(attacksRight);
@@ -98,7 +100,7 @@ export function evaluateShot({ origin, opponents, attacksRight, pressured }) {
     angle *
     (outfieldOnLane ? 0 : blockFactor(blockMargin)) *
     (keeperOnLane ? KEEPER_ON_LANE_FACTOR : keeperFactor(keeperMargin));
-  const threshold = pressured ? PRESSURED_SHOT_QUALITY_THRESHOLD : SHOT_QUALITY_THRESHOLD;
+  const threshold = (pressured ? PRESSURED_SHOT_QUALITY_THRESHOLD : SHOT_QUALITY_THRESHOLD) * thresholdScale;
   const shouldShoot = quality >= threshold;
 
   return { aim, angle, distance: toGoal, blockMargin, keeperMargin, quality, shouldShoot };

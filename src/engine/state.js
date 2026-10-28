@@ -6,6 +6,7 @@ import { getFormation } from './formations.js';
 import { validateStats } from './stats.js';
 import { deriveMovementProfile } from './movement.js';
 import { HALF_TICKS, GAME_MINUTES_PER_HALF, PERIODS } from './constants.js';
+import { CONDITION, validateCondition } from './condition.js';
 
 const SPEED_TOLERANCE = 1e-6;
 const OWNED_BALL_MAX_DISTANCE = 1.5; // meter
@@ -55,6 +56,8 @@ function placeTeam(team, attacksRight) {
       reactionDelay: 0,
       // Tick tersisa sebelum boleh berlari ke belakang garis bek lagi.
       runCooldown: 0,
+      // Kondisi (tahap 6). Form hari ini diacak oleh simulasi saat dibuat.
+      condition: { energy: 1, confidence: CONDITION.startConfidence, form: 0, blunders: 0 },
     };
   });
 }
@@ -102,6 +105,7 @@ function createStats(teamIds) {
     heavyTouches: perTeam(() => 0),
     blocks: perTeam(() => 0),
     offsides: perTeam(() => 0),
+    clearances: perTeam(() => 0),
     turnovers: 0,
     outOfPlay: 0,
   };
@@ -287,6 +291,7 @@ export function validateMatchState(state, teams = []) {
   }
   for (const p of state.players) {
     if (!Number.isInteger(p.runCooldown) || p.runCooldown < 0) errors.push(`pemain ${p.id}: runCooldown tidak valid`);
+    for (const e of validateCondition(p.condition)) errors.push(`pemain ${p.id}: kondisi — ${e}`);
   }
   if (ball.offsideReceiverId !== null && ball.offsideReceiverId !== ball.passTargetId) {
     errors.push('penanda offside bukan penerima operan yang sedang berjalan');
@@ -308,6 +313,7 @@ export function validateMatchState(state, teams = []) {
       if (!(state.stats.heavyTouches[id] >= 0)) errors.push(`tim ${id}: sentuhan buruk tidak valid`);
       if (!(state.stats.blocks[id] >= 0)) errors.push(`tim ${id}: blok tidak valid`);
       if (!(state.stats.offsides[id] >= 0)) errors.push(`tim ${id}: offside tidak valid`);
+      if (!(state.stats.clearances[id] >= 0)) errors.push(`tim ${id}: sapuan tidak valid`);
     }
   } else {
     errors.push('stats tidak ada');

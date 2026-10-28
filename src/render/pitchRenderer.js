@@ -166,6 +166,38 @@ function drawPlayer(ctx, vp, player, teamColors) {
   ctx.strokeText(player.shortName, cx, nameY);
   ctx.fillStyle = COLORS.nameText;
   ctx.fillText(player.shortName, cx, nameY);
+
+  drawConditionCues(ctx, cx, cy, w, nameY + nameSize + 2, player.condition);
+}
+
+// Tanda kondisi (tahap 6). Hanya muncul saat relevan supaya lapangan tidak ramai:
+//   bar tenaga   : di bawah nama, saat tenaga < LOW_ENERGY_CUE
+//   titik merah  : di bahu jersey, saat percaya diri < LOW_CONFIDENCE_CUE
+const LOW_ENERGY_CUE = 0.6;
+const LOW_CONFIDENCE_CUE = 0.4;
+
+function drawConditionCues(ctx, cx, cy, w, barY, condition) {
+  if (!condition) return; // state lama tanpa kondisi: lewati saja
+  if (condition.energy < LOW_ENERGY_CUE) {
+    const barW = w * 0.9;
+    const barH = Math.max(2, w * 0.1);
+    const left = cx - barW / 2;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.fillRect(left, barY, barW, barH);
+    const e = Math.min(1, Math.max(0, condition.energy));
+    ctx.fillStyle = e < 0.35 ? '#ff6b5a' : '#ffd166';
+    ctx.fillRect(left, barY, barW * e, barH);
+  }
+  if (condition.confidence < LOW_CONFIDENCE_CUE) {
+    const r = Math.max(2.5, w * 0.16);
+    ctx.beginPath();
+    ctx.arc(cx + w * 0.55, cy - w * 0.5, r, 0, Math.PI * 2);
+    ctx.fillStyle = '#ff4d4d';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = '#ffffff';
+    ctx.stroke();
+  }
 }
 
 function drawBall(ctx, vp, ball) {

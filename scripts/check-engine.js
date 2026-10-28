@@ -19,6 +19,8 @@ import { findController } from '../src/engine/touch.js';
 import { goalLineCrossing } from '../src/engine/simulation.js';
 import { isBetweenPosts } from '../src/engine/pitch.js';
 import { tackleSuccessChance } from '../src/engine/tackle.js';
+import { CONDITION, blunderScale, physicalScale, applyConfidenceEvent } from '../src/engine/condition.js';
+import { canPanicClear } from '../src/engine/simulation.js';
 
 let failures = 0;
 
@@ -149,6 +151,52 @@ console.log('Bentuk tim (jangkar formasi)');
     }
   }
   check(`lini tidak menumpuk di fase & posisi bola mana pun (min ${MIN_LINE_GAP} m)`, errors);
+}
+
+console.log('Kondisi pemain (tahap 6)');
+{
+  const skills = (overrides = {}) => ({
+    stamina: 12, determinasi: 12, ketenangan: 12, stabilitasMental: 12, konsistensi: 12, egoisme: 12, ...overrides,
+  });
+  const worst = {
+    condition: { energy: 0, confidence: 0, form: CONDITION.formMax, blunders: 9 },
+    skills: skills({ ketenangan: 1, determinasi: 1 }),
+    profile: { maxSpeed: 8, maxAccel: 4 },
+  };
+  const ctx = { pressured: true, bigChance: true, trailing: false, minute: 10 };
+  const errors = [];
+  const b = blunderScale(worst, ctx);
+  const ph = physicalScale(worst, ctx);
+  if (!(b <= 1 + CONDITION.maxBlunderPenalty + 1e-9)) errors.push(`blunderScale ${b} melewati batas`);
+  if (!(ph >= 1 - CONDITION.maxPhysicalPenalty - 1e-9)) errors.push(`physicalScale ${ph} melewati batas`);
+  check(`batas nerf: blunder ≤ +${CONDITION.maxBlunderPenalty * 100}%, fisik ≥ −${CONDITION.maxPhysicalPenalty * 100}% di kondisi terburuk`, errors);
+
+  const fresh = { energy: 1, confidence: CONDITION.startConfidence, form: 0, blunders: 0 };
+  const fragile = applyConfidenceEvent(fresh, skills({ stabilitasMental: 3 }), 'heavyTouch');
+  const steady = applyConfidenceEvent(fresh, skills({ stabilitasMental: 18 }), 'heavyTouch');
+  check(
+    `stabilitas mental rendah lebih goyah setelah blunder (${fragile.confidence.toFixed(2)} vs ${steady.confidence.toFixed(2)})`,
+    fragile.confidence < steady.confidence && fragile.blunders === 1 ? [] : ['urutan salah atau blunder tidak tercatat'],
+  );
+
+  const tiredLate = { ...worst, condition: { ...worst.condition, energy: 0.3, confidence: 1, form: 0 }, skills: skills({ determinasi: 20 }) };
+  const lateEffect = physicalScale(tiredLate, { trailing: true, minute: 85 });
+  const earlyEffect = physicalScale(tiredLate, { trailing: false, minute: 20 });
+  check(
+    `determinasi menahan lelah saat tertinggal / menit akhir (${lateEffect.toFixed(3)} vs ${earlyEffect.toFixed(3)})`,
+    lateEffect > earlyEffect ? [] : ['determinasi tidak berpengaruh'],
+  );
+
+  const match = { goals: { home: 0, away: 1 }, minute: 50, teamIds: ['home', 'away'] };
+  const defender = { role: 'CB', teamId: 'home', attacksRight: true, condition: { ...fresh, blunders: 1 } };
+  const ownHalfBall = { x: 30, y: 30, heldTicks: 2 };
+  const e2 = [];
+  if (!canPanicClear(defender, ownHalfBall, match)) e2.push('bek tertinggal dengan catatan blunder seharusnya bisa panik');
+  if (canPanicClear(defender, ownHalfBall, { ...match, goals: { home: 1, away: 1 } })) e2.push('panik padahal tidak tertinggal');
+  if (canPanicClear({ ...defender, condition: fresh }, ownHalfBall, match)) e2.push('panik padahal tanpa catatan blunder');
+  if (canPanicClear(defender, { ...ownHalfBall, x: 70 }, match)) e2.push('panik padahal bola di separuh lawan');
+  if (canPanicClear({ ...defender, role: 'ST' }, ownHalfBall, match)) e2.push('penyerang ikut panik');
+  check('sapuan panik hanya saat tertinggal + catatan blunder + separuh sendiri + pemain bertahan', e2);
 }
 
 console.log('Struktur pertandingan');
