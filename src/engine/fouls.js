@@ -31,6 +31,10 @@ export const FOUL = Object.freeze({
   bookedCaution: Object.freeze({ low: 0.85, high: 0.4 }),
   // Kecerobohan & emosi mengikis kehati-hatian (0 = tetap hati-hati, 1 = lupa sudah dikartu).
   cautionErosion: 0.7,
+  // Di kotak penalti sendiri bek jauh lebih hati-hati (satu kesalahan = penalti). Uji 29 Okt:
+  // tanpa ini 1,4 penalti per laga (sepak bola nyata ~0,3). Pengali dari Keputusan 1 … 20.
+  boxAttempt: Object.freeze({ low: 0.6, high: 0.4 }),
+  boxFoul: Object.freeze({ low: 0.4, high: 0.15 }),
 });
 
 export const CARD = Object.freeze({
@@ -117,7 +121,12 @@ export function isLastMan(tackler, holder, players) {
   );
 }
 
-// ctx: { won, fromBehind, trailingLate }
+// Pengali peluang mencoba tekel di kotak penalti sendiri (< 1 = lebih menahan diri).
+export function boxAttemptScale(tackler) {
+  return lerp(FOUL.boxAttempt, normalizeStat(tackler.skills.keputusan));
+}
+
+// ctx: { won, fromBehind, trailingLate, inOwnBox }
 export function foulChance(tackler, ctx) {
   const s = tackler.skills;
   let chance = ctx.won ? FOUL.wonBase : FOUL.beatenBase;
@@ -127,6 +136,7 @@ export function foulChance(tackler, ctx) {
   const tired = Math.max(0, 1 - tackler.condition.energy - 0.3);
   chance *= 1 + FOUL.fatigueFoul * tired;
   if (ctx.trailingLate) chance *= FOUL.trailingLate;
+  if (ctx.inOwnBox) chance *= lerp(FOUL.boxFoul, normalizeStat(s.keputusan));
   chance *= cautionScale(tackler);
   return Math.min(FOUL.maxChance, Math.max(0, chance));
 }

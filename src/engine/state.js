@@ -147,6 +147,7 @@ function createStats(teamIds) {
     yellows: perTeam(() => 0),
     secondYellows: perTeam(() => 0),
     freeKicks: perTeam(() => ({ awarded: 0, shots: 0, goals: 0 })),
+    penalties: perTeam(() => ({ awarded: 0, scored: 0 })), // per tim penendang
   };
 }
 
@@ -301,7 +302,14 @@ export function validateMatchState(state, teams = []) {
   if (state.pauseReason === 'goal' && state.lastGoal === null) errors.push('jeda gol tanpa catatan gol');
   if (state.pauseTicks > 0) {
     if (ball.restartTeamId === null) errors.push('jeda gol tanpa tim kick-off');
-    if (ball.x !== PITCH.length / 2 || ball.y !== PITCH.width / 2) errors.push('jeda gol tetapi bola tidak di tengah');
+    if (state.pauseReason === 'penalty') {
+      const spotX = (attacksRight) => (attacksRight ? PITCH.length - PITCH.penaltySpotDistance : PITCH.penaltySpotDistance);
+      const kicker = state.teams[ball.restartTeamId];
+      if (!kicker || ball.x !== spotX(kicker.attacksRight) || ball.y !== PITCH.width / 2) errors.push('jeda penalti tetapi bola tidak di titik penalti');
+      if (ball.restartKind !== 'penalty') errors.push('jeda penalti tanpa bola mati penalti');
+    } else if (ball.x !== PITCH.length / 2 || ball.y !== PITCH.width / 2) {
+      errors.push('jeda gol tetapi bola tidak di tengah');
+    }
     if (state.players.some((p) => p.task !== 'shape')) errors.push('jeda gol tetapi ada pemain mengurus bola');
   }
   if (ball.passTargetId !== null) {
@@ -319,7 +327,7 @@ export function validateMatchState(state, teams = []) {
   errors.push(...validateAirBall(ball));
   for (const id of teamIds) for (const e of validatePhilosophy(state.teams[id].philosophy)) errors.push(`tim ${id}: ${e}`);
   if ((ball.shotKind === null) !== (ball.shotTeamId === null)) errors.push('shotKind harus terisi tepat saat ada tembakan');
-  if (ball.shotKind !== null && !['foot', 'long', 'header', 'freeKick'].includes(ball.shotKind)) errors.push(`shotKind tidak dikenal "${ball.shotKind}"`);
+  if (ball.shotKind !== null && !['foot', 'long', 'header', 'freeKick', 'penalty'].includes(ball.shotKind)) errors.push(`shotKind tidak dikenal "${ball.shotKind}"`);
   if (ball.crossTeamId !== null && !teamIds.includes(ball.crossTeamId)) errors.push('crossTeamId tidak valid');
   if (ball.crossTeamId !== null && ball.passTargetId !== null) errors.push('umpan silang sekaligus operan tanah');
   if (ball.lastTouchTeamId !== null && !teamIds.includes(ball.lastTouchTeamId)) {
@@ -374,7 +382,11 @@ export function validateMatchState(state, teams = []) {
   }
   if (ball.offsideTeamId !== null && !teamIds.includes(ball.offsideTeamId)) errors.push('offsideTeamId tidak valid');
   for (const id of ball.offsideFlagIds ?? []) if (ball.offsideFlagIds.indexOf(id) !== ball.offsideFlagIds.lastIndexOf(id)) errors.push('offsideFlagIds ganda');
-  const RESTART_KINDS = ['kickoff', 'throwIn', 'goalKick', 'corner', 'freeKick'];
+  const RESTART_KINDS = ['kickoff', 'throwIn', 'goalKick', 'corner', 'freeKick', 'penalty'];
+  // Bola mati penalti di luar jeda hanya sesaat setelah peluit, menunggu disentuh penendang, di titik penalti.
+  if (ball.restartKind === 'penalty' && state.pauseReason === null && ball.y !== PITCH.width / 2) {
+    errors.push('bola mati penalti tidak di titik penalti');
+  }
   if ((ball.restartTeamId === null) !== (ball.restartKind === null)) errors.push('restartKind harus terisi tepat saat bola mati');
   if (ball.restartKind !== null && !RESTART_KINDS.includes(ball.restartKind)) errors.push(`restartKind tidak dikenal "${ball.restartKind}"`);
   if (ball.setPieceKind !== null && (ball.ownerId === null || !RESTART_KINDS.includes(ball.setPieceKind))) {
@@ -383,7 +395,7 @@ export function validateMatchState(state, teams = []) {
   for (const e of validateOfficials(state.officials)) errors.push(`perangkat: ${e}`);
   if (
     state.whistle !== null &&
-    !(Number.isInteger(state.whistle.tick) && ['kickoff', 'offside', 'foul', 'advantage'].includes(state.whistle.kind))
+    !(Number.isInteger(state.whistle.tick) && ['kickoff', 'offside', 'foul', 'advantage', 'penalty'].includes(state.whistle.kind))
   ) {
     errors.push('catatan peluit tidak valid');
   }
@@ -425,6 +437,8 @@ export function validateMatchState(state, teams = []) {
       if (!(state.stats.advantages[id] >= 0 && state.stats.foulsUnseen[id] >= 0)) errors.push(`tim ${id}: catatan pelanggaran tidak valid`);
       const fk = state.stats.freeKicks[id];
       if (!(fk.goals >= 0 && fk.goals <= fk.shots && fk.shots <= fk.awarded)) errors.push(`tim ${id}: statistik tendangan bebas tidak konsisten`);
+      const pen = state.stats.penalties[id];
+      if (!(pen.scored >= 0 && pen.scored <= pen.awarded)) errors.push(`tim ${id}: penalti masuk > penalti diberikan`);
     }
   } else {
     errors.push('stats tidak ada');

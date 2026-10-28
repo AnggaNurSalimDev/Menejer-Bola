@@ -33,7 +33,7 @@ import { canPanicClear } from '../src/engine/simulation.js';
 import { PHILOSOPHIES, validatePhilosophy } from '../src/engine/philosophy.js';
 import { flagChance } from '../src/engine/officials.js';
 import { foulChance, cautionScale, callChance, advantageApplies, initialDiscipline } from '../src/engine/fouls.js';
-import { kickoffTargets, pickKickoffTaker } from '../src/engine/simulation.js';
+import { kickoffTargets, pickKickoffTaker, penaltyTargets, pickPenaltyTaker, penaltySpot } from '../src/engine/simulation.js';
 import { instinctShotScale } from '../src/engine/condition.js';
 import { shotSpeedFor, isScreened, SHOT_POWER } from '../src/engine/shooting.js';
 import { createTeam } from '../src/engine/teams.js';
@@ -335,6 +335,33 @@ console.log('Pelanggaran & kartu (tahap 7b-1)');
   if (!advantageApplies(holder, [{ id: 'off', x: 70.5, y: 34 }], 'off')) e.push('keuntungan terhalang oleh si pelanggar sendiri');
   if (advantageApplies({ ...holder, x: 90 }, [], 'off')) e.push('keuntungan diberikan padahal tendangan bebas dekat gawang lebih berharga');
   check('pelanggaran: Kecerobohan, emosi, dari belakang; kehati-hatian setelah kuning; wasit; keuntungan', e);
+}
+
+console.log('Penalti');
+{
+  const e = [];
+  const st = createMatchState(createDemoTeams(2026).home, createDemoTeams(2026).away);
+  for (const kicker of ['home', 'away']) {
+    const targets = penaltyTargets(st.players, kicker, st.teams);
+    const ar = st.teams[kicker].attacksRight;
+    const spot = penaltySpot(ar);
+    const taker = pickPenaltyTaker(st.players, kicker);
+    for (const p of st.players) {
+      const t = targets.get(p.id);
+      if (!t) { e.push(`${p.id}: tanpa posisi penalti`); continue; }
+      const depthFromGoal = ar ? PITCH.length - t.x : t.x;
+      if (p.id === taker.id) {
+        if (Math.hypot(t.x - spot.x, t.y - spot.y) > 1.2) e.push('penendang tidak di titik penalti');
+      } else if (p.role === 'GK' && p.teamId !== kicker) {
+        if (depthFromGoal > 0.5 || Math.abs(t.y - PITCH.width / 2) > 0.1) e.push('kiper tidak di garis gawang');
+      } else if (p.role !== 'GK') {
+        if (depthFromGoal <= PITCH.penaltyAreaDepth) e.push(`${p.id} di dalam kotak saat penalti`);
+        if (Math.hypot(t.x - spot.x, t.y - spot.y) < 9.15) e.push(`${p.id} di dalam busur penalti`);
+        if (depthFromGoal < PITCH.penaltySpotDistance) e.push(`${p.id} di depan bola`);
+      }
+    }
+  }
+  check('penalti: penendang di titik, kiper di garis, pemain lain di luar kotak, busur, dan di belakang bola', e);
 }
 
 console.log('Bola udara (umpan silang & sundulan)');

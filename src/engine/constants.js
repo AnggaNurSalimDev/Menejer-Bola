@@ -33,4 +33,4 @@ export const KICKOFF_WAIT_TICKS = 20; // 2 detik menunggu setelah semua sampai
 export const MAX_RETURN_TICKS = 80; // paling lama 8 detik berjalan kembali
 export const SETTLE_DISTANCE = 1.0; // meter dari posisi formasi = sudah sampai
 export const SETTLE_SPEED = 0.5; // m/s
-export const PAUSE_REASONS = Object.freeze(['kickoff', 'goal']);
+export const PAUSE_REASONS = Object.freeze(['kickoff', 'goal', 'penalty']);

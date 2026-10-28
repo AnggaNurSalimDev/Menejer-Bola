@@ -117,7 +117,9 @@ export default function App() {
             w.kind === 'offside'
               ? `🚩 PRIIIT! Offside${offender ? ` — ${offender}` : ''}`
               : w.kind === 'foul'
-                ? `PRIIIT! Pelanggaran — ${offender}${card}`
+                ? `PRIIIT! ${w.penalty ? 'PENALTI' : 'Pelanggaran'} — ${offender}${card}`
+                : w.kind === 'penalty'
+                  ? 'PRIIIT! Tendangan penalti'
                 : w.kind === 'advantage'
                   ? `Keuntungan! Pelanggaran ${offender}${card}`
                   : 'PRIIIT! Kick-off';
@@ -134,7 +136,7 @@ export default function App() {
           const goal = state.lastGoal;
           const team = goal.teamId === home.id ? home : away;
           const scorer = goal.scorerId ? namesById.get(goal.scorerId) : null;
-          const who = goal.ownGoal ? 'gol bunuh diri' : `${scorer ?? team.name}${goal.header ? ' (sundulan)' : goal.freeKick ? ' (tendangan bebas)' : goal.longShot ? ' (dari luar kotak)' : ''}`;
+          const who = goal.ownGoal ? 'gol bunuh diri' : `${scorer ?? team.name}${goal.header ? ' (sundulan)' : goal.penalty ? ' (penalti)' : goal.freeKick ? ' (tendangan bebas)' : goal.longShot ? ' (dari luar kotak)' : ''}`;
           set(banner.querySelector('.goal-banner__detail'), `${who} · ${team.name}`);
           banner.style.setProperty('--goal-color', team.colors.shirt);
         }

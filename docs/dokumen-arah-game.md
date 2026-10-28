@@ -227,8 +227,13 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - setelah kuning: lebih jarang mencoba tekel & melanggar sesuai kendali diri (Ketenangan + Keputusan); Kecerobohan di atas rata-rata & emosi panas mengikis kehati-hatian. Uji terkontrol: satu tim berkartu semua → pelanggaran −24%
    - hasil (200 laga): ~11,5 pelanggaran ditiup + ~2,4 tidak terlihat wasit per laga, keuntungan ~2,4, kuning ~2,8, calon merah ~0,15, tendangan bebas ~9 (ditembak langsung ~0,7, masuk ~7%), gol 2,11 (sama dengan sebelum 7b), 0–0 12%. Kejutan 13 vs 11 turun ke **10%** (dari 13%) — tepat di batas bawah; awasi di 7b-2
    - catatan pengukuran: membandingkan pelanggaran pemain sebelum vs sesudah dikartu menyesatkan (pemain yang dikartu memang yang sering melanggar sebelumnya) — pakai uji terkontrol
+   - koreksi (29 Okt, masukan setelah ditonton): (1) **penalti dimajukan dari 7c** — pelanggaran di kotak kini penalti, bukan tendangan bebas di tepi kotak; (2) saat tendangan bebas, lawan yang terlalu dekat dulu didorong menjauh LURUS dari bola, sehingga bila bola di tepi kotak semua bek menumpuk di garis gawang — sekarang digeser ke SAMPING pada kedalaman yang sama; (3) bug: eksekutor penalti & tendangan bebas memakai keputusan tembak/oper biasa sebelum aturan bola mati dicek — sekarang aturan bola mati dicek paling awal
+   - penalti: persiapan dengan jam berhenti (seperti kick-off); penendang = Finishing + Ketenangan terbaik, di titik penalti; kiper di garis gawang; pemain lain berjejer berselang-seling di tepi luar kotak, di luar busur, di belakang bola; peluit "PRIIIT! Penalti". Penendang memilih sisi & membidik di dalam tiang (meleset dari Finishing × tekanan Ketenangan); kiper menebak arah (Penempatan), melompat (Refleks) dan TIDAK bisa berbalik arah 0,8 dtk; bola muntah tetap hidup
+   - uji 600 penalti dipaksa: masuk 73–74%, diselamatkan 19–20%, meleset 6–7% (liga nyata ±75/18/7); posisi benar saat peluit 100%
+   - bek jauh lebih hati-hati di kotaknya sendiri (lebih jarang menekel & melanggar, dari Keputusan): tanpa ini 1,37 penalti per laga; dengan ini 0,20 (nyata ~0,3)
+   - hasil akhir (200 laga): gol 2,23, 0–0 10%, pelanggaran ~10,5 + ~2,2 tidak terlihat, kuning ~2,5, penalti ~0,2 (masuk ~0,14), kejutan 13 vs 11 15%
 7b-2. Rencana: protes berlebihan (kartu karena protes) dan pertikaian antarpemain, dengan efek emosi (disepakati 29 Okt: pertikaian berefek)
-7c. Rencana: penalti, kartu merah (tim main dengan 10 orang)
+7c. Rencana: kartu merah & kuning kedua (tim main dengan 10 orang). Penalti sudah dimajukan ke 7b-1
 7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
 
 ## 7. Keputusan yang Masih Terbuka
