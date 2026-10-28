@@ -191,6 +191,12 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - hasil akhir: cepat 35% vs fisik 30% menang (pembanding dua tim identik: 41% vs 33%, jadi selisih ini masih derau). Tim cepat melepas bola 0,74 dtk vs 0,90 dtk, 126 vs 113 operan per laga; tim fisik lebih banyak sundulan (1,7 vs 1,3)
    - tempo dari stat sempat dibuat lebar (laju tiba 4–7 m/s, lama menahan ×1,25–×0,8): kejutan 13 vs 11 anjlok ke 3%. Disempitkan → 14%. Titik nol 1,81 ± 0,34
    - keterbatasan jujur: perbedaan laju LARI antar-tim tetap kecil (rata-rata ~0,3 m/s). Melebarkannya terbukti membuat gaya cepat terlalu unggul
+6d. ✅ Jalur 1: penilaian operan & sentuhan pertama (28 Okt sore; target baru 2,4–3,0 gol, 0–0 ≤ 10%):
+   - diagnosis (24 laga): selisih waktu di jalur operan adalah peramal yang lemah — operan "sangat berbahaya" (< −0,3 dtk) tetap tidak terpotong ~65%, operan "sangat aman" tetap terpotong ~11%. Dugaan "hanya pengejar lawan yang bereaksi" (histeresis) diuji dan TIDAK menjelaskannya
+   - temuan terbesar: 18% dari semua operan berakhir dengan sentuhan pertama buruk (bola memantul lepas) — sama besarnya dengan operan dipotong
+   - percobaan 1 — berani mengambil risiko di sepertiga akhir (ambang −0,3 dtk): titik nol 1,70 ± 0,29, tidak berubah → DIBATALKAN
+   - percobaan 2 — sentuhan buruk disetel ke kisaran nyata (Kontrol: 0,12 … 0,01 per 10 m/s; ~6% operan): titik nol **2,34 ± 0,39**, laga 0–0 **11%**, kejutan 13 vs 11 13%, 15 vs 9 menang 98%. Pertandingan web (200 laga): biru 44% / seri 27% / merah 30%, 2,2 gol, 0–0 10%. Filosofi tetap seimbang (fisik 41% vs cepat 34%, dalam derau). `npm run check` lolos tanpa satu pun peringatan
+   - percobaan 3 tidak dilakukan: hasil sudah di dalam rentang ketidakpastian target. Langkah berikut lebih berharga ditonton dulu
 7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
 
 ## 7. Keputusan yang Masih Terbuka

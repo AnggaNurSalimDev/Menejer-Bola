@@ -21,7 +21,9 @@ export const BLUNDER = Object.freeze({
   holdTempo: { worst: 1.1, best: 0.9, stat: 'keputusan' },
 
   // Kontrol: peluang sentuhan pertama terlalu jauh, per 10 m/s laju bola datang.
-  heavyTouchPer10ms: { worst: 0.32, best: 0.03, stat: 'kontrol' },
+  // Disetel ulang 28 Okt (jalur 1): nilai lama 0,32/0,03 membuat 18% operan berakhir
+  // sentuhan buruk (sepak bola nyata: beberapa persen). Sekarang ~6% pada stat 12.
+  heavyTouchPer10ms: { worst: 0.12, best: 0.01, stat: 'kontrol' },
 
   // Finishing: simpangan arah tembakan (radian).
   shotSpread: { worst: 0.11, best: 0.05, stat: 'finishing' }, // ~6,3° … ~2,9°
