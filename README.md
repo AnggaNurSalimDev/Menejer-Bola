@@ -15,7 +15,8 @@ Proyek ini dibuat untuk senang-senang.
 - Pola serangan tahap awal: aturan offside, lari ke belakang garis bek (ke celah antar-bek), umpan terobosan, mode satu lawan satu. Bek bertahan sebagai satu garis. Umpan silang belum (butuh bola melambung).
 - Tahap 6 selesai (kelelahan & psikologi): tenaga terkuras (Stamina), lelah memperlambat dan menambah blunder, Determinasi menahannya saat tertinggal atau di menit akhir. Kepercayaan diri naik-turun dari aksi sukses/gagal (Stabilitas mental), form hari ini (Konsistensi), gugup saat ditekan atau di peluang besar (Ketenangan), Egoisme membuat pemain lebih cepat menembak. Bek yang pernah blunder dan timnya tertinggal cenderung membuang bola jauh (sapuan panik). Pemain yang sangat percaya diri (biasanya setelah mencetak gol) jadi "on fire": blunder sedikit berkurang dan lebih berani menembak. Tampilan: bar tenaga saat < 60%, titik merah saat kurang percaya diri, titik oranye saat on fire.
 - Bola udara (28 Okt): pemain sayap mengirim umpan silang ke kotak, sepak pojok dilambungkan, penyerang menyerbu tiang dekat/titik penalti/tiang jauh, duel udara ditentukan stat baru **Duel udara**, sundulan ke gawang, kiper menangkap atau meninju. Penembak juga tidak lagi asal menembak dari jauh. Rata-rata gol naik dari ~1,2 ke ~1,9 per laga.
-- Berikutnya: layer manager (taktik saat jeda), setelah bola udara ditonton.
+- Filosofi pelatih (28 Okt): tiap tim punya gaya. Persada Bandung "Fisik & bola udara" (kuat, jago udara, tempo lambat, sering umpan silang), Garuda Merah "Cepat & mengalir" (lebih kencang, melepas bola lebih cepat). Filosofi hanya memindahkan kekuatan, tidak menambahnya. Ketajaman operan ikut stat Passing, lama menahan bola ikut stat Keputusan.
+- Berikutnya: layer manager (taktik saat jeda, termasuk memilih filosofi).
 
 Tip: tambahkan `?seed=13` di alamat (misalnya `http://localhost:5173/?seed=13`) untuk memutar ulang pertandingan tertentu.
 
@@ -43,6 +44,7 @@ npm run build    # build produksi
   - `control.js` — jangkauan pemain terhadap bola (kaki atau tangan kiper)
   - `skill.js` — SEMUA angka blunder dari stat (tabel BLUNDER)
   - `condition.js` — kondisi pemain: tenaga, kepercayaan diri, form, tekanan (tabel CONDITION)
+  - `philosophy.js` — filosofi pelatih: geseran stat (jumlah nol), tempo, kecenderungan umpan silang
   - `aerial.js` — bola udara: lambungan, titik jatuh, duel udara, sundulan (tabel AERIAL, CROSS, HEADER)
   - `shape.js` — posisi jangkar formasi per fase (menyerang/bertahan/netral)
   - `marking.js` — penjagaan lawan per zona saat bertahan

@@ -8,6 +8,7 @@ import { deriveMovementProfile } from './movement.js';
 import { HALF_TICKS, GAME_MINUTES_PER_HALF, PERIODS } from './constants.js';
 import { CONDITION, validateCondition } from './condition.js';
 import { validateAirBall } from './aerial.js';
+import { validatePhilosophy } from './philosophy.js';
 
 const SPEED_TOLERANCE = 1e-6;
 const OWNED_BALL_MAX_DISTANCE = 1.5; // meter
@@ -138,8 +139,9 @@ export function createMatchState(home, away) {
     teams: {
       // chaserId: pemain yang sedang menjemput/menekan bola untuk tim ini.
       // runnerId/runTarget/runTicks: penyerang yang sedang berlari ke belakang garis bek.
-      [home.id]: { id: home.id, name: home.name, colors: home.colors, attacksRight: true, ...emptyTeamRoles() },
-      [away.id]: { id: away.id, name: away.name, colors: away.colors, attacksRight: false, ...emptyTeamRoles() },
+      // philosophy: kunci filosofi pelatih (philosophy.js).
+      [home.id]: { id: home.id, name: home.name, colors: home.colors, philosophy: home.philosophy ?? 'seimbang', attacksRight: true, ...emptyTeamRoles() },
+      [away.id]: { id: away.id, name: away.name, colors: away.colors, philosophy: away.philosophy ?? 'seimbang', attacksRight: false, ...emptyTeamRoles() },
     },
     ball: createInitialBall(home.id),
     players: [...placeTeam(home, true), ...placeTeam(away, false)],
@@ -272,6 +274,7 @@ export function validateMatchState(state, teams = []) {
     if (ball.vx !== 0 || ball.vy !== 0) errors.push('bola mati tetapi bergerak');
   }
   errors.push(...validateAirBall(ball));
+  for (const id of teamIds) for (const e of validatePhilosophy(state.teams[id].philosophy)) errors.push(`tim ${id}: ${e}`);
   if ((ball.shotKind === null) !== (ball.shotTeamId === null)) errors.push('shotKind harus terisi tepat saat ada tembakan');
   if (ball.shotKind !== null && ball.shotKind !== 'foot' && ball.shotKind !== 'header') errors.push(`shotKind tidak dikenal "${ball.shotKind}"`);
   if (ball.crossTeamId !== null && !teamIds.includes(ball.crossTeamId)) errors.push('crossTeamId tidak valid');

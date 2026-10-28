@@ -30,6 +30,9 @@ import {
   shotThresholdScale,
 } from '../src/engine/condition.js';
 import { canPanicClear } from '../src/engine/simulation.js';
+import { PHILOSOPHIES, validatePhilosophy } from '../src/engine/philosophy.js';
+import { createTeam } from '../src/engine/teams.js';
+import { blunderFromStats } from '../src/engine/skill.js';
 import { AERIAL, CROSS, airStep, loftVelocity, dropPoint, resolveAerial, isAirborne } from '../src/engine/aerial.js';
 
 let failures = 0;
@@ -222,6 +225,29 @@ console.log('Kondisi pemain (tahap 6)');
     e3.push('on fire seharusnya lebih berani menembak');
   }
   check(`on fire: blunder ×${onFire.toFixed(2)} di percaya diri 1, tetap dalam batas ${BLUNDER_SCALE_MIN}–${BLUNDER_SCALE_MAX}`, e3);
+}
+
+console.log('Filosofi pelatih & tempo');
+{
+  const e1 = [];
+  for (const key of Object.keys(PHILOSOPHIES)) e1.push(...validatePhilosophy(key));
+  let threw = false;
+  try {
+    createTeam({ id: 'x', name: 'X', colors: { shirt: '#000', number: '#fff' }, formation: '4-4-2', quality: 12, seed: 1, philosophy: 'tidak-ada' });
+  } catch {
+    threw = true;
+  }
+  if (!threw) e1.push('filosofi tak dikenal seharusnya ditolak');
+  check('setiap filosofi hanya memindahkan kekuatan (jumlah geseran stat = 0)', e1);
+
+  const sharp = blunderFromStats({ passing: 20 }, 'passArrival');
+  const soft = blunderFromStats({ passing: 1 }, 'passArrival');
+  const quick = blunderFromStats({ keputusan: 20 }, 'holdTempo');
+  const slow = blunderFromStats({ keputusan: 1 }, 'holdTempo');
+  check(
+    `tempo dari stat: operan tiba ${soft}–${sharp} m/s, lama menahan ×${slow}–×${quick}`,
+    sharp > soft && quick < slow && slow / quick < 1.3 ? [] : ['arah atau rentang tempo dari stat salah'],
+  );
 }
 
 console.log('Bola udara (umpan silang & sundulan)');

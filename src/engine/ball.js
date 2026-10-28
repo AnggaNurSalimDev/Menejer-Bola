@@ -9,7 +9,10 @@ export const MAX_KICK_SPEED = 26; // m/s
 export const STOP_SPEED = 0.2; // m/s, di bawah ini bola dianggap diam
 
 // Operan yang baik masih bergulir saat sampai di kaki penerima.
-const PASS_ARRIVAL_SPEED = 5; // m/s
+// Nilai bawaan; laju tiba sebenarnya diturunkan dari stat Passing (skill.js, passArrival).
+export const PASS_ARRIVAL_SPEED = 5; // m/s
+const MIN_ARRIVAL_SPEED = 2;
+const MAX_ARRIVAL_SPEED = 10;
 
 export function ballSpeed(ball) {
   return Math.hypot(ball.vx, ball.vy);
@@ -61,10 +64,10 @@ export function timeToTravel(distanceMeters, speed) {
 
 // Laju tendangan agar bola sampai sejauh `distance` dengan sisa laju PASS_ARRIVAL_SPEED.
 // v_awal² = v_tiba² + 2·gesekan·jarak
-export function passSpeedForDistance(distanceMeters) {
+export function passSpeedForDistance(distanceMeters, arrivalSpeed = PASS_ARRIVAL_SPEED) {
   if (!(distanceMeters >= 0)) throw new RangeError(`passSpeedForDistance: jarak tidak valid ${distanceMeters}`);
-  return Math.min(
-    MAX_KICK_SPEED,
-    Math.sqrt(PASS_ARRIVAL_SPEED * PASS_ARRIVAL_SPEED + 2 * FRICTION * distanceMeters),
-  );
+  if (!(arrivalSpeed >= MIN_ARRIVAL_SPEED && arrivalSpeed <= MAX_ARRIVAL_SPEED)) {
+    throw new RangeError(`passSpeedForDistance: laju tiba tidak valid ${arrivalSpeed}`);
+  }
+  return Math.min(MAX_KICK_SPEED, Math.sqrt(arrivalSpeed * arrivalSpeed + 2 * FRICTION * distanceMeters));
 }

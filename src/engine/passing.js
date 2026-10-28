@@ -104,6 +104,7 @@ export function evaluatePassOptions({
     throw new RangeError(`evaluatePassOptions: skala kondisi tidak valid (${misjudgeScale}, ${progressScale})`);
   }
   const misjudge = rng ? blunder(holder, 'riskMisjudge') * misjudgeScale : 0;
+  const arrival = blunder(holder, 'passArrival'); // ketajaman operan dari stat Passing
   const trueLine = offsideLine(opponents, attacksRight);
 
   const options = [];
@@ -128,7 +129,7 @@ export function evaluatePassOptions({
       target = throughBallPoint(origin, receiver);
       if (!target) continue;
     } else {
-      const roughTime = plainDistance / passSpeedForDistance(plainDistance);
+      const roughTime = plainDistance / passSpeedForDistance(plainDistance, arrival);
       target = clampToPitch(
         {
           x: receiver.x + receiver.vx * roughTime * LEAD_FACTOR,
@@ -140,7 +141,7 @@ export function evaluatePassOptions({
     const passDistance = distance(origin, target);
     if (passDistance < MIN_PASS_DISTANCE) continue;
 
-    const speed = passSpeedForDistance(passDistance);
+    const speed = passSpeedForDistance(passDistance, arrival);
     const trueMargin = laneMargin(origin, target, speed, opponents);
     // Yang dipakai untuk memutuskan adalah rasa aman MENURUT si pemain.
     const margin = misjudge > 0 ? trueMargin + rng.normal(0, misjudge) : trueMargin;

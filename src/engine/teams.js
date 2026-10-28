@@ -11,6 +11,7 @@ import {
   STAT_MAX,
   clampStat,
 } from './stats.js';
+import { getPhilosophy, validatePhilosophy } from './philosophy.js';
 
 const FIRST_NAMES = [
   'Adi', 'Bayu', 'Cahyo', 'Dimas', 'Eko', 'Fajar', 'Galih', 'Hendra', 'Irfan', 'Joko',
@@ -41,7 +42,8 @@ const ROLE_BIAS = {
   ST: { finishing: 3, kekuatan: 1, tackling: -3, egoisme: 2, duelUdara: 2 },
 };
 
-function generateStats(rng, quality, role) {
+// statBias: geseran dari filosofi pelatih (jumlahnya nol, lihat philosophy.js).
+function generateStats(rng, quality, role, statBias = {}) {
   const bias = ROLE_BIAS[role] ?? {};
   const keys = [
     ...TECHNICAL_STATS,
@@ -51,7 +53,9 @@ function generateStats(rng, quality, role) {
 
   const stats = {};
   for (const key of keys) {
-    stats[key] = clampStat(quality + (bias[key] ?? 0) + rng.range(-3, 3));
+    // Kiper tidak ikut digeser filosofi: gaya bermain urusan pemain lapangan.
+    const style = role === 'GK' ? 0 : (statBias[key] ?? 0);
+    stats[key] = clampStat(quality + (bias[key] ?? 0) + style + rng.range(-3, 3));
   }
   return stats;
 }
@@ -76,6 +80,7 @@ export function createTeam({
   formation,
   quality,
   seed,
+  philosophy = 'seimbang',
   usedShortNames = new Set(),
 }) {
   if (typeof id !== 'string' || id.length === 0) throw new TypeError('createTeam: id wajib diisi');
@@ -86,6 +91,10 @@ export function createTeam({
   if (!Number.isFinite(quality) || quality < STAT_MIN || quality > STAT_MAX) {
     throw new RangeError(`createTeam: quality harus ${STAT_MIN}–${STAT_MAX}, dapat ${quality}`);
   }
+
+  const philosophyErrors = validatePhilosophy(philosophy);
+  if (philosophyErrors.length > 0) throw new RangeError(`createTeam: ${philosophyErrors.join('; ')}`);
+  const { statBias } = getPhilosophy(philosophy);
 
   const slots = getFormation(formation);
   const rng = createRng(seed);
@@ -98,16 +107,20 @@ export function createTeam({
       role: slot.role,
       fullName,
       shortName,
-      stats: generateStats(rng, quality, slot.role),
+      stats: generateStats(rng, quality, slot.role, statBias),
     };
   });
 
-  return { id, name, colors, formation, players };
+  return { id, name, colors, formation, philosophy, players };
 }
 
 // Dua tim contoh untuk tahap awal. Kualitas (1–20) bisa diatur untuk
 // menguji apakah tim yang lebih bagus memang lebih sering menang.
-export function createDemoTeams(seed = 2026, { homeQuality = 12, awayQuality = 12 } = {}) {
+// Filosofi bawaan: Persada Bandung bermain fisik, Garuda Merah cepat (28 Okt).
+export function createDemoTeams(
+  seed = 2026,
+  { homeQuality = 12, awayQuality = 12, homePhilosophy = 'fisik', awayPhilosophy = 'cepat' } = {},
+) {
   const usedShortNames = new Set();
 
   const home = createTeam({
@@ -117,6 +130,7 @@ export function createDemoTeams(seed = 2026, { homeQuality = 12, awayQuality = 1
     colors: { shirt: '#1f4fbf', number: '#ffffff', goalkeeper: '#2f9e44' },
     formation: '4-4-2',
     quality: homeQuality,
+    philosophy: homePhilosophy,
     seed,
   });
 
@@ -127,6 +141,7 @@ export function createDemoTeams(seed = 2026, { homeQuality = 12, awayQuality = 1
     colors: { shirt: '#c92a2a', number: '#ffffff', goalkeeper: '#f08c00' },
     formation: '4-3-3',
     quality: awayQuality,
+    philosophy: awayPhilosophy,
     seed: seed + 1,
   });
 

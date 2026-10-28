@@ -69,8 +69,18 @@ body {
   white-space: nowrap;
 }
 
+.team-philosophy {
+  color: #ced4da;
+  font-size: 0.75rem;
+  padding: 1px 6px;
+  border: 1px solid #495057;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
 @media (max-width: 480px) {
-  .team-formation {
+  .team-formation,
+  .team-philosophy {
     display: none;
   }
 }

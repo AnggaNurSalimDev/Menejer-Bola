@@ -183,6 +183,14 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - percobaan 2 — bola udara: bola punya tinggi (gravitasi, pantulan); umpan silang dari sayap dekat garis gawang lawan ke rekan di kotak (sasaran dipilih dari keunggulan Duel udara), sepak pojok dilambungkan, 3 penyerang menyerbu kotak (tiang dekat, titik penalti, tiang jauh), duel udara (Duel udara + Kekuatan + Antisipasi + jarak + acak; kiper unggul tangan di kotaknya), sundulan ke gawang dalam 14 m, sapuan sundulan, kiper menangkap/meninju bola udara. Stat baru: Duel udara. Tampilan: bayangan bola saat melambung, statistik umpan silang & sundulan, "(sundulan)" di tulisan GOL
    - hasil percobaan 2 (`npm run calibrate`, 64 laga): titik nol 1,88 ± 0,37 (dari 1,19 ± 0,26 — kenaikan nyata), kejutan 13 vs 11 16%, 15 vs 9 menang 98%. Per laga (32 laga): ~17 umpan silang (~39% sampai ke rekan), ~2,7 sundulan ke gawang, ~0,13 gol sundulan; sebagian besar tambahan gol datang dari bola kedua setelah duel udara, bukan sundulan langsung
    - catatan: menambah stat mengubah urutan angka acak pembuat tim, jadi tim contoh berubah sedikit (perbandingan memakai 64 laga, bukan seed tertentu)
+6c. ✅ Filosofi pelatih & tempo (28 Okt; masukan: "tidak ada tim yang menonjol cepat"):
+   - penyebab: kedua tim contoh nyaris kembar (laju lari rata-rata 8,12 vs 8,08 m/s), rentang Kecepatan sempit sejak tahap 5, dan tempo (lama menahan bola, laju operan) sama untuk semua
+   - filosofi pelatih (`src/engine/philosophy.js`): menggeser stat pemain lapangan dengan jumlah NOL (invariant), plus tempo (lama menahan bola) dan kecenderungan umpan silang. Persada Bandung = "Fisik & bola udara", Garuda Merah = "Cepat & mengalir". Nanti dipilih/diubah di layer manajer
+   - tempo dari stat: Passing → ketajaman operan (laju tiba 4,5–6 m/s), Keputusan → lama menahan bola (×1,1–×0,9)
+   - temuan uji (64–128 laga, bergantian kandang/tamu): menggeser stat "otak" (Passing, Keputusan, Visi) dan Kecepatan membuat satu gaya jauh unggul (48% vs 19%). Tempo dan umpan silang sendiri netral (38% vs 36%). Jadi geseran stat dibuat ringan (cepat: Kecepatan/Akselerasi +1; fisik: Kekuatan +1, Duel udara +2, Stamina +1, olah bola −1) dan identitas terutama lewat tempo (0,6 vs 1,3)
+   - hasil akhir: cepat 35% vs fisik 30% menang (pembanding dua tim identik: 41% vs 33%, jadi selisih ini masih derau). Tim cepat melepas bola 0,74 dtk vs 0,90 dtk, 126 vs 113 operan per laga; tim fisik lebih banyak sundulan (1,7 vs 1,3)
+   - tempo dari stat sempat dibuat lebar (laju tiba 4–7 m/s, lama menahan ×1,25–×0,8): kejutan 13 vs 11 anjlok ke 3%. Disempitkan → 14%. Titik nol 1,81 ± 0,34
+   - keterbatasan jujur: perbedaan laju LARI antar-tim tetap kecil (rata-rata ~0,3 m/s). Melebarkannya terbukti membuat gaya cepat terlalu unggul
 7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
 
 ## 7. Keputusan yang Masih Terbuka

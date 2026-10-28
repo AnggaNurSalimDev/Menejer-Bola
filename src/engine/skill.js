@@ -15,6 +15,11 @@ export const BLUNDER = Object.freeze({
   passAngle: { worst: 0.1, best: 0.02, stat: 'passing' }, // ~5,7° … ~1,1°
   passSpeed: { worst: 0.12, best: 0.03, stat: 'passing' },
 
+  // Tempo (28 Okt): Passing → laju operan saat tiba di kaki rekan (m/s; operan tajam lebih sulit dipotong,
+  // tetapi lebih sulit dikontrol penerima); Keputusan → pengali lama menahan bola sebelum melepasnya.
+  passArrival: { worst: 4.5, best: 6, stat: 'passing' },
+  holdTempo: { worst: 1.1, best: 0.9, stat: 'keputusan' },
+
   // Kontrol: peluang sentuhan pertama terlalu jauh, per 10 m/s laju bola datang.
   heavyTouchPer10ms: { worst: 0.32, best: 0.03, stat: 'kontrol' },
 

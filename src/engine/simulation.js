@@ -23,6 +23,7 @@ import {
 } from './state.js';
 import { DT, TICK_RATE, DECISION_INTERVAL_TICKS, KICK_COOLDOWN_TICKS, HALF_TICKS } from './constants.js';
 import { blunder } from './skill.js';
+import { getPhilosophy } from './philosophy.js';
 import {
   PITCH,
   clampToPitch,
@@ -89,6 +90,7 @@ import {
 // Tempo padat (pertandingan 2 × 5 menit): bola dilepas dalam 0,5–1,5 detik.
 const HOLD_MIN_TICKS = 5;
 const HOLD_MAX_TICKS = 15;
+const MIN_HOLD_TICKS = 3; // setelah tempo & Keputusan, tetap butuh sentuhan
 const KEEPER_HOLD_MIN_TICKS = 5;
 const KEEPER_HOLD_MAX_TICKS = 10;
 const FORCED_PASS_TICKS = 25; // terlalu lama tanpa opsi aman → oper yang terbaik saja
@@ -243,7 +245,6 @@ function clearVelocity(holder, ball, rng, scale) {
 // kalau ada rekan di kotak.
 const CROSS_ZONE_DEPTH = 30; // m dari garis gawang lawan
 const CROSS_ZONE_MIN_WIDE = 10; // m dari garis tengah memanjang
-const CROSS_PREFERENCE = 0.5; // peluang memilih umpan silang saat ada sasaran
 const CORNER_RADIUS = 3; // m dari titik pojok
 const CORNER_HOLD_TICKS = 20; // menunggu rekan masuk kotak
 const CROSS_AIM_MIN_DEPTH = 4; // m dari garis gawang
@@ -376,7 +377,10 @@ function decideHolder(holder, ball, players, rng, match) {
     (runnerAvailable && ball.heldTicks >= RUN_SPOT_MIN_TICKS);
   if (!ready) return null;
 
-  if (cross && rng.chance(CROSS_PREFERENCE)) return { type: 'cross', aim: cross.aim, context };
+  // Kecenderungan umpan silang dari filosofi pelatih.
+  if (cross && rng.chance(match.philosophies[holder.teamId].crossPreference)) {
+    return { type: 'cross', aim: cross.aim, context };
+  }
 
   const options = evaluatePassOptions({
     holder,
@@ -491,8 +495,10 @@ function isShotReachingKeeper(ball, player, point) {
   );
 }
 
-function gainControl(ball, controller, stats, rng, note) {
+// tempo: pengali lama menahan bola dari filosofi pelatih (philosophy.js).
+function gainControl(ball, controller, stats, rng, note, tempo = 1) {
   if (typeof note !== 'function') throw new TypeError('gainControl: note wajib berupa fungsi');
+  if (!(tempo > 0)) throw new RangeError(`gainControl: tempo tidak valid ${tempo}`);
   if (ball.passTeamId !== null && controller.teamId === ball.passTeamId) {
     stats.passes[controller.teamId].completed += 1;
     if (ball.kickerId) note(ball.kickerId, 'passCompleted');
@@ -514,7 +520,10 @@ function gainControl(ball, controller, stats, rng, note) {
     heldTicks: 0,
     holdTarget: isKeeper
       ? rng.int(KEEPER_HOLD_MIN_TICKS, KEEPER_HOLD_MAX_TICKS)
-      : rng.int(HOLD_MIN_TICKS, HOLD_MAX_TICKS),
+      : Math.max(
+          MIN_HOLD_TICKS,
+          Math.round(rng.int(HOLD_MIN_TICKS, HOLD_MAX_TICKS) * tempo * blunder(controller, 'holdTempo')),
+        ),
     previousOwnerId: ball.kickerId ?? ball.previousOwnerId,
     kickerId: null,
     kickCooldown: 0,
@@ -687,7 +696,9 @@ export function createSimulation(home, away, seed) {
 
     // Kondisi (tahap 6): skor & menit untuk konteks, dan peristiwa percaya diri
     // yang dikumpulkan sepanjang tick lalu diterapkan di akhir.
-    const match = { goals: prev.stats.goals, minute: gameClock(prev).minute, teamIds };
+    const philosophies = Object.fromEntries(teamIds.map((id) => [id, getPhilosophy(teams[id].philosophy)]));
+    const match = { goals: prev.stats.goals, minute: gameClock(prev).minute, teamIds, philosophies };
+    const tempoOf = (player) => philosophies[player.teamId].tempo;
     const events = [];
     const note = (playerId, event) => events.push([playerId, event]);
 
@@ -934,7 +945,7 @@ export function createSimulation(home, away, seed) {
 
     // Pemain menguasai bola: tugas semua pemain menyesuaikan di tick yang sama.
     const takeControl = (controller, at = null) => {
-      ball = gainControl(at ? { ...ball, ...at } : ball, controller, stats, rng, note);
+      ball = gainControl(at ? { ...ball, ...at } : ball, controller, stats, rng, note, tempoOf(controller));
       for (let i = 0; i < players.length; i += 1) {
         const p = players[i];
         if (p.id === controller.id) players[i] = { ...p, task: 'hold' };
@@ -1076,7 +1087,7 @@ export function createSimulation(home, away, seed) {
         if (rng.chance(catchChance(speed, keeper))) {
           stats.saves[keeper.teamId].caught += 1;
           note(keeper.id, 'save');
-          ball = gainControl(ball, keeper, stats, rng, note);
+          ball = gainControl(ball, keeper, stats, rng, note, tempoOf(keeper));
           for (let i = 0; i < players.length; i += 1) {
             const p = players[i];
             if (p.id === keeper.id) players[i] = { ...p, task: 'hold' };
@@ -1123,7 +1134,7 @@ export function createSimulation(home, away, seed) {
         ball = releaseBall({ ...ball, ...clampToPitch(contact) }, player, heavyTouchVelocity(ball, rng), {});
         startReactions(player.id);
       } else if (touch) {
-        ball = gainControl(ball, touch.player, stats, rng, note);
+        ball = gainControl(ball, touch.player, stats, rng, note, tempoOf(touch.player));
         // Tugas pemain mengikuti pergantian penguasaan di tick yang sama.
         for (let i = 0; i < players.length; i += 1) {
           const p = players[i];

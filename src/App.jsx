@@ -3,6 +3,7 @@ import MatchView from './components/MatchView.jsx';
 import { createDemoTeams } from './engine/teams.js';
 import { createSimulation } from './engine/simulation.js';
 import { gameClock } from './engine/state.js';
+import { getPhilosophy } from './engine/philosophy.js';
 
 const TEAM_SEED = 2026;
 const SPEEDS = [1, 2, 4, 8];
@@ -203,7 +204,7 @@ export default function App() {
         <button type="button" onClick={restart}>
           Ulang (seed baru)
         </button>
-        <span className="stage-note">Tahap 6 + bola udara (bayangan = bola melambung; bar = tenaga menipis, titik merah = kurang percaya diri, titik oranye = on fire). Seed: {matchSeed}</span>
+        <span className="stage-note">Filosofi pelatih + bola udara (bayangan = bola melambung; bar = tenaga menipis, titik merah = kurang percaya diri, titik oranye = on fire). Seed: {matchSeed}</span>
       </div>
     </main>
   );
@@ -256,6 +257,9 @@ function TeamLabel({ team, align }) {
       <span className="team-swatch" style={{ background: team.colors.shirt }} />
       <span className="team-name">{team.name}</span>
       <span className="team-formation">{team.formation}</span>
+      <span className="team-philosophy" title="Filosofi pelatih">
+        {getPhilosophy(team.philosophy ?? 'seimbang').label}
+      </span>
     </div>
   );
 }
