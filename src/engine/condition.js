@@ -2,8 +2,9 @@
 // docs/dokumen-arah-game.md bagian 5B dan 5C.
 //
 // Prinsip: stat teknis adalah plafon; kondisi menentukan berapa banyak dari
-// plafon itu yang keluar saat ini. Semua efek di sini adalah NERF (keputusan
-// 28 Okt 2026: kepercayaan diri tidak memberi bonus), dan total nerf dibatasi.
+// plafon itu yang keluar saat ini. Hampir semua efek di sini adalah NERF dan
+// total nerf dibatasi. Satu pengecualian (28 Okt 2026): "on fire" — percaya
+// diri di atas fireThreshold memberi bonus kecil yang juga dibatasi.
 //
 // SEMUA angka kondisi ada di file ini.
 
@@ -50,6 +51,12 @@ export const CONDITION = Object.freeze({
   // --- Batas (dokumen arah 5C) ---
   maxBlunderPenalty: 0.3, // besar blunder paling banyak +30%
   maxPhysicalPenalty: 0.3, // laju & percepatan paling banyak −30%
+
+  // --- On fire (keputusan 28 Okt, membalik "murni nerf"): bonus kecil saat percaya diri sangat tinggi ---
+  // Biasanya dicapai lewat gol (+0,25) atau rangkaian tekel/penyelamatan; luntur perlahan lewat drift.
+  fireThreshold: 0.9, // mulai on fire di atas percaya diri ini
+  fireBlunderBonus: 0.15, // besar blunder paling banyak −15% di percaya diri 1
+  fireShotThreshold: 0.9, // ambang tembak ×0,9 di percaya diri 1 (lebih berani menembak)
 
   // --- Egoisme: kecenderungan menembak (bukan nerf) ---
   egoShotThreshold: { worst: 1.2, best: 0.8 }, // pengali ambang tembak: egois rendah … tinggi
@@ -130,8 +137,20 @@ export function blunderScale(player, context = {}) {
     c.form;
   if (context.pressured) penalty += (1 - composure) * CONDITION.pressureBlunder;
   if (context.bigChance) penalty += (1 - composure) * CONDITION.bigChanceBlunder;
-  return 1 + Math.min(CONDITION.maxBlunderPenalty, Math.max(0, penalty));
+  const nerfed = 1 + Math.min(CONDITION.maxBlunderPenalty, Math.max(0, penalty));
+  return nerfed * (1 - onFireAmount(c) * CONDITION.fireBlunderBonus);
 }
+
+// Seberapa "on fire" (0 = tidak, 1 = penuh) dari kepercayaan diri.
+export function onFireAmount(condition) {
+  if (!condition || !Number.isFinite(condition.confidence)) return 0;
+  const span = 1 - CONDITION.fireThreshold;
+  return clamp01((condition.confidence - CONDITION.fireThreshold) / span);
+}
+
+// Batas bawah dan atas pengali blunder (untuk guard di modul lain).
+export const BLUNDER_SCALE_MIN = 1 - CONDITION.fireBlunderBonus;
+export const BLUNDER_SCALE_MAX = 1 + CONDITION.maxBlunderPenalty;
 
 // Pengali laju & percepatan (≤ 1) karena lelah.
 export function physicalScale(player, context = {}) {
@@ -153,8 +172,11 @@ export function progressWeightScale(player) {
 }
 
 // Pengali ambang tembak dari Egoisme (< 1 = lebih cepat menembak).
+// Pemain on fire juga sedikit lebih berani menembak.
 export function shotThresholdScale(player) {
-  return lerpByStat(CONDITION.egoShotThreshold, player.skills.egoisme);
+  const fire = onFireAmount(player.condition);
+  const fireScale = 1 - fire * (1 - CONDITION.fireShotThreshold);
+  return lerpByStat(CONDITION.egoShotThreshold, player.skills.egoisme) * fireScale;
 }
 
 // Kondisi setelah sebuah peristiwa (sukses atau blunder).

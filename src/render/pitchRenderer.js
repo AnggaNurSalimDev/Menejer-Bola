@@ -2,6 +2,7 @@
 // Semua ukuran di sini ditulis dalam meter, lalu dikonversi lewat viewport.
 
 import { PITCH } from '../engine/pitch.js';
+import { CONDITION } from '../engine/condition.js';
 
 const MARGIN_METERS = 4;
 const JERSEY_WIDTH_METERS = 2.6;
@@ -175,6 +176,8 @@ function drawPlayer(ctx, vp, player, teamColors) {
 //   titik merah  : di bahu jersey, saat percaya diri < LOW_CONFIDENCE_CUE
 const LOW_ENERGY_CUE = 0.6;
 const LOW_CONFIDENCE_CUE = 0.4;
+//   titik oranye : di bahu jersey, saat on fire (ambang sama dengan engine)
+const ON_FIRE_CUE = CONDITION.fireThreshold;
 
 function drawConditionCues(ctx, cx, cy, w, barY, condition) {
   if (!condition) return; // state lama tanpa kondisi: lewati saja
@@ -188,7 +191,23 @@ function drawConditionCues(ctx, cx, cy, w, barY, condition) {
     ctx.fillStyle = e < 0.35 ? '#ff6b5a' : '#ffd166';
     ctx.fillRect(left, barY, barW * e, barH);
   }
-  if (condition.confidence < LOW_CONFIDENCE_CUE) {
+  if (condition.confidence >= ON_FIRE_CUE) {
+    // On fire: lingkaran oranye dengan inti kuning di bahu jersey.
+    const r = Math.max(3, w * 0.2);
+    const x = cx + w * 0.55;
+    const y = cy - w * 0.5;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = '#ff8c1a';
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = '#ffffff';
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x, y + r * 0.15, r * 0.45, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffe066';
+    ctx.fill();
+  } else if (condition.confidence < LOW_CONFIDENCE_CUE) {
     const r = Math.max(2.5, w * 0.16);
     ctx.beginPath();
     ctx.arc(cx + w * 0.55, cy - w * 0.5, r, 0, Math.PI * 2);

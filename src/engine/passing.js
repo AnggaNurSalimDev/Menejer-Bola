@@ -14,6 +14,7 @@ import { PITCH, clampToPitch, distance, forwardOf } from './pitch.js';
 import { passSpeedForDistance, timeToTravel } from './ball.js';
 import { reachTime } from './roles.js';
 import { blunder } from './skill.js';
+import { BLUNDER_SCALE_MIN, BLUNDER_SCALE_MAX } from './condition.js';
 import { offsideLine, isOffside, throughBallPoint } from './attack.js';
 
 // Keputusan rendah juga berarti salah membaca garis offside (meter per detik salah kira).
@@ -80,7 +81,7 @@ function nearestDistance(point, others) {
 }
 
 // rng opsional: tanpa rng, penilaian dilakukan sempurna (dipakai uji dan alat ukur).
-// misjudgeScale : pengali salah kira dari kondisi (lelah, tekanan, percaya diri) — ≥ 1
+// misjudgeScale : pengali salah kira dari kondisi (lelah, tekanan, percaya diri) — 0,85–1,3 (< 1 hanya saat on fire)
 // progressScale  : pengali bobot operan ke depan (ragu saat percaya diri rendah) — ≤ 1
 export function evaluatePassOptions({
   holder,
@@ -96,7 +97,10 @@ export function evaluatePassOptions({
   if (!holder || !origin) throw new TypeError('evaluatePassOptions: holder dan origin wajib ada');
 
   const vision = blunder(holder, 'passVision');
-  if (!(misjudgeScale >= 1) || !(progressScale > 0 && progressScale <= 1)) {
+  if (
+    !(misjudgeScale >= BLUNDER_SCALE_MIN - 1e-9 && misjudgeScale <= BLUNDER_SCALE_MAX + 1e-9) ||
+    !(progressScale > 0 && progressScale <= 1)
+  ) {
     throw new RangeError(`evaluatePassOptions: skala kondisi tidak valid (${misjudgeScale}, ${progressScale})`);
   }
   const misjudge = rng ? blunder(holder, 'riskMisjudge') * misjudgeScale : 0;

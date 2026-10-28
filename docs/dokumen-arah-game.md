@@ -175,11 +175,12 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - sapuan panik (permintaan 28 Okt): bek (CB/LB/RB/DM) yang punya catatan blunder, saat timnya tertinggal dan bola di separuh sendiri, cenderung langsung membuang bola jauh ke arah garis samping (kadang keluar lapangan). Peluangnya naik saat percaya diri dan ketenangan rendah; diputuskan sekali per penguasaan
    - tampilan: bar tenaga di bawah nama saat tenaga < 60%, titik merah di bahu jersey saat percaya diri < 40%, baris "Sapuan panik" di statistik
    - Temperamen ditunda sampai ada pelanggaran & kartu (efeknya memang ke sana)
+   - on fire (28 Okt siang): percaya diri ≥ 0,9 (biasanya setelah mencetak gol) → blunder mengecil sampai −15% dan lebih berani menembak; luntur perlahan (~10–20 menit permainan). Tampilan: titik oranye di bahu jersey. Hasil uji 32 laga: ~0,9 pemain on fire per laga, 0,3% waktu pemain
 7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
 
 ## 7. Keputusan yang Masih Terbuka
 
-- ~~Kepercayaan diri: murni nerf atau bisa memberi bonus?~~ Diputuskan 28 Okt: **murni nerf** (lebih mudah diseimbangkan). Bisa ditinjau ulang kalau pertandingan terasa kurang drama.
+- ~~Kepercayaan diri: murni nerf atau bisa memberi bonus?~~ Diputuskan 28 Okt pagi: murni nerf. **Dibalik 28 Okt siang atas permintaan: ada "on fire"** — percaya diri ≥ 0,9 memberi bonus kecil (blunder paling banyak −15%, ambang tembak ×0,9). Bonus dibatasi supaya tidak jadi bola salju.
 - Stat kiper: dimasukkan sejak awal atau menyusul.
 - Angka detail (bobot tarikan, jumlah tick per detik, batas nerf) — ditentukan lewat pengujian prototipe, bukan diskusi.
 - Catatan pengujian tahap 3: jumlah operan (~1.100/tim/90 menit) dan pergantian penguasaan (~580) masih sedikit di atas rentang wajar. Penyebab utamanya tekanan lawan yang selalu berhasil mendekat; ditinjau ulang setelah tekel dan noise stat ada.
@@ -192,7 +193,7 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
 - Catatan pola serangan (tahap 5b): penghambat utama umpan terobosan adalah bek yang hampir selalu lebih dulu sampai ke ruang di belakang garis (83% kasus). Lari saat ini lurus ke depan ke zona bek; garis pertahanan bertahan dalam sehingga ruang di belakangnya sempit. Ide lanjutan: lari ke celah antar-bek (channel), garis pertahanan yang naik saat bola jauh (menciptakan ruang di belakang), umpan silang dengan bola melambung.
 - Dicoba lalu dibatalkan (tahap 5b): otak pemain memperhitungkan laju awal pemain. Umpan terobosan tidak membaik, tetapi tim yang lebih bagus jadi terlalu dominan (kejutan 13 vs 11 turun 13% → 6%). Fungsi travelTime tetap mendukung laju awal untuk percobaan nanti.
 - Temuan penting tahap 5b lanjutan: setelah pelari menerima umpan terobosan, rata-rata masih 2–3 bek lebih dekat ke gawang, dan dari 72 penerimaan dalam 32 laga tidak ada satu pun gol (63% dioper lagi). Bek selalu sempat mengejar kembali selama bola menempuh jarak dan pelari mengontrolnya. Mewajibkan titik temu jauh di belakang garis hanya membuat umpan terobosan lebih jarang. Kesimpulan: menambal umpan terobosan sudah tidak efektif; masalahnya ada di hubungan laju bola vs laju pemain dan cara bek mengejar, yang perlu dipikirkan ulang sebagai satu kesatuan, bukan ditambal per bagian.
-- Catatan pengujian tahap 6 (32–64 laga): tenaga akhir pemain lapangan p10/p50/p90 = 0,42 / 0,52 / 0,64 (korelasi dengan Stamina 0,52); pemain berada di percaya diri < 0,4 sekitar 4% waktu; gol babak 1 vs babak 2 = 0,56 vs 0,81 (lelah membuka pertandingan di akhir); sapuan panik ~3,7 per laga, ~40% keluar lapangan. Titik nol 1,28 ± 0,29 (tidak berubah nyata). Kejutan 13 vs 11 turun sedikit ke 11% (dari 19–22%) — masih di dalam rentang sehat, belum disetel; awasi.
+- Catatan pengujian tahap 6 (32–64 laga): tenaga akhir pemain lapangan p10/p50/p90 = 0,42 / 0,52 / 0,64 (korelasi dengan Stamina 0,52); pemain berada di percaya diri < 0,4 sekitar 4% waktu; gol babak 1 vs babak 2 = 0,56 vs 0,81 (lelah membuka pertandingan di akhir); sapuan panik ~3,7 per laga, ~40% keluar lapangan. Titik nol 1,28 ± 0,29 (tidak berubah nyata). Kejutan 13 vs 11 turun sedikit ke 11% (dari 19–22%) — masih di dalam rentang sehat, belum disetel; awasi. Setelah on fire: titik nol 1,09 ± 0,23 dan kejutan 13% — selisih dengan sebelumnya masih di dalam rentang ketidakpastian (on fire hanya 0,3% waktu, jadi kemungkinan besar derau).
 - Belum ada: umpan silang/sundulan, pelanggaran & kartu (dan Temperamen), pergantian pemain.
 
 ## 8. Aturan Anti-Melenceng

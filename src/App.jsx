@@ -201,7 +201,7 @@ export default function App() {
         <button type="button" onClick={restart}>
           Ulang (seed baru)
         </button>
-        <span className="stage-note">Tahap 6 — kelelahan & psikologi (bar = tenaga menipis, titik merah = kurang percaya diri). Seed: {matchSeed}</span>
+        <span className="stage-note">Tahap 6 — kelelahan & psikologi (bar = tenaga menipis, titik merah = kurang percaya diri, titik oranye = on fire). Seed: {matchSeed}</span>
       </div>
     </main>
   );

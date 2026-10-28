@@ -19,7 +19,16 @@ import { findController } from '../src/engine/touch.js';
 import { goalLineCrossing } from '../src/engine/simulation.js';
 import { isBetweenPosts } from '../src/engine/pitch.js';
 import { tackleSuccessChance } from '../src/engine/tackle.js';
-import { CONDITION, blunderScale, physicalScale, applyConfidenceEvent } from '../src/engine/condition.js';
+import {
+  CONDITION,
+  BLUNDER_SCALE_MIN,
+  BLUNDER_SCALE_MAX,
+  blunderScale,
+  physicalScale,
+  applyConfidenceEvent,
+  onFireAmount,
+  shotThresholdScale,
+} from '../src/engine/condition.js';
 import { canPanicClear } from '../src/engine/simulation.js';
 
 let failures = 0;
@@ -197,6 +206,21 @@ console.log('Kondisi pemain (tahap 6)');
   if (canPanicClear(defender, { ...ownHalfBall, x: 70 }, match)) e2.push('panik padahal bola di separuh lawan');
   if (canPanicClear({ ...defender, role: 'ST' }, ownHalfBall, match)) e2.push('penyerang ikut panik');
   check('sapuan panik hanya saat tertinggal + catatan blunder + separuh sendiri + pemain bertahan', e2);
+
+  // On fire: bonus kecil, terbatas, hanya di atas ambang.
+  const fireBase = { ...worst, condition: { energy: 1, confidence: 1, form: 0, blunders: 0 }, skills: skills() };
+  const onFire = blunderScale(fireBase, {});
+  const atThreshold = blunderScale({ ...fireBase, condition: { ...fireBase.condition, confidence: CONDITION.fireThreshold } }, {});
+  const tiredFire = blunderScale({ ...fireBase, condition: { ...worst.condition, confidence: 1 } }, ctx);
+  const e3 = [];
+  if (!(Math.abs(onFire - BLUNDER_SCALE_MIN) < 1e-9)) e3.push(`on fire penuh seharusnya ${BLUNDER_SCALE_MIN}, dapat ${onFire}`);
+  if (!(atThreshold > onFire)) e3.push('tepat di ambang seharusnya belum dapat bonus penuh');
+  if (!(tiredFire >= BLUNDER_SCALE_MIN && tiredFire <= BLUNDER_SCALE_MAX)) e3.push(`pengali di luar batas ${tiredFire}`);
+  if (!(onFireAmount({ confidence: 0.8 }) === 0 && onFireAmount({ confidence: 1 }) === 1)) e3.push('onFireAmount salah');
+  if (!(shotThresholdScale(fireBase) < shotThresholdScale({ ...fireBase, condition: { ...fireBase.condition, confidence: 0.75 } }))) {
+    e3.push('on fire seharusnya lebih berani menembak');
+  }
+  check(`on fire: blunder ×${onFire.toFixed(2)} di percaya diri 1, tetap dalam batas ${BLUNDER_SCALE_MIN}–${BLUNDER_SCALE_MAX}`, e3);
 }
 
 console.log('Struktur pertandingan');
