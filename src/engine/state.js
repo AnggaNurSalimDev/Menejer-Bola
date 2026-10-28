@@ -5,7 +5,7 @@ import { PITCH, isInsidePitch } from './pitch.js';
 import { getFormation } from './formations.js';
 import { validateStats } from './stats.js';
 import { deriveMovementProfile } from './movement.js';
-import { HALF_TICKS, GAME_MINUTES_PER_HALF, PERIODS } from './constants.js';
+import { HALF_TICKS, GAME_MINUTES_PER_HALF, PERIODS, KICKOFF_WAIT_TICKS, MAX_RETURN_TICKS, PAUSE_REASONS } from './constants.js';
 import { CONDITION, validateCondition } from './condition.js';
 import { validateAirBall } from './aerial.js';
 import { validatePhilosophy } from './philosophy.js';
@@ -120,6 +120,8 @@ function createStats(teamIds) {
     aerialsWon: perTeam(() => 0),
     turnovers: 0,
     outOfPlay: 0,
+    // Tick persiapan kick-off (jam berhenti, tidak dihitung sebagai penguasaan bola).
+    pauseTicks: 0,
   };
 }
 
@@ -127,8 +129,12 @@ export function emptyTeamRoles() {
   return { chaserId: null, runnerId: null, runTarget: null, runTicks: 0 };
 }
 
-// Setelah gol, permainan jeda sejenak: pemain kembali ke posisi kick-off.
-export const GOAL_PAUSE_TICKS = 40;
+// Setelah gol dan di awal babak, permainan jeda: pemain kembali ke posisi kick-off.
+// Panjang jeda tidak tetap — lihat KICKOFF_WAIT_TICKS & MAX_RETURN_TICKS di constants.js.
+export function kickoffPause(reason) {
+  if (!PAUSE_REASONS.includes(reason)) throw new RangeError(`kickoffPause: alasan tidak dikenal "${reason}"`);
+  return { pauseTicks: KICKOFF_WAIT_TICKS, pauseReason: reason, pauseElapsed: 0 };
+}
 
 export function createMatchState(home, away) {
   if (!home || !away) throw new TypeError('createMatchState: home dan away wajib ada');
@@ -146,8 +152,9 @@ export function createMatchState(home, away) {
     ball: createInitialBall(home.id),
     players: [...placeTeam(home, true), ...placeTeam(away, false)],
     stats: createStats([home.id, away.id]),
-    // Tick tersisa dari jeda setelah gol (0 = bermain normal).
-    pauseTicks: 0,
+    // Persiapan kick-off: pauseTicks = tick tunggu tersisa SETELAH semua pemain sampai di posisi
+    // (0 = bermain normal), pauseReason = 'kickoff' | 'goal' | null, pauseElapsed = tick jeda berjalan.
+    ...kickoffPause('kickoff'),
     // Gol terakhir, untuk ditampilkan UI: { teamId, scorerId, tick } atau null.
     lastGoal: null,
     // Babak: first | halftime | second | fulltime. periodTick = tick di babak berjalan.
@@ -256,6 +263,13 @@ export function validateMatchState(state, teams = []) {
 
   // Jeda setelah gol: bola diam di titik tengah, menunggu kick-off.
   if (!Number.isInteger(state.pauseTicks) || state.pauseTicks < 0) errors.push('pauseTicks tidak valid');
+  if ((state.pauseTicks > 0) !== (state.pauseReason !== null)) errors.push('pauseReason harus terisi tepat saat jeda');
+  if (state.pauseReason !== null && !PAUSE_REASONS.includes(state.pauseReason)) errors.push(`pauseReason tidak dikenal "${state.pauseReason}"`);
+  if (!Number.isInteger(state.pauseElapsed) || state.pauseElapsed < 0 || state.pauseElapsed > MAX_RETURN_TICKS + KICKOFF_WAIT_TICKS) {
+    errors.push(`pauseElapsed tidak valid (${state.pauseElapsed})`);
+  }
+  if (state.pauseTicks === 0 && state.pauseElapsed !== 0) errors.push('pauseElapsed tersisa di luar jeda');
+  if (state.pauseReason === 'goal' && state.lastGoal === null) errors.push('jeda gol tanpa catatan gol');
   if (state.pauseTicks > 0) {
     if (ball.restartTeamId === null) errors.push('jeda gol tanpa tim kick-off');
     if (ball.x !== PITCH.length / 2 || ball.y !== PITCH.width / 2) errors.push('jeda gol tetapi bola tidak di tengah');
@@ -318,7 +332,9 @@ export function validateMatchState(state, teams = []) {
 
   if (state.stats) {
     const possessionTotal = teamIds.reduce((sum, id) => sum + state.stats.possessionTicks[id], 0);
-    if (possessionTotal !== state.tick) errors.push(`total tick penguasaan ${possessionTotal} ≠ tick ${state.tick}`);
+    if (possessionTotal + state.stats.pauseTicks !== state.tick) {
+      errors.push(`total tick penguasaan ${possessionTotal} + jeda ${state.stats.pauseTicks} ≠ tick ${state.tick}`);
+    }
     for (const id of teamIds) {
       const { attempted, completed } = state.stats.passes[id];
       if (!(completed >= 0 && completed <= attempted)) errors.push(`tim ${id}: operan sukses > operan dicoba`);

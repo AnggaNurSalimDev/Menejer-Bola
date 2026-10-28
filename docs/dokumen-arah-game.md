@@ -37,6 +37,7 @@ Catatan istilah: kata "AI" dalam diskusi proyek ini berarti logika perilaku kara
 - **Pemain tetap bergerak dengan kecepatan nyata.** Waktu nyata TIDAK dipercepat agar gerakan tetap terlihat wajar; yang dipadatkan adalah tempo permainan (keputusan lebih cepat, operan lebih vertikal, lebih berani menembak).
 - **Jeda babak = layar taktik** dengan tombol lanjut (tidak ada waktu tunggu tetap). Untuk sekarang hanya skor dan statistik; ubah formasi, man-to-man marking, dan sebagainya masuk bersama layer manager.
 - Babak kedua: kedua tim bertukar sisi; tim yang tidak kick-off di babak pertama memulai.
+- **Persiapan kick-off (28 Okt):** di awal setiap babak dan setelah gol, jam BERHENTI. Pemain berjalan ke posisi formasinya (sampai semua ≤ 1 m dari posisinya, paling lama 8 detik), menunggu 2 detik, baru bola dimainkan dan jam berjalan lagi. Waktu jeda tidak dihitung sebagai penguasaan bola (dicatat di `stats.pauseTicks`).
 - **Rata-rata gol tidak diatur langsung**; gol harus muncul dari stat, taktik, dan pergerakan. Yang dikalibrasi hanya **titik nol**: dua tim rata-rata (kualitas 12) ≈ **2,4–3,0 gol per pertandingan, dengan laga 0–0 paling banyak ~10%** (disepakati 28 Okt sore, menggantikan tebakan awal 2–4). Patokan: liga besar Eropa 2024/25 — La Liga 2,61, Serie A 2,70, Premier League 2,92, Ligue 1 2,98, Bundesliga 3,22, Liga Champions ~3,2. Batas bawah sedikit di bawah La Liga karena belum ada penalti & tendangan bebas. Syarat tetap: tim lemah masih menang 10–20% melawan tim yang sedikit lebih kuat (13 vs 11) — gol boleh naik, tetapi tidak boleh hanya dinikmati tim kuat. Tim kuat vs lemah, taktik, dan stat menggeser hasil dari titik nol itu.
 - Hasilnya adalah "sepak bola versi padat", bukan simulasi setia seperti Football Manager. Rentang wajar di `npm run check` adalah target desain game ini; untuk rata-rata gol, targetnya sengaja dipatok ke angka liga nyata.
 
@@ -197,6 +198,8 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - percobaan 1 — berani mengambil risiko di sepertiga akhir (ambang −0,3 dtk): titik nol 1,70 ± 0,29, tidak berubah → DIBATALKAN
    - percobaan 2 — sentuhan buruk disetel ke kisaran nyata (Kontrol: 0,12 … 0,01 per 10 m/s; ~6% operan): titik nol **2,34 ± 0,39**, laga 0–0 **11%**, kejutan 13 vs 11 13%, 15 vs 9 menang 98%. Pertandingan web (200 laga): biru 44% / seri 27% / merah 30%, 2,2 gol, 0–0 10%. Filosofi tetap seimbang (fisik 41% vs cepat 34%, dalam derau). `npm run check` lolos tanpa satu pun peringatan
    - percobaan 3 tidak dilakukan: hasil sudah di dalam rentang ketidakpastian target. Langkah berikut lebih berharga ditonton dulu
+   - KOREKSI (28 Okt malam, 200 laga, kedua tim "seimbang"): rata-rata sebenarnya ~2,1–2,2 gol per laga; angka 2,34 dari 64 laga adalah sampel yang kebetulan tinggi. Titik nol masih sedikit di bawah target 2,4. Pelajaran: untuk keputusan penting, pakai ≥ 200 laga
+   - persiapan kick-off dengan jam berhenti tidak mengubah rata-rata gol (200 laga: 2,17 sebelum vs 2,08 sesudah, dalam derau); gol "murah" tepat setelah kick-off ulang memang hanya ~1%
 7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
 
 ## 7. Keputusan yang Masih Terbuka

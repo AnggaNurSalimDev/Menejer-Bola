@@ -19,9 +19,18 @@ import {
   validateMatchState,
   emptyTeamRoles,
   gameClock,
-  GOAL_PAUSE_TICKS,
+  kickoffPause,
 } from './state.js';
-import { DT, TICK_RATE, DECISION_INTERVAL_TICKS, KICK_COOLDOWN_TICKS, HALF_TICKS } from './constants.js';
+import {
+  DT,
+  TICK_RATE,
+  DECISION_INTERVAL_TICKS,
+  KICK_COOLDOWN_TICKS,
+  HALF_TICKS,
+  MAX_RETURN_TICKS,
+  SETTLE_DISTANCE,
+  SETTLE_SPEED,
+} from './constants.js';
 import { blunder } from './skill.js';
 import { getPhilosophy } from './philosophy.js';
 import {
@@ -131,6 +140,7 @@ function cloneStats(stats) {
     aerialsWon: { ...stats.aerialsWon },
     turnovers: stats.turnovers,
     outOfPlay: stats.outOfPlay,
+    pauseTicks: stats.pauseTicks,
   };
 }
 
@@ -645,7 +655,9 @@ export function createSimulation(home, away, seed) {
     return undefined;
   }
 
-  // 0. Jeda setelah gol: semua pemain berjalan kembali ke posisi kick-off.
+  // 0. Persiapan kick-off (awal babak / setelah gol): jam berhenti, semua pemain
+  //    berjalan ke posisi formasinya. Hitung mundur tunggu baru berjalan setelah
+  //    semua sampai (atau setelah MAX_RETURN_TICKS, supaya tidak menunggu selamanya).
   function stepPause(prev, tick, stats) {
     const players = prev.players.map((player) => {
       const target = slotToPitch(player.slot, player.attacksRight);
@@ -664,8 +676,24 @@ export function createSimulation(home, away, seed) {
         condition,
       };
     });
-    stats.possessionTicks[prev.ball.restartTeamId] += 1;
-    return { ...prev, tick, players, stats, pauseTicks: prev.pauseTicks - 1 };
+    stats.pauseTicks += 1;
+    const settled =
+      prev.pauseElapsed >= MAX_RETURN_TICKS ||
+      players.every(
+        (p) =>
+          distance(p, slotToPitch(p.slot, p.attacksRight)) <= SETTLE_DISTANCE && Math.hypot(p.vx, p.vy) <= SETTLE_SPEED,
+      );
+    const pauseTicks = settled ? prev.pauseTicks - 1 : prev.pauseTicks;
+    const done = pauseTicks === 0;
+    return {
+      ...prev,
+      tick,
+      players,
+      stats,
+      pauseTicks,
+      pauseReason: done ? null : prev.pauseReason,
+      pauseElapsed: done ? 0 : prev.pauseElapsed + 1,
+    };
   }
 
   // Satu tick permainan (dipanggil hanya saat babak sedang berjalan).
@@ -683,7 +711,7 @@ export function createSimulation(home, away, seed) {
     const byId = new Map(prev.players.map((p) => [p.id, p]));
     let ball = { ...prev.ball };
     let lastGoal = prev.lastGoal;
-    let pauseTicks = 0;
+    let pause = { pauseTicks: 0, pauseReason: null, pauseElapsed: 0 };
 
     const cooldownOverrides = new Map();
     const runCooldowns = new Map();
@@ -936,7 +964,7 @@ export function createSimulation(home, away, seed) {
         tick,
       };
       ball = createInitialBall(concedingTeamId);
-      pauseTicks = GOAL_PAUSE_TICKS;
+      pause = kickoffPause('goal');
       for (let i = 0; i < players.length; i += 1) {
         if (players[i].task !== 'shape') players[i] = { ...players[i], task: 'shape' };
       }
@@ -1171,7 +1199,7 @@ export function createSimulation(home, away, seed) {
       players[i] = { ...players[i], condition: applyConfidenceEvent(players[i].condition, players[i].skills, event) };
     }
 
-    state = { ...prev, tick, teams, ball, players, stats, pauseTicks, lastGoal };
+    state = { ...prev, tick, teams, ball, players, stats, ...pause, lastGoal };
     return state;
   }
 
@@ -1179,7 +1207,10 @@ export function createSimulation(home, away, seed) {
   function step() {
     if (state.period === 'halftime' || state.period === 'fulltime') return state;
 
+    // Jam berhenti selama persiapan kick-off (awal babak & setelah gol).
+    const wasPaused = state.pauseTicks > 0;
     advance();
+    if (wasPaused) return state;
     const periodTick = state.periodTick + 1;
     if (periodTick < HALF_TICKS) {
       state = { ...state, periodTick };
@@ -1191,6 +1222,8 @@ export function createSimulation(home, away, seed) {
       ...state,
       periodTick: HALF_TICKS,
       pauseTicks: 0,
+      pauseReason: null,
+      pauseElapsed: 0,
       period: state.period === 'first' ? 'halftime' : 'fulltime',
     };
     return state;
@@ -1230,7 +1263,7 @@ export function createSimulation(home, away, seed) {
       teams,
       players,
       ball: createInitialBall(kickOffTeamId),
-      pauseTicks: 0,
+      ...kickoffPause('kickoff'),
       period: 'second',
       periodTick: 0,
     };

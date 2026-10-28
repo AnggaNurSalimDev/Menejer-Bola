@@ -17,6 +17,7 @@ Proyek ini dibuat untuk senang-senang.
 - Bola udara (28 Okt): pemain sayap mengirim umpan silang ke kotak, sepak pojok dilambungkan, penyerang menyerbu tiang dekat/titik penalti/tiang jauh, duel udara ditentukan stat baru **Duel udara**, sundulan ke gawang, kiper menangkap atau meninju. Penembak juga tidak lagi asal menembak dari jauh. Rata-rata gol naik dari ~1,2 ke ~1,9 per laga.
 - Filosofi pelatih (28 Okt): tiap tim punya gaya. Persada Bandung "Fisik & bola udara" (kuat, jago udara, tempo lambat, sering umpan silang), Garuda Merah "Cepat & mengalir" (lebih kencang, melepas bola lebih cepat). Filosofi hanya memindahkan kekuatan, tidak menambahnya. Ketajaman operan ikut stat Passing, lama menahan bola ikut stat Keputusan.
 - Sentuhan pertama disetel ke kisaran nyata (28 Okt): dulu 18% operan berakhir bola memantul lepas dari kaki, sekarang ~6%. Rata-rata gol naik ke ~2,3 per laga dan laga 0–0 turun ke ~10% (patokan liga besar Eropa: 2,6–3,2 gol).
+- Persiapan kick-off (28 Okt): di awal babak dan setelah gol, jam berhenti, pemain berjalan ke posisi formasinya, menunggu 2 detik, lalu bola dimainkan.
 - Berikutnya: layer manager (taktik saat jeda, termasuk memilih filosofi).
 
 Tip: tambahkan `?seed=13` di alamat (misalnya `http://localhost:5173/?seed=13`) untuk memutar ulang pertandingan tertentu.

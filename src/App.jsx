@@ -101,7 +101,7 @@ export default function App() {
       // Tulisan GOL! selama jeda setelah gol.
       const banner = goalBannerRef.current;
       if (banner) {
-        const showing = state.pauseTicks > 0 && state.lastGoal !== null;
+        const showing = state.pauseReason === 'goal' && state.lastGoal !== null;
         banner.hidden = !showing;
         if (showing) {
           const goal = state.lastGoal;

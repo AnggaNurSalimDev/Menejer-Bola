@@ -26,3 +26,11 @@ export const HALF_REAL_SECONDS = 5 * 60;
 export const HALF_TICKS = HALF_REAL_SECONDS * TICK_RATE;
 export const GAME_MINUTES_PER_HALF = 45;
 export const PERIODS = Object.freeze(['first', 'halftime', 'second', 'fulltime']);
+
+// Persiapan kick-off (28 Okt): di awal babak dan setelah gol, jam BERHENTI,
+// pemain berjalan ke posisi formasinya, lalu menunggu sejenak sebelum bola dimainkan.
+export const KICKOFF_WAIT_TICKS = 20; // 2 detik menunggu setelah semua sampai
+export const MAX_RETURN_TICKS = 80; // paling lama 8 detik berjalan kembali
+export const SETTLE_DISTANCE = 1.0; // meter dari posisi formasi = sudah sampai
+export const SETTLE_SPEED = 0.5; // m/s
+export const PAUSE_REASONS = Object.freeze(['kickoff', 'goal']);

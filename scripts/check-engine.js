@@ -311,13 +311,18 @@ console.log('Struktur pertandingan');
   let s = sim.getState();
   while (s.period === 'first') s = sim.step();
   if (s.period !== 'halftime') errors.push(`setelah babak 1 seharusnya halftime, dapat ${s.period}`);
-  if (s.tick !== HALF_TICKS) errors.push(`babak 1 seharusnya ${HALF_TICKS} tick, dapat ${s.tick}`);
+  // Jam berhenti selama persiapan kick-off: tick bermain = HALF_TICKS, tick jeda tercatat terpisah.
+  if (s.tick - s.stats.pauseTicks !== HALF_TICKS) {
+    errors.push(`babak 1 seharusnya ${HALF_TICKS} tick bermain, dapat ${s.tick - s.stats.pauseTicks}`);
+  }
+  if (s.periodTick !== HALF_TICKS) errors.push(`jam babak 1 seharusnya ${HALF_TICKS}, dapat ${s.periodTick}`);
   if (gameClock(s).minute !== 45) errors.push(`jam saat jeda seharusnya 45', dapat ${gameClock(s).minute}'`);
 
   const frozen = sim.step();
   if (frozen.tick !== s.tick) errors.push('waktu berjalan saat jeda babak');
 
   s = sim.startSecondHalf();
+  if (s.pauseReason !== 'kickoff') errors.push('babak 2 tidak dimulai dengan persiapan kick-off');
   if (s.teams.home.attacksRight === homeSideBefore) errors.push('tim tidak bertukar sisi di babak 2');
   if (s.ball.restartTeamId !== 'away') errors.push('kick-off babak 2 bukan oleh tim tamu');
   for (const e of validateMatchState(s)) errors.push(`awal babak 2: ${e}`);
@@ -403,6 +408,49 @@ function summarize(seeds, options) {
     sums.homePossession += st.possessionTicks.home / (st.possessionTicks.home + st.possessionTicks.away);
   }
   return { n: seeds.length, scores, ...t, ...sums };
+}
+
+console.log('Persiapan kick-off (jam berhenti)');
+{
+  const errors = [];
+  const teams = createDemoTeams(2026);
+  const sim = createSimulation(teams.home, teams.away, 19);
+  let s = sim.getState();
+  if (s.pauseReason !== 'kickoff') errors.push('pertandingan tidak dimulai dengan persiapan kick-off');
+  let pausedSteps = 0;
+  while (s.pauseTicks > 0) {
+    s = sim.step();
+    pausedSteps += 1;
+    if (s.periodTick !== 0) errors.push('jam berjalan saat persiapan kick-off awal');
+    if (pausedSteps > 200) break;
+  }
+  if (pausedSteps < 20) errors.push(`persiapan kick-off terlalu singkat (${pausedSteps} tick)`);
+  // Setelah gol: jam membeku sampai semua pemain kembali & menunggu.
+  // Cari gol pertama di babak 1 dari beberapa seed (seed apa pun boleh, yang penting ada gol).
+  let goalFound = false;
+  for (let seed = 1; seed <= 20 && !goalFound; seed += 1) {
+    const g = createSimulation(teams.home, teams.away, seed);
+    s = g.getState();
+    while (s.period === 'first' && !goalFound) {
+      const before = s.stats.goals.home + s.stats.goals.away;
+      s = g.step();
+      if (s.stats.goals.home + s.stats.goals.away > before) goalFound = true;
+    }
+    if (goalFound) {
+      const clock = s.periodTick;
+      if (s.pauseReason !== 'goal') errors.push('setelah gol tidak masuk jeda gol');
+      let n = 0;
+      while (s.pauseTicks > 0 && n < 200) {
+        s = g.step();
+        n += 1;
+        if (s.periodTick !== clock) errors.push('jam berjalan saat jeda gol');
+      }
+      if (n > 80 + 20 + 1) errors.push(`jeda gol terlalu lama (${n} tick)`);
+      if (s.pauseReason !== null) errors.push('jeda tidak berakhir');
+    }
+  }
+  if (!goalFound) errors.push('20 seed tanpa gol di babak 1');
+  check('awal laga & setelah gol: jam berhenti, pemain kembali ke posisi, menunggu, lalu kick-off', errors);
 }
 
 console.log('Satu pertandingan penuh');
