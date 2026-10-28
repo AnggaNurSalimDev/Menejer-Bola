@@ -121,6 +121,7 @@ Prinsip utama: **stat teknis adalah plafon; psikologi menentukan berapa banyak d
 | Temperamen | Tim tertinggal; baru dilanggar | Tackling lebih nekat → peluang pelanggaran & kartu naik (pergeseran perilaku, bukan nerf murni) |
 | Determinasi | Menit akhir; tim tertinggal | Menahan nerf dari kelelahan |
 | Egoisme / Kerja sama | Selalu aktif | Kecenderungan, bukan nerf: pemain egois lebih sering menembak/menggiring daripada mengoper (di mana saja) |
+| Kecerobohan | Selalu aktif | Tekel asal-asalan / salah timing → pelanggaran (stat TINGGI = lebih ceroboh). Ditambahkan 29 Okt atas permintaan; beda dengan Temperamen: Kecerobohan tidak bergantung emosi. Juga mengikis kehati-hatian setelah kartu kuning (hanya bila di atas rata-rata) |
 | Insting gol | Makin dekat gawang lawan (mulai ±32 m, penuh di 20 m) | Kecenderungan, bukan nerf: "adrenalin" — ambang tembak turun sesuai jarak, jadi pemain berinsting tinggi berani menembak dari luar kotak. Ditambahkan 28 Okt atas permintaan. Beda dengan Egoisme: Egoisme berlaku di mana saja, Insting gol bergantung jarak |
 
 **Kelelahan** (kondisi, bukan stat): saat stamina menipis, Kecepatan, Akselerasi, dan terutama Keputusan turun.
@@ -217,7 +218,16 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - hasil (100–200 laga): offside ~0,5 per laga (sepak bola nyata ~3–4 — masih jarang), bendera salah ~14% dari bendera, offside lolos ~0,08 per laga; gol 2,18 ± 0,21 (sama dengan sebelum 7a), 0–0 16%, kejutan 13 vs 11 13%
    - tampilan: wasit & hakim garis berbaju hitam-kuning, bendera terangkat saat offside, tulisan "PRIIIT! Kick-off / Offside — nama"
    - menaikkan offside (28 Okt malam, 2 percobaan, keduanya DIBATALKAN): (1) pengoper telat menyadari lari rekan (Keputusan, 1–8 tick) → 0,52/laga; (2) pengoper menilai posisi pelari dari yang dilihatnya sesaat sebelumnya → 0,47/laga. Tidak berubah dari 0,5. Penyebab struktural: penyerang hampir tidak pernah berada di posisi offside (hanya ~1% operan), pengoper menolak penerima yang tampak offside, dan bola biasanya sudah dilepas karena alasan lain sebelum keterlambatan berpengaruh. Jalan yang lebih menjanjikan: **jebakan offside** (garis bek naik bersamaan saat bola akan dimainkan) — cocok sebagai pilihan taktik di layer manajer
-7b. Rencana (disepakati 28 Okt): pelanggaran dari tekel, keuntungan (advantage), tendangan bebas, kartu kuning, stat Temperamen, Ketegasan wasit (wasit bisa tidak melihat), ~12–16 pelanggaran per laga. Tambahan permintaan: **pertikaian antarpemain** dan **kartu untuk protes berlebihan** — desain disepakati saat 7b dimulai
+7b-1. ✅ Pelanggaran, keuntungan, tendangan bebas, kartu kuning (29 Okt; `src/engine/fouls.js`):
+   - pelanggaran lahir dari tekel: tekel kalah duel jauh lebih sering melanggar; pengali dari stat baru **Kecerobohan** (uji terkontrol: stat 5 → 30% tekel jadi pelanggaran, stat 17 → 53%), emosi panas (agitation × Temperamen), tekel dari belakang, lelah, tertinggal setelah menit 70
+   - emosi (agitation 0–1) naik saat dilanggar, dikartu, timnya kebobolan (× Temperamen) dan perlahan reda
+   - wasit: makin jauh dari kejadian makin mungkin tidak melihat; pelanggaran ringan ditiup sesuai Ketegasan. Keuntungan bila tim yang dilanggar tetap menguasai bola di separuh lawan tanpa lawan lain menempel — kecuali ≤ 30 m dari gawang (tendangan bebas lebih berharga)
+   - tendangan bebas: lawan ≥ 9,15 m, pagar betis 3 pemain bila ≤ 32 m dari gawang, eksekutor menunggu 2 dtk; ≤ 30 m dengan sudut cukup → tembak langsung (melambung melewati pagar, hanya kiper yang bisa menjangkau di udara); ≤ 42 m → dilambungkan ke kotak. Pelanggaran di kotak penalti sementara jadi tendangan bebas di tepi kotak (penalti di 7c)
+   - kartu kuning: keras, dari belakang, atau taktis (pemain terakhir / menghentikan lolosnya lawan), × Kecerobohan, × Ketegasan wasit. Kuning kedua baru dicatat (`secondYellows`), kartu merah di 7c
+   - setelah kuning: lebih jarang mencoba tekel & melanggar sesuai kendali diri (Ketenangan + Keputusan); Kecerobohan di atas rata-rata & emosi panas mengikis kehati-hatian. Uji terkontrol: satu tim berkartu semua → pelanggaran −24%
+   - hasil (200 laga): ~11,5 pelanggaran ditiup + ~2,4 tidak terlihat wasit per laga, keuntungan ~2,4, kuning ~2,8, calon merah ~0,15, tendangan bebas ~9 (ditembak langsung ~0,7, masuk ~7%), gol 2,11 (sama dengan sebelum 7b), 0–0 12%. Kejutan 13 vs 11 turun ke **10%** (dari 13%) — tepat di batas bawah; awasi di 7b-2
+   - catatan pengukuran: membandingkan pelanggaran pemain sebelum vs sesudah dikartu menyesatkan (pemain yang dikartu memang yang sering melanggar sebelumnya) — pakai uji terkontrol
+7b-2. Rencana: protes berlebihan (kartu karena protes) dan pertikaian antarpemain, dengan efek emosi (disepakati 29 Okt: pertikaian berefek)
 7c. Rencana: penalti, kartu merah (tim main dengan 10 orang)
 7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
 

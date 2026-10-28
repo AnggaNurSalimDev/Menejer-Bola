@@ -6,7 +6,7 @@
 //
 // Berhasil : bola lepas dari kaki pemegang dan menggelinding pelan.
 // Gagal    : penekan terhuyung (berhenti sejenak), pemegang bola lolos.
-// Pelanggaran belum ada; itu bagian dari stat Temperamen di tahap psikologi.
+// Pelanggaran: lihat fouls.js (tahap 7b-1).
 
 import { distance } from './pitch.js';
 import { STAT_MIN, STAT_MAX } from './stats.js';
@@ -43,12 +43,15 @@ export function tackleSuccessChance(defender, holder) {
 }
 
 // Pilih penekan yang mencoba tekel di tick ini (paling dekat duluan), atau null.
-export function pickTackler(holder, opponents, rng) {
+// attemptScale(player): pengali peluang mencoba (misalnya lebih hati-hati setelah kartu kuning).
+export function pickTackler(holder, opponents, rng, attemptScale = () => 1) {
   const inRange = opponents
     .filter((p) => p.tackleCooldown === 0 && distance(p, holder) <= TACKLE_RANGE)
     .sort((a, b) => distance(a, holder) - distance(b, holder) || a.id.localeCompare(b.id));
   if (inRange.length === 0) return null;
-  return rng.chance(TACKLE_ATTEMPT_CHANCE) ? inRange[0] : null;
+  const scale = attemptScale(inRange[0]);
+  if (!(scale >= 0 && scale <= 1)) throw new RangeError(`pickTackler: attemptScale tidak valid ${scale}`);
+  return rng.chance(TACKLE_ATTEMPT_CHANCE * scale) ? inRange[0] : null;
 }
 
 // Kecepatan bola yang terlepas akibat tekel berhasil:

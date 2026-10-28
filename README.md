@@ -20,7 +20,8 @@ Proyek ini dibuat untuk senang-senang.
 - Persiapan kick-off (28 Okt): di awal babak dan setelah gol, jam berhenti, pemain berjalan ke posisi formasinya, menunggu 2 detik, lalu bola dimainkan.
 - Insting gol & tembakan jarak jauh (28 Okt): stat psikologis baru **Insting gol** membuat pemain makin berani menembak saat dekat gawang; tenaga tendangan dari Finishing + Kekuatan; pandangan kiper bisa terhalang pemain di jalur tembakan. Sekitar sepertiga tembakan sekarang dari luar kotak, dan ~20% gol lahir dari sana.
 - Wasit & hakim garis (tahap 7a, 28 Okt): wasit mengikuti bola, dua hakim garis berlari sejajar garis offside dan mengangkat bendera. Kick-off: penendang berdiri di titik tengah, lawan di luar lingkaran, lalu peluit. Offside dinilai untuk semua cara bola dimainkan, dan hakim garis bisa salah pada kejadian tipis (tanpa VAR).
-- Berikutnya: tahap 7b (pelanggaran, kartu, tendangan bebas, pertikaian, protes), 7c (penalti, kartu merah), lalu layer manager.
+- Pelanggaran & kartu kuning (tahap 7b-1, 29 Okt): tekel bisa jadi pelanggaran (stat baru **Kecerobohan**, emosi/Temperamen, dari belakang, lelah), wasit bisa tidak melihat dan memberi keuntungan, tendangan bebas dengan pagar betis (ditembak langsung atau dilambungkan), kartu kuning, pemain berkartu lebih berhati-hati.
+- Berikutnya: 7b-2 (protes & pertikaian), 7c (penalti, kartu merah), lalu layer manager.
 
 Tip: tambahkan `?seed=13` di alamat (misalnya `http://localhost:5173/?seed=13`) untuk memutar ulang pertandingan tertentu.
 
@@ -49,6 +50,7 @@ npm run build    # build produksi
   - `skill.js` — SEMUA angka blunder dari stat (tabel BLUNDER)
   - `condition.js` — kondisi pemain: tenaga, kepercayaan diri, form, tekanan (tabel CONDITION)
   - `philosophy.js` — filosofi pelatih: geseran stat (jumlah nol), tempo, kecenderungan umpan silang
+  - `fouls.js` — pelanggaran, kartu kuning, keuntungan, emosi pemain (tabel FOUL, CARD)
   - `officials.js` — wasit & hakim garis: gerak, penilaian offside yang bisa salah
   - `aerial.js` — bola udara: lambungan, titik jatuh, duel udara, sundulan (tabel AERIAL, CROSS, HEADER)
   - `shape.js` — posisi jangkar formasi per fase (menyerang/bertahan/netral)

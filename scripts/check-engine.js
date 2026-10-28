@@ -32,6 +32,7 @@ import {
 import { canPanicClear } from '../src/engine/simulation.js';
 import { PHILOSOPHIES, validatePhilosophy } from '../src/engine/philosophy.js';
 import { flagChance } from '../src/engine/officials.js';
+import { foulChance, cautionScale, callChance, advantageApplies, initialDiscipline } from '../src/engine/fouls.js';
 import { kickoffTargets, pickKickoffTaker } from '../src/engine/simulation.js';
 import { instinctShotScale } from '../src/engine/condition.js';
 import { shotSpeedFor, isScreened, SHOT_POWER } from '../src/engine/shooting.js';
@@ -306,6 +307,34 @@ console.log('Wasit, hakim garis & offside (tahap 7a)');
     if (!ownHalf) e.push(`${p.id} tidak di separuh sendiri saat kick-off`);
   }
   check('hakim garis: jelas = benar, tipis = bisa salah; kick-off: penendang di titik tengah, lawan di luar lingkaran', e);
+}
+
+console.log('Pelanggaran & kartu (tahap 7b-1)');
+{
+  const e = [];
+  const mk = (over = {}, discipline = {}) => ({
+    id: 'x',
+    skills: { kecerobohan: 10, temperamen: 10, ketenangan: 10, keputusan: 10, ...over },
+    condition: { energy: 1 },
+    discipline: { ...initialDiscipline(), ...discipline },
+  });
+  const ctx = { won: false, fromBehind: false, trailingLate: false };
+  if (!(foulChance(mk({ kecerobohan: 18 }), ctx) > foulChance(mk({ kecerobohan: 3 }), ctx))) e.push('Kecerobohan tinggi tidak lebih sering melanggar');
+  if (!(foulChance(mk(), { ...ctx, won: true }) < foulChance(mk(), ctx))) e.push('tekel yang menang tidak lebih jarang melanggar');
+  if (!(foulChance(mk(), { ...ctx, fromBehind: true }) > foulChance(mk(), ctx))) e.push('tekel dari belakang tidak lebih sering melanggar');
+  const hot = mk({ temperamen: 18 }, { agitation: 1 });
+  if (!(foulChance(hot, ctx) > foulChance(mk({ temperamen: 18 }), ctx))) e.push('emosi panas tidak menambah pelanggaran');
+  const calmBooked = mk({ ketenangan: 18, keputusan: 18, kecerobohan: 5 }, { yellows: 1 });
+  const wildBooked = mk({ ketenangan: 3, keputusan: 3, kecerobohan: 19 }, { yellows: 1, agitation: 1 });
+  if (cautionScale(mk()) !== 1) e.push('pemain tanpa kartu ikut berhati-hati');
+  if (!(cautionScale(calmBooked) < cautionScale(wildBooked))) e.push('pemain tenang tidak lebih berhati-hati setelah dikartu daripada pemain ceroboh & panas');
+  if (!(cautionScale(wildBooked) <= 1 && cautionScale(calmBooked) > 0)) e.push('kehati-hatian di luar 0–1');
+  const ref = { x: 50, y: 34, skills: { ketegasan: 12 } };
+  if (!(callChance(ref, { x: 52, y: 34 }, false) > callChance(ref, { x: 95, y: 5 }, false))) e.push('wasit jauh tidak lebih sering melewatkan pelanggaran');
+  const holder = { id: 'h', attacksRight: true, x: 70, y: 34 };
+  if (!advantageApplies(holder, [{ id: 'off', x: 70.5, y: 34 }], 'off')) e.push('keuntungan terhalang oleh si pelanggar sendiri');
+  if (advantageApplies({ ...holder, x: 90 }, [], 'off')) e.push('keuntungan diberikan padahal tendangan bebas dekat gawang lebih berharga');
+  check('pelanggaran: Kecerobohan, emosi, dari belakang; kehati-hatian setelah kuning; wasit; keuntungan', e);
 }
 
 console.log('Bola udara (umpan silang & sundulan)');

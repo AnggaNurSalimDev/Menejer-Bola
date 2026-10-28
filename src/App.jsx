@@ -42,6 +42,8 @@ const STAT_ROWS = [
   { key: 'passes', label: 'Operan sukses / dicoba', read: (s, id) => `${s.passes[id].completed}/${s.passes[id].attempted}` },
   { key: 'tackles', label: 'Tekel berhasil / dicoba', read: (s, id) => `${s.tackles[id].won}/${s.tackles[id].attempted}` },
   { key: 'offsides', label: 'Offside', read: (s, id) => `${s.offsides[id]}` },
+  { key: 'fouls', label: 'Pelanggaran', read: (s, id) => `${s.fouls[id]}` },
+  { key: 'yellows', label: 'Kartu kuning', read: (s, id) => `${s.yellows[id]}` },
   { key: 'crosses', label: 'Umpan silang (sampai)', read: (s, id) => `${s.crosses[id].attempted} (${s.crosses[id].won})` },
   { key: 'headers', label: 'Sundulan ke gawang', read: (s, id) => `${s.headers[id].shots}` },
   { key: 'longShots', label: 'Tembakan luar kotak', read: (s, id) => `${s.longShots[id].shots}` },
@@ -110,7 +112,16 @@ export default function App() {
         whistleEl.hidden = !showing;
         if (showing) {
           const offender = w.playerId ? namesById.get(w.playerId) : null;
-          set(whistleEl, w.kind === 'offside' ? `🚩 PRIIIT! Offside${offender ? ` — ${offender}` : ''}` : 'PRIIIT! Kick-off');
+          const card = w.card === 'yellow' ? ' 🟨' : w.card === 'secondYellow' ? ' 🟨🟨' : '';
+          const text =
+            w.kind === 'offside'
+              ? `🚩 PRIIIT! Offside${offender ? ` — ${offender}` : ''}`
+              : w.kind === 'foul'
+                ? `PRIIIT! Pelanggaran — ${offender}${card}`
+                : w.kind === 'advantage'
+                  ? `Keuntungan! Pelanggaran ${offender}${card}`
+                  : 'PRIIIT! Kick-off';
+          set(whistleEl, text);
         }
       }
 
@@ -123,7 +134,7 @@ export default function App() {
           const goal = state.lastGoal;
           const team = goal.teamId === home.id ? home : away;
           const scorer = goal.scorerId ? namesById.get(goal.scorerId) : null;
-          const who = goal.ownGoal ? 'gol bunuh diri' : `${scorer ?? team.name}${goal.header ? ' (sundulan)' : goal.longShot ? ' (dari luar kotak)' : ''}`;
+          const who = goal.ownGoal ? 'gol bunuh diri' : `${scorer ?? team.name}${goal.header ? ' (sundulan)' : goal.freeKick ? ' (tendangan bebas)' : goal.longShot ? ' (dari luar kotak)' : ''}`;
           set(banner.querySelector('.goal-banner__detail'), `${who} · ${team.name}`);
           banner.style.setProperty('--goal-color', team.colors.shirt);
         }
@@ -222,7 +233,7 @@ export default function App() {
         <button type="button" onClick={restart}>
           Ulang (seed baru)
         </button>
-        <span className="stage-note">Wasit & hakim garis + filosofi pelatih + bola udara (bayangan = bola melambung; bar = tenaga menipis, titik merah = kurang percaya diri, titik oranye = on fire). Seed: {matchSeed}</span>
+        <span className="stage-note">Pelanggaran & kartu + wasit & hakim garis + filosofi pelatih + bola udara (bayangan = bola melambung; bar = tenaga menipis, titik merah = kurang percaya diri, titik oranye = on fire). Seed: {matchSeed}</span>
       </div>
     </main>
   );

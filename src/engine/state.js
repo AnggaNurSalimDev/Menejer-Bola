@@ -10,6 +10,7 @@ import { CONDITION, validateCondition } from './condition.js';
 import { validateAirBall } from './aerial.js';
 import { validatePhilosophy } from './philosophy.js';
 import { createOfficials, validateOfficials } from './officials.js';
+import { initialDiscipline, validateDiscipline } from './fouls.js';
 import { createRng } from './rng.js';
 
 const SPEED_TOLERANCE = 1e-6;
@@ -62,6 +63,8 @@ function placeTeam(team, attacksRight) {
       runCooldown: 0,
       // Kondisi (tahap 6). Form hari ini diacak oleh simulasi saat dibuat.
       condition: { energy: 1, confidence: CONDITION.startConfidence, form: 0, blunders: 0 },
+      // Disiplin (tahap 7b-1): kartu kuning, jumlah pelanggaran, emosi (agitation 0–1).
+      discipline: initialDiscipline(),
     };
   });
 }
@@ -136,6 +139,14 @@ function createStats(teamIds) {
     // Keputusan offside yang salah (untuk diukur; tidak tampil): lolos & salah bendera.
     offsideMissed: perTeam(() => 0),
     offsideWrong: perTeam(() => 0),
+    // Tahap 7b-1: pelanggaran yang ditiup (per tim pelanggar), tidak terlihat wasit, keuntungan,
+    // kartu kuning, kuning kedua (calon kartu merah di 7c), tendangan bebas (per tim penerima).
+    fouls: perTeam(() => 0),
+    foulsUnseen: perTeam(() => 0),
+    advantages: perTeam(() => 0),
+    yellows: perTeam(() => 0),
+    secondYellows: perTeam(() => 0),
+    freeKicks: perTeam(() => ({ awarded: 0, shots: 0, goals: 0 })),
   };
 }
 
@@ -308,7 +319,7 @@ export function validateMatchState(state, teams = []) {
   errors.push(...validateAirBall(ball));
   for (const id of teamIds) for (const e of validatePhilosophy(state.teams[id].philosophy)) errors.push(`tim ${id}: ${e}`);
   if ((ball.shotKind === null) !== (ball.shotTeamId === null)) errors.push('shotKind harus terisi tepat saat ada tembakan');
-  if (ball.shotKind !== null && !['foot', 'long', 'header'].includes(ball.shotKind)) errors.push(`shotKind tidak dikenal "${ball.shotKind}"`);
+  if (ball.shotKind !== null && !['foot', 'long', 'header', 'freeKick'].includes(ball.shotKind)) errors.push(`shotKind tidak dikenal "${ball.shotKind}"`);
   if (ball.crossTeamId !== null && !teamIds.includes(ball.crossTeamId)) errors.push('crossTeamId tidak valid');
   if (ball.crossTeamId !== null && ball.passTargetId !== null) errors.push('umpan silang sekaligus operan tanah');
   if (ball.lastTouchTeamId !== null && !teamIds.includes(ball.lastTouchTeamId)) {
@@ -343,6 +354,7 @@ export function validateMatchState(state, teams = []) {
   for (const p of state.players) {
     if (!Number.isInteger(p.runCooldown) || p.runCooldown < 0) errors.push(`pemain ${p.id}: runCooldown tidak valid`);
     for (const e of validateCondition(p.condition)) errors.push(`pemain ${p.id}: kondisi — ${e}`);
+    for (const e of validateDiscipline(p.discipline)) errors.push(`pemain ${p.id}: disiplin — ${e}`);
   }
   // Offside: penanda hanya berlaku saat bola sedang bergerak bebas setelah dimainkan.
   for (const key of ['offsideFlagIds', 'offsideTrueIds']) {
@@ -369,7 +381,10 @@ export function validateMatchState(state, teams = []) {
     errors.push('setPieceKind hanya untuk pemegang bola yang mengeksekusi bola mati');
   }
   for (const e of validateOfficials(state.officials)) errors.push(`perangkat: ${e}`);
-  if (state.whistle !== null && !(Number.isInteger(state.whistle.tick) && ['kickoff', 'offside'].includes(state.whistle.kind))) {
+  if (
+    state.whistle !== null &&
+    !(Number.isInteger(state.whistle.tick) && ['kickoff', 'offside', 'foul', 'advantage'].includes(state.whistle.kind))
+  ) {
     errors.push('catatan peluit tidak valid');
   }
 
@@ -404,6 +419,12 @@ export function validateMatchState(state, teams = []) {
       if (!(state.stats.aerialsWon[id] >= 0)) errors.push(`tim ${id}: duel udara tidak valid`);
       if (!(state.stats.offsideMissed[id] >= 0 && state.stats.offsideWrong[id] >= 0)) errors.push(`tim ${id}: catatan salah offside tidak valid`);
       if (!(state.stats.offsideWrong[id] <= state.stats.offsides[id])) errors.push(`tim ${id}: offside salah bendera > offside dinyatakan`);
+      const teamYellows = state.players.filter((p) => p.teamId === id).reduce((n, p) => n + p.discipline.yellows, 0);
+      if (state.stats.yellows[id] !== teamYellows) errors.push(`tim ${id}: kartu kuning ${state.stats.yellows[id]} ≠ jumlah di pemain ${teamYellows}`);
+      if (!(state.stats.yellows[id] + state.stats.secondYellows[id] <= state.stats.fouls[id])) errors.push(`tim ${id}: kartu > pelanggaran`);
+      if (!(state.stats.advantages[id] >= 0 && state.stats.foulsUnseen[id] >= 0)) errors.push(`tim ${id}: catatan pelanggaran tidak valid`);
+      const fk = state.stats.freeKicks[id];
+      if (!(fk.goals >= 0 && fk.goals <= fk.shots && fk.shots <= fk.awarded)) errors.push(`tim ${id}: statistik tendangan bebas tidak konsisten`);
     }
   } else {
     errors.push('stats tidak ada');

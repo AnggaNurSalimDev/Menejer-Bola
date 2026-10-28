@@ -47,7 +47,7 @@ import { computeAnchor } from './shape.js';
 import { stepBody } from './movement.js';
 import { pickChaser, pickPresser } from './roles.js';
 import { evaluatePassOptions, dribbleTarget, shotLaneBlocker } from './passing.js';
-import { evaluateShot, shotVelocity, shotSpeedFor, SCREEN } from './shooting.js';
+import { evaluateShot, shotVelocity, shotSpeedFor, goalAngle, SCREEN } from './shooting.js';
 import {
   pickTackler,
   tackleSuccessChance,
@@ -72,6 +72,18 @@ import {
   instinctShotScale,
 } from './condition.js';
 import {
+  foulChance,
+  callChance,
+  yellowChance,
+  isFromBehind,
+  isLastMan,
+  advantageApplies,
+  cautionScale,
+  raiseAgitation,
+  calmDown,
+  AGITATION,
+} from './fouls.js';
+import {
   createOfficials,
   stepOfficials,
   assistantFor,
@@ -80,6 +92,7 @@ import {
   ASSISTANT,
 } from './officials.js';
 import {
+  GRAVITY,
   AERIAL,
   isAirborne,
   airStep,
@@ -156,6 +169,12 @@ function cloneStats(stats) {
     pauseTicks: stats.pauseTicks,
     offsideMissed: { ...stats.offsideMissed },
     offsideWrong: { ...stats.offsideWrong },
+    fouls: { ...stats.fouls },
+    foulsUnseen: { ...stats.foulsUnseen },
+    advantages: { ...stats.advantages },
+    yellows: { ...stats.yellows },
+    secondYellows: { ...stats.secondYellows },
+    freeKicks: perTeam(stats.freeKicks),
   };
 }
 
@@ -393,6 +412,21 @@ function decideHolder(holder, ball, players, rng, match) {
     }
   }
   if (breakaway) return null;
+
+  // Tendangan bebas: tunggu pagar betis & posisi siap, lalu tembak langsung bila cukup dekat.
+  if (ball.setPieceKind === 'freeKick') {
+    if (ball.heldTicks < FREE_KICK.holdTicks) return null;
+    if (ball.heldTicks === FREE_KICK.holdTicks) {
+      const goal = opponentGoalPoint(holder.attacksRight);
+      const near = distance(ball, goal) <= FREE_KICK.shotRange && goalAngle(ball, holder.attacksRight) >= FREE_KICK.minShotAngle;
+      if (near && rng.chance(FREE_KICK.shotChance)) return { type: 'freeKickShot', context };
+      // Tidak ditembak: lambungkan ke kotak bila cukup dekat & ada sasaran.
+      if (distance(ball, goal) <= FREE_KICK.crossRange) {
+        const target = pickCrossTarget(holder, ball, players);
+        if (target) return { type: 'cross', aim: target.aim, context, freeKick: true };
+      }
+    }
+  }
 
   // Sepak pojok: tunggu rekan masuk kotak, lalu lambungkan.
   const corner = atCornerSpot(ball, holder.attacksRight);
@@ -650,6 +684,111 @@ function restartFromOut(ball, from, outPoint, teams, teamIds) {
   };
 }
 
+// ---- Tendangan bebas (tahap 7b-1) -------------------------------------------
+export const FREE_KICK = Object.freeze({
+  holdTicks: 20, // eksekutor menunggu 2 detik: pagar betis & posisi disiapkan
+  wallRange: 32, // meter ke gawang: dalam jarak ini bertahan memasang pagar betis
+  wallSize: 3,
+  wallSpacing: 0.8,
+  distance: 9.15, // lawan minimal sejauh ini dari bola
+  shotRange: 30, // meter ke tengah gawang: boleh ditembak langsung
+  crossRange: 42, // meter ke tengah gawang: dilambungkan ke kotak bila tidak ditembak
+  minShotAngle: 0.22, // radian sudut gawang yang terlihat
+  shotChance: 0.7, // peluang memilih tembakan langsung saat syarat terpenuhi
+  shotSpreadScale: 1.4, // lebih sulit dari tembakan biasa
+  arrivalHeight: 1.6, // meter: bola melewati pagar dan turun di bawah mistar
+});
+
+// Bola mati tendangan bebas untuk tim pemegang bola yang dilanggar, di titik pelanggaran.
+// Pelanggaran di kotak penalti sendiri seharusnya penalti (tahap 7c): sementara dipindah
+// ke tepat di luar kotak.
+function freeKickBall(ball, fouled, teams) {
+  let spot = clampToPitch(fouled, 0.5);
+  const attacksRight = teams[fouled.teamId].attacksRight;
+  if (insideOwnPenaltyArea(spot, !attacksRight)) {
+    const edge = PITCH.penaltyAreaDepth + 1;
+    spot = { x: attacksRight ? PITCH.length - edge : edge, y: spot.y };
+  }
+  return {
+    ...ball,
+    ...spot,
+    vx: 0,
+    vy: 0,
+    ownerId: null,
+    heldTicks: 0,
+    holdTarget: 0,
+    kickerId: null,
+    kickCooldown: 0,
+    passTargetId: null,
+    passTeamId: null,
+    shotTeamId: null,
+    offsideFlagIds: [],
+    offsideTrueIds: [],
+    offsideTeamId: null,
+    lastTouchTeamId: teamOther(teams, fouled.teamId), // tim pelanggar
+    restartTeamId: fouled.teamId,
+    restartKind: 'freeKick',
+    setPieceKind: null,
+    z: 0,
+    vz: 0,
+    crossTeamId: null,
+    shotKind: null,
+  };
+}
+
+function freeKickShotVelocity(ball, taker, keeper, rng, scale) {
+  const goalX = taker.attacksRight ? PITCH.length : 0;
+  const mid = PITCH.width / 2;
+  const inner = PITCH.goalWidth / 2 - 0.6;
+  const aim = { x: goalX, y: (keeper ? keeper.y : mid) <= mid ? mid + inner : mid - inner };
+  const d = distance(ball, aim);
+  const speed = shotSpeedFor(taker);
+  const angle =
+    Math.atan2(aim.y - ball.y, aim.x - ball.x) + rng.normal(0, blunder(taker, 'shotSpread') * FREE_KICK.shotSpreadScale * scale);
+  const T = d / speed;
+  const vz = (FREE_KICK.arrivalHeight + 0.5 * GRAVITY * T * T) / T;
+  return { vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, vz };
+}
+
+function teamOther(teams, teamId) {
+  const other = Object.keys(teams).find((id) => id !== teamId);
+  if (!other) throw new Error(`teamOther: tim lawan ${teamId} tidak ada`);
+  return other;
+}
+
+// Posisi bertahan saat tendangan bebas: pagar betis (bila dekat gawang) dan semua lawan ≥ 9,15 m.
+// Map playerId → titik, hanya untuk pemain tim bertahan.
+function freeKickDefence(ball, defenders, attacksRightOfKicker) {
+  const goal = { x: attacksRightOfKicker ? PITCH.length : 0, y: PITCH.width / 2 };
+  const toGoal = distance(ball, goal);
+  const targets = new Map();
+  if (toGoal <= FREE_KICK.wallRange && toGoal > FREE_KICK.distance + 1) {
+    const ux = (goal.x - ball.x) / toGoal;
+    const uy = (goal.y - ball.y) / toGoal;
+    const center = { x: ball.x + ux * FREE_KICK.distance, y: ball.y + uy * FREE_KICK.distance };
+    const outfield = defenders.filter((p) => p.role !== 'GK').sort((a, b) => distance(a, center) - distance(b, center) || a.id.localeCompare(b.id));
+    outfield.slice(0, FREE_KICK.wallSize).forEach((p, i) => {
+      const offset = (i - (FREE_KICK.wallSize - 1) / 2) * FREE_KICK.wallSpacing;
+      targets.set(p.id, clampToPitch({ x: center.x - uy * offset, y: center.y + ux * offset }, 0.5));
+    });
+  }
+  return targets;
+}
+
+function freeKickNearGoal(ball, owner, teams) {
+  const teamId = ball.restartKind === 'freeKick' ? ball.restartTeamId : ball.setPieceKind === 'freeKick' ? owner?.teamId : null;
+  if (!teamId) return false;
+  const goal = { x: teams[teamId].attacksRight ? PITCH.length : 0, y: PITCH.width / 2 };
+  return distance(ball, goal) <= FREE_KICK.crossRange;
+}
+
+function pushAway(target, ball, minDistance) {
+  const d = distance(target, ball);
+  if (d >= minDistance) return target;
+  const dir = d > 1e-6 ? { x: (target.x - ball.x) / d, y: (target.y - ball.y) / d } : { x: 1, y: 0 };
+  return clampToPitch({ x: ball.x + dir.x * minDistance, y: ball.y + dir.y * minDistance }, 0.5);
+}
+
 // Bola mati yang dibebaskan dari offside saat dimainkan (Laws of the Game, hukum 11).
 const OFFSIDE_EXEMPT = Object.freeze(['corner', 'throwIn', 'goalKick']);
 
@@ -792,6 +931,7 @@ export function createSimulation(home, away, seed) {
         tackleCooldown: Math.max(0, player.tackleCooldown - 1),
         reactionDelay: 0,
         condition,
+        discipline: calmDown(player.discipline, DT),
       };
     });
     stats.pauseTicks += 1;
@@ -834,6 +974,9 @@ export function createSimulation(home, away, seed) {
     let pause = { pauseTicks: 0, pauseReason: null, pauseElapsed: 0 };
 
     const cooldownOverrides = new Map();
+    // Disiplin yang berubah di tick ini (pelanggaran, kartu, emosi), diterapkan saat pemain bergerak.
+    const disciplineUpdates = new Map();
+    const disciplineOf = (p) => disciplineUpdates.get(p.id) ?? p.discipline;
     const runCooldowns = new Map();
     // Tim yang penyerangnya baru mulai berlari di tick ini: lawan butuh waktu membacanya.
     const runStartedBy = new Set();
@@ -859,13 +1002,66 @@ export function createSimulation(home, away, seed) {
 
       const opponents = prev.players.filter((p) => p.teamId !== holder.teamId);
       // Bola di tangan kiper tidak boleh ditekel.
-      const tackler = isKeeperHandling(holder, ball) ? null : pickTackler(holder, opponents, rng);
+      // Pemain yang sudah dikartu kuning lebih jarang mencoba tekel (fouls.js: cautionScale).
+      // Eksekutor tendangan bebas yang sedang bersiap tidak boleh ditekel.
+      const freeKickSetup = ball.setPieceKind === 'freeKick' && ball.heldTicks < FREE_KICK.holdTicks;
+      const tackler =
+        isKeeperHandling(holder, ball) || freeKickSetup ? null : pickTackler(holder, opponents, rng, cautionScale);
       let tackled = false;
       const setPiece = ball.setPieceKind;
 
       if (tackler) {
         stats.tackles[tackler.teamId].attempted += 1;
-        if (rng.chance(tackleSuccessChance(tackler, holder))) {
+        const won = rng.chance(tackleSuccessChance(tackler, holder));
+        const fromBehind = isFromBehind(tackler, holder);
+        const trailingLate = match.minute >= 70 && match.goals[tackler.teamId] < match.goals[holder.teamId];
+        let foulStopsPlay = false;
+
+        if (rng.chance(foulChance(tackler, { won, fromBehind, trailingLate }))) {
+          const referee = prev.officials.referee;
+          const breaking = isLastMan(tackler, holder, prev.players) || isBreakaway(holder, opponents, holder.attacksRight);
+          const kind = breaking ? 'tactical' : fromBehind ? 'fromBehind' : 'reckless';
+          const yellow = rng.chance(yellowChance(referee, kind, tackler));
+          if (rng.chance(callChance(referee, holder, yellow))) {
+            stats.fouls[tackler.teamId] += 1;
+            const tacklerDiscipline = disciplineOf(tackler);
+            let nextDiscipline = { ...tacklerDiscipline, fouls: tacklerDiscipline.fouls + 1 };
+            let card = null;
+            if (yellow) {
+              if (nextDiscipline.yellows === 0) {
+                nextDiscipline = raiseAgitation({ ...nextDiscipline, yellows: 1 }, tackler.skills, AGITATION.booked, false);
+                stats.yellows[tackler.teamId] += 1;
+                card = 'yellow';
+              } else {
+                // Kuning kedua = kartu merah di tahap 7c. Untuk sekarang hanya dicatat.
+                stats.secondYellows[tackler.teamId] += 1;
+                card = 'secondYellow';
+              }
+            }
+            disciplineUpdates.set(tackler.id, nextDiscipline);
+            disciplineUpdates.set(holder.id, raiseAgitation(disciplineOf(holder), holder.skills, AGITATION.fouled));
+            note(tackler.id, 'beaten');
+
+            if (!won && advantageApplies(holder, opponents, tackler.id)) {
+              // Keuntungan: tim yang dilanggar tetap menyerang; kartu tetap diberikan.
+              stats.advantages[holder.teamId] += 1;
+              whistle = { tick, kind: 'advantage', teamId: tackler.teamId, playerId: tackler.id, card };
+            } else {
+              foulStopsPlay = true;
+              ball = freeKickBall(ball, holder, teams);
+              stats.freeKicks[holder.teamId].awarded += 1;
+              for (const id of teamIds) teams[id].chaserId = null;
+              whistle = { tick, kind: 'foul', teamId: tackler.teamId, playerId: tackler.id, card };
+            }
+          } else {
+            stats.foulsUnseen[tackler.teamId] += 1;
+          }
+        }
+
+        if (foulStopsPlay) {
+          cooldownOverrides.set(tackler.id, BEATEN_COOLDOWN_TICKS);
+          tackled = true; // bola mati: pemegang bola tidak memutuskan apa-apa
+        } else if (won) {
           stats.tackles[tackler.teamId].won += 1;
           note(tackler.id, 'tackleWon');
           note(holder.id, 'dispossessed');
@@ -904,9 +1100,20 @@ export function createSimulation(home, away, seed) {
             const keeper = prev.players.find((p) => p.role === 'GK' && p.teamId !== holder.teamId);
             if (keeper) screenedKeeperId = keeper.id;
           }
+        } else if (decision?.type === 'freeKickShot') {
+          // Tendangan bebas langsung: dilambungkan melewati pagar betis, turun di bawah mistar.
+          if (ball.setPieceKind !== 'freeKick') throw new Error(`tendangan bebas tanpa bola mati oleh ${holder.id}`);
+          const keeper = prev.players.find((p) => p.role === 'GK' && p.teamId !== holder.teamId) ?? null;
+          const v = freeKickShotVelocity(ball, holder, keeper, rng, blunderScale(holder, { ...decision.context, bigChance: false }));
+          stats.shots[holder.teamId].total += 1;
+          stats.freeKicks[holder.teamId].shots += 1;
+          ball = releaseBall(ball, holder, { vx: v.vx, vy: v.vy }, { vz: v.vz, shotTeamId: holder.teamId, shotKind: 'freeKick' });
+          ballReleasedBy = holder.id;
         } else if (decision?.type === 'cross') {
-          // Guard: umpan silang hanya dari zona sayap dekat garis gawang lawan.
-          if (!inCrossZone(ball, holder.attacksRight)) throw new Error(`umpan silang di luar zona oleh ${holder.id}`);
+          // Guard: umpan silang hanya dari zona sayap dekat garis gawang lawan, atau dari tendangan bebas.
+          if (!inCrossZone(ball, holder.attacksRight) && !(decision.freeKick && ball.setPieceKind === 'freeKick')) {
+            throw new Error(`umpan silang di luar zona oleh ${holder.id}`);
+          }
           stats.crosses[holder.teamId].attempted += 1;
           const v = crossVelocity(ball, decision.aim, holder, rng, blunderScale(holder, decision.context));
           ball = releaseBall(ball, holder, { vx: v.vx, vy: v.vy }, { vz: v.vz, crossTeamId: holder.teamId });
@@ -942,7 +1149,9 @@ export function createSimulation(home, away, seed) {
       if (owner) {
         // Kiper memegang bola di kotaknya: lawan tidak menekan, cukup jaga bentuk.
         const keeperHolding = isKeeperHandling(owner, ball);
-        if (owner.teamId !== id && !keeperHolding) pick = pickPresser(own, owner, team.attacksRight, team.chaserId);
+        // Tendangan bebas yang sedang disiapkan: lawan tidak menekan eksekutor.
+        const freeKickSetup = ball.setPieceKind === 'freeKick' && ball.heldTicks < FREE_KICK.holdTicks;
+        if (owner.teamId !== id && !keeperHolding && !freeKickSetup) pick = pickPresser(own, owner, team.attacksRight, team.chaserId);
       } else if (ball.restartTeamId !== null && ball.restartTeamId !== id) {
         pick = null; // bola mati milik lawan: tunggu
       } else if (ball.passTeamId === id) {
@@ -972,11 +1181,25 @@ export function createSimulation(home, away, seed) {
     const crossingTeamId =
       ball.crossTeamId ??
       (owner && owner.role !== 'GK' && inCrossZone(ball, teams[owner.teamId].attacksRight) ? owner.teamId : null) ??
-      (ball.restartTeamId !== null && atCornerSpot(ball, teams[ball.restartTeamId].attacksRight) ? ball.restartTeamId : null);
+      (ball.restartTeamId !== null && atCornerSpot(ball, teams[ball.restartTeamId].attacksRight) ? ball.restartTeamId : null) ??
+      // Tendangan bebas dekat kotak: penyerang ikut menyerbu kotak.
+      (freeKickNearGoal(ball, owner, teams) ? (owner?.teamId ?? ball.restartTeamId) : null);
     if (crossingTeamId !== null) {
       const excluded = new Set([ball.ownerId, teams[crossingTeamId].chaserId, teams[crossingTeamId].runnerId]);
       boxRuns = assignBoxRuns(prev.players, crossingTeamId, ball, teams[crossingTeamId].attacksRight, excluded);
     }
+
+    // Tendangan bebas sedang disiapkan: tim bertahan memasang pagar betis & mundur ≥ 9,15 m.
+    const freeKickTeamId =
+      ball.restartKind === 'freeKick'
+        ? ball.restartTeamId
+        : owner && ball.setPieceKind === 'freeKick' && ball.heldTicks < FREE_KICK.holdTicks
+          ? owner.teamId
+          : null;
+    const wall =
+      freeKickTeamId !== null
+        ? freeKickDefence(ball, prev.players.filter((p) => p.teamId !== freeKickTeamId), teams[freeKickTeamId].attacksRight)
+        : new Map();
 
     // Tim yang bertahan membagi penjagaan lawan (tidak termasuk pemegang bola,
     // yang sudah diurus penekan).
@@ -1037,6 +1260,9 @@ export function createSimulation(home, away, seed) {
               BACK_LINE_ROLES.includes(player.role) && mark && !insideOwnPenaltyArea(mark.point, team.attacksRight);
             target = blendTowardMark(target, mark, { lateralOnly: holdLine });
           }
+          if (freeKickTeamId !== null && player.teamId !== freeKickTeamId && player.role !== 'GK') {
+            target = wall.get(player.id) ?? pushAway(target, ball, FREE_KICK.distance + 0.5);
+          }
           // Penyerang tidak menunggu di posisi offside.
           if (phase === 'attack') {
             const line = offsideLines[player.teamId];
@@ -1077,7 +1303,8 @@ export function createSimulation(home, away, seed) {
         if (player.teamId !== teamId) reactionDelay = Math.max(reactionDelay, reactionTicks(player));
       }
       const runCooldown = runCooldowns.get(player.id) ?? Math.max(0, player.runCooldown - 1);
-      return { ...player, ...body, target, task, tackleCooldown, reactionDelay, runCooldown, condition };
+      const discipline = calmDown(disciplineOf(player), DT);
+      return { ...player, ...body, target, task, tackleCooldown, reactionDelay, runCooldown, condition, discipline };
     });
 
     // Bola terlepas di tahap 4 (tepisan, sentuhan buruk): reaksi berlaku mulai tick berikutnya.
@@ -1100,12 +1327,20 @@ export function createSimulation(home, away, seed) {
       if (header) stats.headers[scoringTeamId].goals += 1;
       const longShot = ball.shotTeamId === scoringTeamId && ball.shotKind === 'long';
       if (longShot) stats.longShots[scoringTeamId].goals += 1;
+      const freeKick = ball.shotTeamId === scoringTeamId && ball.shotKind === 'freeKick';
+      if (freeKick) stats.freeKicks[scoringTeamId].goals += 1;
+      // Kebobolan memanaskan emosi tim (× Temperamen).
+      for (let i = 0; i < players.length; i += 1) {
+        const p = players[i];
+        if (p.teamId === concedingTeamId) players[i] = { ...p, discipline: raiseAgitation(p.discipline, p.skills, AGITATION.conceded) };
+      }
       lastGoal = {
         teamId: scoringTeamId,
         scorerId: ball.kickerId,
         ownGoal: ball.lastTouchTeamId !== scoringTeamId,
         header,
         longShot,
+        freeKick,
         tick,
       };
       ball = createInitialBall(concedingTeamId);
@@ -1221,7 +1456,9 @@ export function createSimulation(home, away, seed) {
       const from = { x: ball.x, y: ball.y };
       const flight = airStep(ball, DT);
       const cooldown = Math.max(0, ball.kickCooldown - 1);
-      const canTouch = (p) => !(p.id === ball.kickerId && ball.kickCooldown > 0);
+      const freeKickShot = ball.shotKind === 'freeKick';
+      // Tendangan bebas langsung melewati pagar betis: hanya kiper yang bisa menjangkaunya di udara.
+      const canTouch = (p) => !(p.id === ball.kickerId && ball.kickCooldown > 0) && (!freeKickShot || p.role === 'GK');
       const candidates = aerialCandidates(ball, flight, DT, players, canTouch);
       const crossing = goalLineCrossing(from, flight);
       const firstContact = candidates.length > 0 ? Math.min(...candidates.map((c) => c.u)) : Infinity;
@@ -1232,6 +1469,21 @@ export function createSimulation(home, away, seed) {
         } else {
           stats.outOfPlay += 1;
           ball = restartFromOut(ball, from, flight, teams, teamIds);
+        }
+      } else if (candidates.length > 0 && freeKickShot) {
+        // Kiper menjangkau tendangan bebas: tangkap atau tepis (seperti tembakan biasa).
+        const keeper = candidates[0].player;
+        const contact = clampToPitch(candidates[0].point);
+        const speed = Math.hypot(ball.vx, ball.vy);
+        if (headingBetweenPosts(ball)) stats.shots[ball.shotTeamId].onTarget += 1;
+        note(keeper.id, 'save');
+        if (rng.chance(catchChance(speed, keeper))) {
+          stats.saves[keeper.teamId].caught += 1;
+          takeControl(keeper, contact);
+        } else {
+          stats.saves[keeper.teamId].parried += 1;
+          ball = releaseBall({ ...ball, ...contact }, keeper, parryVelocity(keeper, speed, rng), keepOffside());
+          startReactions(keeper.id);
         }
       } else if (candidates.length > 0) {
         // Yang berduel: pemain yang menjangkau bola di saat paling awal (±0,3 langkah).

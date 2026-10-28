@@ -18,6 +18,7 @@ export const TECHNICAL_STATS = Object.freeze([
   'dribbling',
   'finishing',
   'tackling',
+  'kecerobohan', // tekel asal-asalan / salah timing → pelanggaran (TINGGI = lebih ceroboh; ditambahkan 29 Okt)
   // Membaca permainan
   'visi',
   'keputusan',

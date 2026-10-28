@@ -169,6 +169,17 @@ function drawPlayer(ctx, vp, player, teamColors) {
   ctx.fillText(player.shortName, cx, nameY);
 
   drawConditionCues(ctx, cx, cy, w, nameY + nameSize + 2, player.condition);
+
+  // Kartu kuning (tahap 7b-1): kotak kuning kecil di bahu kiri.
+  if (player.discipline?.yellows > 0) {
+    const cw = Math.max(3, w * 0.22);
+    const ch = cw * 1.4;
+    ctx.fillStyle = '#ffd43b';
+    ctx.fillRect(cx - w * 0.75, cy - w * 0.62, cw, ch);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = '#111111';
+    ctx.strokeRect(cx - w * 0.75, cy - w * 0.62, cw, ch);
+  }
 }
 
 // Tanda kondisi (tahap 6). Hanya muncul saat relevan supaya lapangan tidak ramai:
