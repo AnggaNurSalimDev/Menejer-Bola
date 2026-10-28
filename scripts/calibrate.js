@@ -35,12 +35,16 @@ const fmt = ({ mean, band }) => `${mean.toFixed(2)} ± ${band.toFixed(2)}`;
 {
   const goals = [];
   const shots = [];
+  let goalless = 0;
   for (let seed = 1; seed <= N; seed += 1) {
     const st = play(seed, 12, 12);
     goals.push(st.goals.home + st.goals.away);
+    if (st.goals.home + st.goals.away === 0) goalless += 1;
     shots.push((st.shots.home.total + st.shots.away.total) / 2);
   }
-  console.log(`Titik nol (${N} laga): gol/laga ${fmt(meanAndBand(goals))}, tembakan/tim ${fmt(meanAndBand(shots))}`);
+  console.log(
+    `Titik nol (${N} laga): gol/laga ${fmt(meanAndBand(goals))} [target 2,4–3,0], 0–0 ${((goalless / N) * 100).toFixed(0)}% [target ≤ 10%], tembakan/tim ${fmt(meanAndBand(shots))}`,
+  );
 }
 
 // Dinamika: tim lebih bagus vs tim lebih buruk, bergantian kandang.

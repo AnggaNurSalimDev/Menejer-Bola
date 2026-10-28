@@ -423,7 +423,10 @@ console.log(`Titik nol: tim rata-rata vs tim rata-rata (${SEEDS.length} pertandi
 {
   const r = summarize(SEEDS, {});
   console.log(`  info  skor: ${r.scores.join(', ')}`);
-  inRange('gol per pertandingan', r.goals / r.n, 2, 4);
+  // Patokan liga besar Eropa 2024/25: 2,6–3,2 gol per laga (keputusan 28 Okt sore).
+  // Sampel 16 laga masih bergoyang ±0,4; angka pasti pakai npm run calibrate.
+  inRange('gol per pertandingan', r.goals / r.n, 2.4, 3.0);
+  inRange('laga 0–0', (r.scores.filter((x) => x === '0-0').length / r.n) * 100, 0, 10, (v) => `${v.toFixed(0)}%`);
   inRange('tembakan per tim', r.shots / r.n / 2, 5, 15);
   inRange('tembakan tepat sasaran', (r.onTarget / Math.max(1, r.shots)) * 100, 25, 65, (v) => `${v.toFixed(0)}%`);
   inRange('gol per tembakan', (r.goals / Math.max(1, r.shots)) * 100, 8, 30, (v) => `${v.toFixed(0)}%`);
