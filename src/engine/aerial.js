@@ -116,10 +116,25 @@ export function loftVelocity(from, to, arrivalHeight = CROSS.arrivalHeight) {
 }
 
 // Umpan silang yang sebenarnya, dengan meleset dari stat Passing (diperbesar kondisi).
+// Umpan silang kelewatan (29 Okt): di dunia nyata sekitar seperempat umpan silang tidak sampai ke
+// siapa pun dan keluar lapangan. Dulu hampir tidak pernah → tendangan gawang & lemparan terlalu jarang.
+// Peluang turun dengan stat Passing (8–25%).
+export const CROSS_OVERHIT = Object.freeze({
+  chance: Object.freeze({ worst: 0.25, best: 0.08 }),
+  length: Object.freeze({ min: 1.35, max: 1.8 }),
+});
+
 export function crossVelocity(from, to, passer, rng, scale = 1) {
   const ideal = loftVelocity(from, to);
   const angleError = rng.normal(0, blunder(passer, 'passAngle') * CROSS.errorScale * scale);
-  const lengthError = Math.max(0.6, 1 + rng.normal(0, blunder(passer, 'passSpeed') * CROSS.errorScale * scale));
+  const skill = (passer.skills.passing - 1) / 19;
+  const overhitChance = Math.min(
+    0.4,
+    (CROSS_OVERHIT.chance.worst + (CROSS_OVERHIT.chance.best - CROSS_OVERHIT.chance.worst) * skill) * scale,
+  );
+  const lengthError = rng.chance(overhitChance)
+    ? rng.range(CROSS_OVERHIT.length.min, CROSS_OVERHIT.length.max)
+    : Math.max(0.6, 1 + rng.normal(0, blunder(passer, 'passSpeed') * CROSS.errorScale * scale));
   const cos = Math.cos(angleError);
   const sin = Math.sin(angleError);
   return {
@@ -224,6 +239,18 @@ export function headerClearVelocity(player, rng, nearOwnLine = false) {
   const angle = away + rng.range(-1, 1);
   const speed = rng.range(HEADER.clearSpeedMin, HEADER.clearSpeedMax);
   return { vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, vz: HEADER.clearLift };
+}
+
+// Umpan silang rendah yang diblok bek di dekat gawang sendiri (29 Okt): sebagian membelok ke
+// belakang/samping → sepak pojok (salah satu sumber pojok terbesar di dunia nyata).
+export const CROSS_BLOCK = Object.freeze({ chance: 0.4, ownLine: 16 });
+
+export function crossBlockVelocity(player, rng) {
+  const side = rng.chance(0.5) ? 1 : -1;
+  const backward = player.attacksRight ? -1 : 1;
+  const angle = Math.atan2(side * rng.range(0.4, 1), backward);
+  const speed = rng.range(5, 10);
+  return { vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, vz: 0 };
 }
 
 // Sundulan biasa: bola jatuh pelan ke arah serang.

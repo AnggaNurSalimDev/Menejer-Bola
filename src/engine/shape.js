@@ -15,7 +15,9 @@ import { PITCH } from './pitch.js';
 
 export const PHASES = Object.freeze({
   neutral: { push: 0, width: 1.0, lateralPull: 0.3 },
-  attack: { push: 6, width: 1.2, lateralPull: 0.2 },
+  // width 1,35 (29 Okt): pemain sayap melebar hampir ke garis samping saat menguasai bola (dulu ~5–10 m
+  // dari garis; bola hampir tidak pernah di pinggir lapangan → lemparan sangat jarang).
+  attack: { push: 6, width: 1.35, lateralPull: 0.15 },
   defend: { push: -4, width: 0.8, lateralPull: 0.4 },
 });
 

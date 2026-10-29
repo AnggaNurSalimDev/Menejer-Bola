@@ -102,6 +102,8 @@ import {
 } from './officials.js';
 import {
   GRAVITY,
+  CROSS_BLOCK,
+  crossBlockVelocity,
   AERIAL,
   isAirborne,
   airStep,
@@ -291,6 +293,25 @@ export function canPanicClear(holder, ball, match) {
   if (forwardOf(ball, holder.attacksRight) >= PITCH.length / 2) return false;
   const opponentTeamId = match.teamIds.find((id) => id !== holder.teamId);
   return match.goals[holder.teamId] < match.goals[opponentTeamId];
+}
+
+// ---- Sapuan aman (29 Okt, "bola lebih sering keluar") ------------------------
+// Bek/gelandang yang ditekan di sepertiga lapangan sendiri tanpa opsi operan aman membuang
+// bola ke arah garis samping (lebih baik lemparan lawan daripada kehilangan bola di depan gawang).
+// Dulu ia dipaksa mengoper berisiko → bola hampir tidak pernah keluar (lemparan ~2,7 per laga, nyata ~40).
+export const SAFETY_CLEAR = Object.freeze({
+  ownThird: 40, // meter dari garis gawang sendiri
+  chance: Object.freeze({ low: 0.6, high: 0.95 }), // menurut Keputusan
+});
+
+export function canSafetyClear(holder, ball, pressured, bestSafe) {
+  if (holder.role === 'GK' || !pressured || bestSafe) return false;
+  return forwardOf(ball, holder.attacksRight) <= SAFETY_CLEAR.ownThird;
+}
+
+function safetyClearChance(holder) {
+  const t = (holder.skills.keputusan - 1) / 19;
+  return SAFETY_CLEAR.chance.low + (SAFETY_CLEAR.chance.high - SAFETY_CLEAR.chance.low) * t;
 }
 
 function panicChance(holder) {
@@ -533,6 +554,10 @@ function decideHolder(holder, ball, players, rng, match) {
 
   const forced =
     ball.heldTicks >= FORCED_PASS_TICKS || (pressured && ball.heldTicks >= PRESSURED_FORCED_TICKS);
+  // Dipaksa melepas bola di dekat gawang sendiri tanpa opsi aman: buang ke samping.
+  if (forced && canSafetyClear(holder, ball, pressured, best.safe) && rng.chance(safetyClearChance(holder))) {
+    return { type: 'safetyClear', context, pressured };
+  }
   return best.safe || forced ? { type: 'pass', option: best, context } : null;
 }
 
@@ -1667,7 +1692,13 @@ export function createSimulation(home, away, seed, options = {}) {
 
       if (!tackled) {
         const decision = decideHolder(holder, ball, prev.players, rng, match);
-        if (decision?.type === 'clear') {
+        if (decision?.type === 'safetyClear') {
+          // Guard: sapuan aman hanya di sepertiga sendiri, ditekan, tanpa opsi aman.
+          if (!canSafetyClear(holder, ball, decision.pressured, false)) throw new Error(`sapuan aman tidak sah oleh ${holder.id}`);
+          stats.clearances[holder.teamId] += 1;
+          ball = releaseBall(ball, holder, clearVelocity(holder, ball, rng, blunderScale(holder, decision.context)), {});
+          ballReleasedBy = holder.id;
+        } else if (decision?.type === 'clear') {
           // Guard: sapuan panik hanya boleh terjadi bila semua syaratnya terpenuhi.
           if (!canPanicClear(holder, ball, match)) throw new Error(`sapuan panik tidak sah oleh ${holder.id}`);
           stats.clearances[holder.teamId] += 1;
@@ -2209,6 +2240,19 @@ export function createSimulation(home, away, seed, options = {}) {
         const touch = findController(from, flight, players, canTouch);
         if (touch && ball.offsideFlagIds.includes(touch.player.id)) {
           callOffside(touch.player);
+        } else if (
+          touch &&
+          ball.crossTeamId !== null &&
+          touch.player.teamId !== ball.crossTeamId &&
+          touch.player.role !== 'GK' &&
+          (touch.player.attacksRight ? touch.point?.x ?? touch.player.x : PITCH.length - (touch.point?.x ?? touch.player.x)) <= CROSS_BLOCK.ownLine &&
+          rng.chance(CROSS_BLOCK.chance)
+        ) {
+          // Umpan silang diblok bek dekat gawang sendiri: membelok, sering keluar → sepak pojok.
+          noteMissedOffside(touch.player);
+          const at = clampToPitch(touch.point ?? touch.player);
+          ball = releaseBall({ ...ball, ...at }, touch.player, crossBlockVelocity(touch.player, rng), keepOffside());
+          startReactions(touch.player.id);
         } else if (touch) {
           noteMissedOffside(touch.player);
           if (ball.crossTeamId === touch.player.teamId) stats.crosses[touch.player.teamId].won += 1;
