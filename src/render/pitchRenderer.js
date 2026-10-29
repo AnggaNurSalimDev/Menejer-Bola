@@ -170,11 +170,11 @@ function drawPlayer(ctx, vp, player, teamColors) {
 
   drawConditionCues(ctx, cx, cy, w, nameY + nameSize + 2, player.condition);
 
-  // Kartu kuning (tahap 7b-1): kotak kuning kecil di bahu kiri.
-  if (player.discipline?.yellows > 0) {
+  // Kartu kuning (tahap 7b-1): kotak kuning kecil di bahu kiri. Kartu merah (7c): kotak merah.
+  if (player.discipline?.yellows > 0 || player.card) {
     const cw = Math.max(3, w * 0.22);
     const ch = cw * 1.4;
-    ctx.fillStyle = '#ffd43b';
+    ctx.fillStyle = player.card ? '#e03131' : '#ffd43b';
     ctx.fillRect(cx - w * 0.75, cy - w * 0.62, cw, ch);
     ctx.lineWidth = 1;
     ctx.strokeStyle = '#111111';
@@ -279,6 +279,10 @@ export function interpolateState(previous, current, alpha) {
       return { ...player, x: lerp(before.x, player.x, t), y: lerp(before.y, player.y, t) };
     }),
     officials: interpolateOfficials(previous.officials, current.officials, t),
+    sentOff: (current.sentOff ?? []).map((p) => {
+      const before = previous.sentOff?.find((q) => q.id === p.id);
+      return before ? { ...p, x: lerp(before.x, p.x, t), y: lerp(before.y, p.y, t) } : p;
+    }),
   };
 }
 
@@ -349,8 +353,13 @@ function drawIncident(ctx, vp, state) {
     ctx.save();
     ctx.setLineDash([vp.px(0.8), vp.px(0.6)]);
     ctx.beginPath();
-    const r = Math.max(1.6, incident.scuffle.ids.length * 0.45) + 1.8; // sama dengan scuffleRadius di engine + ruang
-    ctx.arc(vp.toX(incident.spot.x), vp.toY(incident.spot.y), vp.px(r), 0, Math.PI * 2);
+    // Lingkaran mengikuti kerumunan yang bergerak: pusat = rata-rata posisi peserta.
+    const members = state.players.filter((p) => incident.scuffle.ids.includes(p.id));
+    const c = members.length
+      ? { x: members.reduce((s, p) => s + p.x, 0) / members.length, y: members.reduce((s, p) => s + p.y, 0) / members.length }
+      : incident.spot;
+    const r = Math.max(3, ...members.map((p) => Math.hypot(p.x - c.x, p.y - c.y))) + 2;
+    ctx.arc(vp.toX(c.x), vp.toY(c.y), vp.px(r), 0, Math.PI * 2);
     ctx.lineWidth = Math.max(1.5, vp.px(0.25));
     ctx.strokeStyle = '#ff4d4d';
     ctx.stroke();
@@ -407,6 +416,16 @@ export function renderMatch(ctx, state, cssWidth, cssHeight) {
     const team = state.teams[player.teamId];
     if (!team) throw new Error(`renderMatch: tim "${player.teamId}" tidak ditemukan`);
     drawPlayer(ctx, vp, player, team.colors);
+  }
+
+  // Pemain yang dikartu merah berjalan keluar lapangan (pudar), lalu hilang.
+  for (const p of state.sentOff ?? []) {
+    if (!p.walking) continue;
+    const team = state.teams[p.teamId];
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    drawPlayer(ctx, vp, { ...p, condition: null }, team.colors);
+    ctx.restore();
   }
 
   drawIncident(ctx, vp, state);

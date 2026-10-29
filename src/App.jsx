@@ -44,6 +44,7 @@ const STAT_ROWS = [
   { key: 'offsides', label: 'Offside', read: (s, id) => `${s.offsides[id]}` },
   { key: 'fouls', label: 'Pelanggaran', read: (s, id) => `${s.fouls[id]}` },
   { key: 'yellows', label: 'Kartu kuning', read: (s, id) => `${s.yellows[id]}` },
+  { key: 'reds', label: 'Kartu merah', read: (s, id) => `${s.reds[id]}` },
   { key: 'crosses', label: 'Umpan silang (sampai)', read: (s, id) => `${s.crosses[id].attempted} (${s.crosses[id].won})` },
   { key: 'headers', label: 'Sundulan ke gawang', read: (s, id) => `${s.headers[id].shots}` },
   { key: 'longShots', label: 'Tembakan luar kotak', read: (s, id) => `${s.longShots[id].shots}` },
@@ -115,17 +116,22 @@ export default function App() {
         whistleEl.hidden = !showing;
         if (showing) {
           const name = (id) => (id ? namesById.get(id) ?? '' : '');
-          const cardIcon = (c) => (c === 'yellow' ? ' 🟨' : c === 'secondYellow' ? ' 🟨🟨' : '');
+          const cardIcon = (c) =>
+            c === 'yellow' ? ' 🟨' : c === 'secondYellow' ? ' 🟨🟨→🟥 KARTU MERAH' : c === 'red' ? ' 🟥 KARTU MERAH' : '';
           let text;
           if (showingIncident) {
             // Hanya satu baris singkat di LUAR lapangan (masukan 29 Okt: tulisan besar menutupi drama).
             const cardIcon2 = cardIcon(incident.card);
+            // Kartu merah karena protes/pertikaian (bukan karena pelanggarannya) diutamakan.
+            const otherRed = (incident.cards ?? []).find((c) => c.card === 'red' || c.card === 'secondYellow');
             text =
-              incident.kind === 'offside'
-                ? `🚩 Offside — ${name(incident.offenderId)}`
-                : incident.kind === 'restart'
-                  ? ''
-                  : `PRIIIT! ${incident.penalty ? 'PENALTI' : 'Pelanggaran'} — ${name(incident.offenderId)}${cardIcon2}`;
+              incident.kind === 'restart'
+                ? ''
+                : otherRed
+                  ? `${otherRed.card === 'red' ? '🟥' : '🟨🟨→🟥'} KARTU MERAH — ${name(otherRed.id)} (${otherRed.reason === 'protest' ? 'protes' : 'pertikaian'})`
+                  : incident.kind === 'offside'
+                    ? `🚩 Offside — ${name(incident.offenderId)}`
+                    : `PRIIIT! ${incident.penalty ? 'PENALTI' : 'Pelanggaran'} — ${name(incident.offenderId)}${cardIcon2}`;
           } else {
             const offender = name(w.playerId);
             const card = cardIcon(w.card);
@@ -255,7 +261,7 @@ export default function App() {
         <button type="button" onClick={restart}>
           Ulang (seed baru)
         </button>
-        <span className="stage-note">Pelanggaran, protes & pertikaian + wasit & hakim garis + filosofi pelatih + bola udara (bayangan = bola melambung; bar = tenaga menipis, titik merah = kurang percaya diri, titik oranye = on fire). Seed: {matchSeed}</span>
+        <span className="stage-note">Kartu merah & 10 orang + pelanggaran, protes & pertikaian + wasit & hakim garis + filosofi pelatih + bola udara (bayangan = bola melambung; bar = tenaga menipis, titik merah = kurang percaya diri, titik oranye = on fire). Seed: {matchSeed}</span>
       </div>
     </main>
   );

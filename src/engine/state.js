@@ -1,6 +1,7 @@
 // State pertandingan: satu-satunya data yang dibaca renderer.
 // Engine tidak tahu apa-apa soal canvas atau piksel.
 
+import { validateSentOff, SENDOFF } from './sendoff.js';
 import { PITCH, isInsidePitch } from './pitch.js';
 import { getFormation } from './formations.js';
 import { validateStats } from './stats.js';
@@ -161,6 +162,11 @@ function createStats(teamIds) {
     dissentYellows: perTeam(() => 0),
     scuffleYellows: perTeam(() => 0),
     scuffles: 0,
+    // Tahap 7c: kartu merah (total = kuning kedua + merah langsung), merah langsung, merah karena
+    // tindakan kekerasan di pertikaian (bagian dari merah langsung).
+    reds: perTeam(() => 0),
+    straightReds: perTeam(() => 0),
+    scuffleReds: perTeam(() => 0),
   };
 }
 
@@ -212,6 +218,8 @@ export function createMatchState(home, away) {
     whistle: null,
     // Insiden di jeda setelah peluit (tahap 7b-2): kartu, protes, pertikaian — atau null.
     incident: null,
+    // Pemain yang dikartu merah (tahap 7c): tidak lagi bermain; `walking` = masih berjalan keluar.
+    sentOff: [],
     // Babak: first | halftime | second | fulltime. periodTick = tick di babak berjalan.
     period: 'first',
     periodTick: 0,
@@ -249,7 +257,16 @@ export function validateMatchState(state, teams = []) {
   if (firstTeam && secondTeam && firstTeam.attacksRight === secondTeam.attacksRight) {
     errors.push('kedua tim menyerang ke arah yang sama');
   }
-  if (state.players.length !== 22) errors.push(`jumlah pemain ${state.players.length}, harus 22`);
+  const sentOff = state.sentOff ?? [];
+  if (state.players.length + sentOff.length !== 22) errors.push(`pemain ${state.players.length} + dikartu merah ${sentOff.length} ≠ 22`);
+  for (const e of validateSentOff(sentOff, state.players)) errors.push(`kartu merah: ${e}`);
+  for (const teamId of Object.keys(state.teams)) {
+    const mine = state.players.filter((p) => p.teamId === teamId);
+    if (mine.length < SENDOFF.minPlayers) errors.push(`tim ${teamId}: hanya ${mine.length} pemain`);
+    if (state.stats && sentOff.filter((p) => p.teamId === teamId).length !== state.stats.reds[teamId]) {
+      errors.push(`tim ${teamId}: jumlah kartu merah tidak cocok dengan pemain yang keluar`);
+    }
+  }
 
   const ids = state.players.map((p) => p.id);
   if (new Set(ids).size !== ids.length) errors.push('ada id pemain ganda');
@@ -259,7 +276,8 @@ export function validateMatchState(state, teams = []) {
 
   for (const teamId of Object.keys(state.teams)) {
     const own = state.players.filter((p) => p.teamId === teamId);
-    if (own.length !== 11) errors.push(`tim ${teamId}: ${own.length} pemain, harus 11`);
+    const out = (state.sentOff ?? []).filter((p) => p.teamId === teamId).length;
+    if (own.length + out !== 11) errors.push(`tim ${teamId}: ${own.length} pemain + ${out} dikartu merah, harus 11`);
 
     const numbers = own.map((p) => p.number);
     if (new Set(numbers).size !== numbers.length) errors.push(`tim ${teamId}: nomor punggung ganda`);
@@ -334,7 +352,9 @@ export function validateMatchState(state, teams = []) {
     const ids = [...state.incident.protesters, ...state.incident.arguers, ...(state.incident.scuffle?.ids ?? [])];
     if (state.incident.takerId && !byId.get(state.incident.takerId)) errors.push('eksekutor bola mati tidak ada');
     if (!(state.incident.holdLeft >= 0 && state.incident.holdLeft <= state.incident.ticks)) errors.push('sisa drama insiden tidak valid');
-    for (const id of ids) if (!byId.get(id)) errors.push(`insiden: pemain "${id}" tidak ada`);
+    // Pemain yang baru dikartu merah boleh masih tercatat di insiden (ia sedang berjalan keluar).
+    const out = new Set((state.sentOff ?? []).map((p) => p.id));
+    for (const id of ids) if (!byId.get(id) && !out.has(id)) errors.push(`insiden: pemain "${id}" tidak ada`);
     for (const id of state.incident.dissent) if (!state.incident.protesters.includes(id)) errors.push('kartu protes untuk pemain yang tidak protes');
   }
   if (state.pauseTicks > 0) {
@@ -472,10 +492,13 @@ export function validateMatchState(state, teams = []) {
       if (!(state.stats.aerialsWon[id] >= 0)) errors.push(`tim ${id}: duel udara tidak valid`);
       if (!(state.stats.offsideMissed[id] >= 0 && state.stats.offsideWrong[id] >= 0)) errors.push(`tim ${id}: catatan salah offside tidak valid`);
       if (!(state.stats.offsideWrong[id] <= state.stats.offsides[id])) errors.push(`tim ${id}: offside salah bendera > offside dinyatakan`);
-      const teamYellows = state.players.filter((p) => p.teamId === id).reduce((n, p) => n + p.discipline.yellows, 0);
+      const teamYellows = [...state.players, ...(state.sentOff ?? [])].filter((p) => p.teamId === id).reduce((n, p) => n + p.discipline.yellows, 0);
       if (state.stats.yellows[id] !== teamYellows) errors.push(`tim ${id}: kartu kuning ${state.stats.yellows[id]} ≠ jumlah di pemain ${teamYellows}`);
-      const cardSources = state.stats.fouls[id] + state.stats.dissentYellows[id] + state.stats.scuffleYellows[id];
-      if (!(state.stats.yellows[id] + state.stats.secondYellows[id] <= cardSources)) errors.push(`tim ${id}: kartu > pelanggaran + protes + pertikaian`);
+      const cardSources = state.stats.fouls[id] + state.stats.dissentYellows[id] + state.stats.scuffleYellows[id] + state.stats.scuffleReds[id];
+      const st = state.stats;
+      if (!(st.yellows[id] + st.secondYellows[id] + st.straightReds[id] <= cardSources)) errors.push(`tim ${id}: kartu > pelanggaran + protes + pertikaian`);
+      if (st.reds[id] !== st.secondYellows[id] + st.straightReds[id]) errors.push(`tim ${id}: merah ≠ kuning kedua + merah langsung`);
+      if (!(st.scuffleReds[id] <= st.straightReds[id])) errors.push(`tim ${id}: merah pertikaian > merah langsung`);
       if (!(state.stats.dissentYellows[id] <= state.stats.protests[id])) errors.push(`tim ${id}: kartu protes > protes`);
       if (!(state.stats.advantages[id] >= 0 && state.stats.foulsUnseen[id] >= 0)) errors.push(`tim ${id}: catatan pelanggaran tidak valid`);
       const fk = state.stats.freeKicks[id];

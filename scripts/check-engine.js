@@ -38,6 +38,9 @@ import { instinctShotScale } from '../src/engine/condition.js';
 import { shotSpeedFor, isScreened, SHOT_POWER } from '../src/engine/shooting.js';
 import { createTeam } from '../src/engine/teams.js';
 import { blunderFromStats } from '../src/engine/skill.js';
+import { repairShape, applySendOffs, emergencyKeeper } from '../src/engine/sendoff.js';
+import { scuffleTargets, assignScuffleStyles, protestTarget } from '../src/engine/scuffle.js';
+import { straightRedChance, yellowChance, isDogso, RED } from '../src/engine/fouls.js';
 import { AERIAL, CROSS, airStep, loftVelocity, dropPoint, resolveAerial, isAirborne } from '../src/engine/aerial.js';
 
 let failures = 0;
@@ -476,6 +479,103 @@ console.log('Bola udara (umpan silang & sundulan)');
     `duel udara: stat 18 vs 6 menang ${(rate * 100).toFixed(0)}% (harus jelas unggul tapi tidak mutlak)`,
     rate > 0.7 && rate < 0.95 ? [] : ['pengaruh stat Duel udara tidak wajar'],
   );
+}
+
+console.log('Gerak pertikaian (masukan 29 Okt: jangan menumpuk diam)');
+{
+  const teams = createDemoTeams(2026, {});
+  const st = createMatchState(teams.home, teams.away);
+  const spot = { x: 50, y: 34 };
+  const home = st.players.filter((p) => p.teamId === teams.home.id && p.role !== 'GK').slice(0, 4);
+  const away = st.players.filter((p) => p.teamId === teams.away.id && p.role !== 'GK').slice(0, 4);
+  const crowd = [...home, ...away].map((p, i) => ({ ...p, x: spot.x + (i % 4) * 2 - 3, y: spot.y + (i < 4 ? -2 : 2) }));
+  const scuffle = { ids: [home[0].id, away[0].id, ...home.slice(1).map((p) => p.id), ...away.slice(1).map((p) => p.id)], instigatorId: home[0].id };
+  scuffle.styles = assignScuffleStyles(scuffle, crowd);
+  const styles = new Set(Object.values(scuffle.styles));
+  check('peran pertikaian beragam (≥ 4 gaya berbeda di kerumunan 8 orang)', styles.size >= 4 ? [] : [`hanya ${[...styles].join(', ')}`]);
+  check('pemicu & pelaku terpasang', scuffle.styles[home[0].id] === 'pemicu' && scuffle.styles[away[0].id] === 'pelaku' ? [] : ['peran inti salah']);
+  // Sasaran bergerak sepanjang drama, dan setiap pemain punya lintasan sendiri.
+  const errs = [];
+  const travel = new Map();
+  let prev = null;
+  let minGap = Infinity;
+  for (let t = 0; t < 120; t += 1) {
+    const targets = scuffleTargets(scuffle, spot, crowd, t, t / 120);
+    if (prev) for (const [id, pt] of targets) travel.set(id, (travel.get(id) ?? 0) + Math.hypot(pt.x - prev.get(id).x, pt.y - prev.get(id).y));
+    const pts = [...targets.values()];
+    for (let i = 0; i < pts.length; i += 1) for (let j = i + 1; j < pts.length; j += 1) minGap = Math.min(minGap, Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y));
+    prev = targets;
+  }
+  for (const [id, d] of travel) if (d < 3) errs.push(`${id} (${scuffle.styles[id]}) hampir diam: sasaran bergeser ${d.toFixed(1)} m`);
+  check('setiap peserta pertikaian bergerak (sasaran bergeser ≥ 3 m dalam 12 dtk)', errs);
+  const distinct = new Set([...travel.values()].map((d) => d.toFixed(0)));
+  check('lintasan berbeda-beda antarpemain', distinct.size >= 4 ? [] : [`hanya ${distinct.size} variasi jarak`]);
+  check('sasaran tidak menumpuk (jarak minimum ≥ 2 m)', minGap >= 2 ? [] : [`jarak minimum ${minGap.toFixed(2)} m`]);
+  const ref = { x: 50, y: 34 };
+  const a = protestTarget('home-7', 0, 1, ref, 0);
+  const b = protestTarget('home-7', 0, 1, ref, 7);
+  check('pemrotes maju-mundur di depan wasit', Math.hypot(a.x - b.x, a.y - b.y) > 0.3 ? [] : ['pemrotes diam']);
+}
+
+console.log('Kartu merah & bermain dengan 10 orang (tahap 7c)');
+{
+  const teams = createDemoTeams(2026, {});
+  const st = createMatchState(teams.home, teams.away);
+  const mine = st.players.filter((p) => p.teamId === teams.home.id);
+  const outfield = mine.filter((p) => p.role !== 'GK');
+  // 4-4-2 kehilangan bek tengah → gelandang turun, penyerang turun, satu penyerang tersisa di tengah.
+  const cb = mine.find((p) => p.role === 'CB');
+  const changes = repairShape(outfield.filter((p) => p.id !== cb.id), cb);
+  const after = outfield.filter((p) => p.id !== cb.id).map((p) => ({ ...p, ...(changes.get(p.id) ?? {}) }));
+  const defenders = after.filter((p) => p.slot.depth <= 0.24).length;
+  const forwards = after.filter((p) => p.slot.depth > 0.4);
+  check('lubang di lini belakang ditambal (tetap 4 bek)', defenders === 4 ? [] : [`bek ${defenders}`]);
+  check('penyerang yang dikorbankan, sisa satu di tengah', forwards.length === 1 && Math.abs(forwards[0].slot.lane - 0.5) < 1e-9 ? [] : [`penyerang ${forwards.length}`]);
+  const gk = mine.find((p) => p.role === 'GK');
+  const swap = emergencyKeeper(outfield, gk);
+  check('kiper dikeluarkan → bek jadi kiper darurat dengan stat kiper rendah', swap && swap.player.role === 'GK' && swap.player.skills.refleks <= 5 ? [] : ['tidak ada kiper darurat']);
+  const out = applySendOffs(st.players, [], new Map([[gk.id, { card: 'red', reason: 'dogso' }]]), 10);
+  const keepers = out.players.filter((p) => p.teamId === teams.home.id && p.role === 'GK');
+  check('tetap tepat satu kiper setelah kiper dikartu merah', keepers.length === 1 && keepers[0].id !== gk.id ? [] : ['kiper tidak terganti']);
+
+  const referee = { skills: { ketegasan: 12 } };
+  const calmPlayer = { ...outfield[0], discipline: { ...initialDiscipline() }, skills: { ...outfield[0].skills, kecerobohan: 5, temperamen: 5 } };
+  const hotPlayer = { ...calmPlayer, discipline: { ...initialDiscipline(), agitation: 0.8 }, skills: { ...calmPlayer.skills, kecerobohan: 18, temperamen: 18 } };
+  check('merah langsung lebih mungkin untuk pemain ceroboh & panas', straightRedChance(referee, hotPlayer, { fromBehind: true }) > 3 * straightRedChance(referee, calmPlayer, { fromBehind: false }) ? [] : ['tidak naik']);
+  check('menggagalkan peluang gol → merah sangat mungkin', straightRedChance(referee, calmPlayer, { dogso: true }) >= 0.5 ? [] : ['terlalu kecil']);
+  const booked = { ...calmPlayer, discipline: { ...calmPlayer.discipline, yellows: 1 } };
+  check('wasit ragu memberi kuning kedua', Math.abs(yellowChance(referee, 'reckless', booked) - RED.secondYellowLeniency * yellowChance(referee, 'reckless', calmPlayer)) < 1e-9 ? [] : ['tidak ada keraguan']);
+
+  // Laga penuh dengan satu pemain sudah dikartu merah: invariant & bentuk tim 10 orang.
+  const sim = createSimulation(teams.home, teams.away, 7, { startSentOff: [cb.id] });
+  let s = sim.getState();
+  const errors = [];
+  while (s.period === 'first') {
+    s = sim.step();
+    if (s.tick % 50 === 0) errors.push(...validateMatchState(s));
+  }
+  s = sim.startSecondHalf();
+  while (s.period === 'second') {
+    s = sim.step();
+    if (s.tick % 50 === 0) errors.push(...validateMatchState(s));
+  }
+  check('laga penuh dengan 10 orang lolos invariant', errors);
+  check('tim 10 orang tetap 10 pemain', s.players.filter((p) => p.teamId === teams.home.id).length === 10 ? [] : ['jumlah salah']);
+
+  // Laga biasa: kartu merah muncul dari permainan dan pemain benar-benar keluar.
+  let reds = 0;
+  for (let seed = 1; seed <= 40 && reds === 0; seed += 1) {
+    const m = createSimulation(teams.home, teams.away, seed);
+    let x = m.getState();
+    while (x.period === 'first') x = m.step();
+    reds += x.sentOff.length;
+    if (x.sentOff.length) {
+      const errs = validateMatchState(x);
+      for (const p of x.sentOff) if (x.players.some((q) => q.id === p.id)) errs.push(`${p.id} masih bermain`);
+      check(`kartu merah dari permainan (seed ${seed}): pemain keluar, invariant lolos`, errs);
+    }
+  }
+  check('kartu merah terjadi dalam 40 babak', reds > 0 ? [] : ['tidak pernah ada kartu merah']);
 }
 
 console.log('Struktur pertandingan');

@@ -153,7 +153,47 @@ export function callChance(referee, spot, cardWorthy) {
 export function yellowChance(referee, kind, tackler) {
   const base = kind === 'tactical' ? CARD.tacticalYellow : kind === 'fromBehind' ? CARD.fromBehindYellow : CARD.recklessYellow;
   const severity = 0.7 + 0.6 * normalizeStat(tackler.skills.kecerobohan); // tekel ceroboh lebih keras
-  return clamp01(base * severity * lerp(CARD.strictness, normalizeStat(referee.skills.ketegasan)));
+  const lenient = tackler.discipline.yellows > 0 ? RED.secondYellowLeniency : 1;
+  return clamp01(base * severity * lenient * lerp(CARD.strictness, normalizeStat(referee.skills.ketegasan)));
+}
+
+// ---- Kartu merah (tahap 7c) ----------------------------------------------------
+// Patokan liga besar Eropa: ~0,1–0,2 kartu merah per laga (sekitar sepertiga dari kuning kedua).
+export const RED = Object.freeze({
+  // Wasit ragu memberi kuning kedua (pelanggaran yang sama untuk pemain berkartu lebih jarang
+  // dikartu) — fenomena nyata, sekaligus menahan angka kuning kedua.
+  secondYellowLeniency: 0.35,
+  // Menggagalkan peluang gol (DOGSO): pemain terakhir melanggar penyerang yang menuju gawang,
+  // di luar kotak penalti (di dalam kotak: penalti + kuning).
+  dogsoGoalDistance: 36, // meter dari gawang
+  dogso: Object.freeze({ low: 0.5, high: 0.9 }), // menurut Ketegasan wasit
+  // Pelanggaran sangat keras (serious foul play): jarang, naik dengan Kecerobohan, emosi, dari belakang.
+  seriousBase: 0.0015,
+  seriousFromBehind: 2,
+  seriousAgitation: 3,
+  // Tindakan kekerasan saat pertikaian (pemicu yang sangat panas).
+  violentBase: 0.07,
+});
+
+// Pelanggaran ini menggagalkan peluang gol yang jelas?
+//   breakaway: penyerang sudah lolos sendirian (attack.js isBreakaway).
+export function isDogso(tackler, holder, players, inBox, breakaway = false) {
+  if (inBox) return false;
+  const goal = { x: holder.attacksRight ? PITCH.length : 0, y: PITCH.width / 2 };
+  if (distance(holder, goal) > RED.dogsoGoalDistance) return false;
+  return breakaway || isLastMan(tackler, holder, players);
+}
+
+// Peluang kartu merah langsung untuk satu pelanggaran yang dilihat wasit.
+//   ctx: { dogso, fromBehind }
+export function straightRedChance(referee, tackler, ctx) {
+  const strict = normalizeStat(referee.skills.ketegasan);
+  if (ctx.dogso) return clamp01(lerp(RED.dogso, strict));
+  const s = tackler.skills;
+  let chance = RED.seriousBase * lerp(FOUL.recklessness, normalizeStat(s.kecerobohan));
+  chance *= 1 + RED.seriousAgitation * tackler.discipline.agitation * normalizeStat(s.temperamen);
+  if (ctx.fromBehind) chance *= RED.seriousFromBehind;
+  return clamp01(chance * lerp(CARD.strictness, strict));
 }
 
 // Keuntungan: tim yang dilanggar masih menguasai bola di separuh lawan tanpa lawan LAIN
@@ -190,11 +230,13 @@ export const INCIDENT = Object.freeze({
   cardTicks: 20, // wasit menunjukkan kartu
   protestTicks: 35,
   scuffleTicks: 55,
-  maxHoldTicks: 130,
+  redTicks: 40, // tambahan saat ada kartu merah (wasit, protes, pemain keluar)
+  maxHoldTicks: 170,
   arrivalCap: 50,
   // Protes: rekan pelaku di dekat wasit/kejadian mengerubungi wasit; lawan ikut berdebat.
   protestRadius: 20,
   protestBase: 0.2,
+  bookedProtest: 0.45, // pengali protes bagi pemain yang sudah dikartu kuning
   protestCardBoost: 1.8, // protes lebih sering bila dikartu / penalti
   maxProtesters: 3,
   arguerChance: 0.35, // per pemain tim lawan (× urge × 3), bila ada yang protes
@@ -237,13 +279,17 @@ export function resolveIncident(rng, ctx) {
 
   // Protes oleh tim yang dihukum (pelaku termasuk). Offside: tim yang terkena offside.
   const protesters = [];
+  // Pelaku yang baru saja dikartu juga dihitung "sudah berkartu".
+  const isBooked = (p) => p.discipline.yellows > 0 || (card && p.id === offender.id);
   const boost = card || penalty ? INCIDENT.protestCardBoost : 1;
   const nearby = players
     .filter((p) => p.teamId === offender.teamId && close(p))
     .sort((a, b) => protestUrge(b) - protestUrge(a) || a.id.localeCompare(b.id));
   for (const p of nearby) {
     if (protesters.length >= INCIDENT.maxProtesters) break;
-    if (rng.chance(Math.min(0.9, INCIDENT.protestBase * boost * protestUrge(p) * 3))) protesters.push(p.id);
+    // Pemain berkartu kuning lebih menahan diri (takut kuning kedua).
+    const wary = isBooked(p) ? INCIDENT.bookedProtest : 1;
+    if (rng.chance(Math.min(0.9, INCIDENT.protestBase * boost * wary * protestUrge(p) * 3))) protesters.push(p.id);
   }
   // Lawan ikut berdebat membela keputusan (hanya bila ada yang protes).
   const arguers = [];
@@ -260,7 +306,8 @@ export function resolveIncident(rng, ctx) {
   const dissent = [];
   if (protesters.length > 0) {
     const loudest = players.find((p) => p.id === protesters[0]);
-    if (rng.chance(lerpRow(INCIDENT.dissentYellow) * (0.5 + protestUrge(loudest)))) dissent.push(loudest.id);
+    const lenient = isBooked(loudest) ? RED.secondYellowLeniency : 1;
+    if (rng.chance(lerpRow(INCIDENT.dissentYellow) * lenient * (0.5 + protestUrge(loudest)))) dissent.push(loudest.id);
     ticks += INCIDENT.protestTicks;
   }
 
@@ -276,9 +323,15 @@ export function resolveIncident(rng, ctx) {
     const core = [fouled.id, offender.id];
     const ids = [...core, ...joiners(fouled.teamId, core), ...joiners(offender.teamId, core)];
     const booked = [];
-    if (rng.chance(lerpRow(INCIDENT.scuffleInstigatorYellow))) booked.push(fouled.id);
-    if (rng.chance(lerpRow(INCIDENT.scuffleOffenderYellow))) booked.push(offender.id);
-    scuffle = { ids, instigatorId: fouled.id, booked };
+    const lenient = (p) => (p.discipline.yellows > 0 ? RED.secondYellowLeniency : 1);
+    // Tindakan kekerasan: pemicu yang sangat panas bisa langsung dikartu merah.
+    const violent = rng.chance(
+      clamp01(RED.violentBase * strict * scuffleUrge(fouled) * fouled.discipline.agitation * 2),
+    );
+    const sentOff = violent ? [fouled.id] : [];
+    if (!violent && rng.chance(lerpRow(INCIDENT.scuffleInstigatorYellow) * lenient(fouled))) booked.push(fouled.id);
+    if (rng.chance(lerpRow(INCIDENT.scuffleOffenderYellow) * lenient(offender))) booked.push(offender.id);
+    scuffle = { ids, instigatorId: fouled.id, booked, sentOff };
     ticks += INCIDENT.scuffleTicks;
   }
   // Pemain pertikaian tidak sekaligus jadi pemrotes/pendebat.
