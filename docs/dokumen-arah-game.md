@@ -256,6 +256,14 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - hasil uji 10 orang sejak menit 0 (200 laga): penguasaan 50% → **48%**, gol tim 10 orang 0,29 (−75% dari kontrol 1,18), kebobolan 1,64 (+44% dari 1,14), menang 5% / seri 23% / kalah 73%. Patokan nyata (xG per menit): tim 10 orang −65%, lawan +54% ([Data Between the Lines](https://databetweenthelines.substack.com/p/how-do-red-cards-impact-team-performance)) — kini sesuai arah & kira-kira besarnya. Angka penguasaan bola nyata tim 10 orang belum ditemukan, jadi 48% belum dikalibrasi
    - belum dikerjakan (opsi B): keunggulan jumlah secara mekanis (penekan kedua, bonus operan ke pemain bebas)
    - catatan rata-rata gol: 2,17 ± 0,21 (200 laga). Uji pembanding tanpa perubahan "bubar bertahap": 2,27 ± 0,21 — selisih di dalam ketidakpastian. Rata-rata gol turun perlahan sejak 7b (2,41 → 2,31 → ~2,2), di bawah target 2,4; perlu satu putaran penyetelan khusus
+7e. ✅ Visual tekel (29 Okt; masukan: "tekel kurang terasa"): engine mencatat peristiwa tekel (`tackleEvents`, hanya untuk tampilan). Berhasil: penekan meluncur (jersey miring + garis seret 5 m di rumput) dan kilatan putih di titik kontak; gagal: penekan terhuyung ~1,8 dtk; pelanggaran: kilatan merah dan korban rebah ~2,5 dtk
+8a. ✅ Skuad, pergantian pemain & dua tab (29 Okt):
+   - 7 cadangan per tim (#12–18: GK, CB, LB, DM, CM, RW, ST; kualitas starter −1), dibuat setelah starter sehingga 22 starter tidak berubah
+   - maksimal 5 pergantian; pemain masuk mengambil slot & peran yang ditinggalkan, masuk dari garis samping dekat garis tengah; pemain keluar berjalan ke pinggir lalu hilang; kiper hanya diganti kiper
+   - **keputusan pengguna 29 Okt: kedua tab tetap berjalan** — membuka tab Tim TIDAK menjeda laga. Pergantian hanya DIANTRIKAN: diantrikan di babak 1 / jeda → dijalankan saat babak 2 dimulai; diantrikan di babak 2 → pada bola mati berikutnya. Antrian bisa dibatalkan; yang tidak lagi sah (mis. pemain sudah dikartu merah) dibatalkan dengan pemberitahuan
+   - pengguna mengatur Persada Bandung; AI pelatih tim lawan: mulai menit 55, saat bola mati, mengganti pemain lapangan paling lelah (tenaga < 62%) dengan cadangan selini (maks 1 per bola mati)
+   - tab Tim: susunan di lapangan (nomor, nama, posisi, bar tenaga, kartu), cadangan (posisi asli, rating), panel antrian; tab Pertandingan: lapangan & statistik. Papan skor, tulisan peluit, dan pemberitahuan pergantian tampil di kedua tab
+   - hasil (200 laga, AI di kedua tim): ~4,7 pergantian per tim, gol 2,26 ± 0,20, 0–0 7%, kejutan 13 vs 11 **10%** (di batas bawah target 10–20%; cadangan tim kuat juga lebih kuat — awasi)
 7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
 
 ## 7. Keputusan yang Masih Terbuka

@@ -126,12 +126,20 @@ function jerseyPath(ctx, cx, cy, w) {
   ctx.closePath();
 }
 
-function drawPlayer(ctx, vp, player, teamColors) {
+// pose (visual tekel): { angle (radian), lying (rebah) }
+function drawPlayer(ctx, vp, player, teamColors, pose = null) {
   const cx = vp.toX(player.x);
   const cy = vp.toY(player.y);
   const w = vp.px(JERSEY_WIDTH_METERS);
   const isKeeper = player.role === 'GK';
   const shirt = isKeeper && teamColors.goalkeeper ? teamColors.goalkeeper : teamColors.shirt;
+  const angle = pose?.angle ?? 0;
+  ctx.save();
+  if (angle !== 0) {
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+    ctx.translate(-cx, -cy);
+  }
 
   // Bayangan tipis supaya jersey tidak menyatu dengan rumput.
   ctx.save();
@@ -154,6 +162,7 @@ function drawPlayer(ctx, vp, player, teamColors) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(String(player.number), cx, cy + w * 0.08);
+  ctx.restore();
 
   // Nama di bawah jersey.
   // Di layar kecil, nama ikut mengecil bersama jersey agar tidak menutupi lapangan.
@@ -283,6 +292,10 @@ export function interpolateState(previous, current, alpha) {
       const before = previous.sentOff?.find((q) => q.id === p.id);
       return before ? { ...p, x: lerp(before.x, p.x, t), y: lerp(before.y, p.y, t) } : p;
     }),
+    subbedOff: (current.subbedOff ?? []).map((p) => {
+      const before = previous.subbedOff?.find((q) => q.id === p.id);
+      return before ? { ...p, x: lerp(before.x, p.x, t), y: lerp(before.y, p.y, t) } : p;
+    }),
   };
 }
 
@@ -376,6 +389,64 @@ function drawIncident(ctx, vp, state) {
   }
 }
 
+// ---- Visual tekel (29 Okt: tekel kurang terasa) --------------------------------
+//   won    : penekan meluncur (miring + garis seret di rumput), kilatan putih di titik kontak
+//   beaten : penekan terhuyung (bergoyang ~1,5 dtk)
+//   foul   : kilatan merah, korban rebah sebentar
+const TACKLE_FX = Object.freeze({ slideTicks: 12, wobbleTicks: 18, flashTicks: 9, lyingTicks: 25, streak: 5, flashMax: 4.5 });
+
+export function tacklePoses(state) {
+  const poses = new Map();
+  for (const e of state.tackleEvents ?? []) {
+    const age = state.tick - e.tick;
+    if (age < 0) continue;
+    const heading = Math.atan2(e.dy, e.dx);
+    if (e.kind === 'won' && age <= TACKLE_FX.slideTicks) {
+      poses.set(e.tacklerId, { angle: 0.8 * Math.sign(Math.cos(heading) || 1) * (1 - age / TACKLE_FX.slideTicks) });
+    } else if (e.kind === 'beaten' && age <= TACKLE_FX.wobbleTicks) {
+      poses.set(e.tacklerId, { angle: 0.55 * Math.sin(age * 1.3) * (1 - age / TACKLE_FX.wobbleTicks) });
+    } else if (e.kind === 'foul') {
+      if (age <= TACKLE_FX.slideTicks) poses.set(e.tacklerId, { angle: 0.8 * (1 - age / TACKLE_FX.slideTicks) });
+      if (age <= TACKLE_FX.lyingTicks) poses.set(e.holderId, { angle: Math.PI / 2 * Math.min(1, age / 3) * (Math.cos(heading) >= 0 ? 1 : -1), lying: true });
+    }
+  }
+  return poses;
+}
+
+function drawTackleEffects(ctx, vp, state) {
+  for (const e of state.tackleEvents ?? []) {
+    const age = state.tick - e.tick;
+    if (age < 0) continue;
+    // Garis seret di rumput: dari titik awal penekan ke titik kontak.
+    if ((e.kind === 'won' || e.kind === 'foul') && age <= TACKLE_FX.slideTicks * 2) {
+      const fade = 1 - age / (TACKLE_FX.slideTicks * 2);
+      ctx.save();
+      ctx.strokeStyle = `rgba(235, 250, 210, ${0.7 * fade})`;
+      ctx.lineWidth = Math.max(3, vp.px(1.1));
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(vp.toX(e.x - e.dx * TACKLE_FX.streak), vp.toY(e.y - e.dy * TACKLE_FX.streak));
+      ctx.lineTo(vp.toX(e.x - e.dx * 0.6), vp.toY(e.y - e.dy * 0.6));
+      ctx.stroke();
+      ctx.restore();
+    }
+    // Kilatan di titik kontak.
+    if (e.kind !== 'beaten' && age <= TACKLE_FX.flashTicks) {
+      const t = age / TACKLE_FX.flashTicks;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(vp.toX(e.x), vp.toY(e.y), vp.px(1 + (TACKLE_FX.flashMax - 1) * t), 0, Math.PI * 2);
+      const rgb = e.kind === 'foul' ? '255, 70, 70' : '255, 255, 255';
+      ctx.fillStyle = `rgba(${rgb}, ${0.25 * (1 - t)})`;
+      ctx.fill();
+      ctx.strokeStyle = `rgba(${rgb}, ${1 - t})`;
+      ctx.lineWidth = Math.max(2.5, vp.px(0.5));
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+}
+
 function drawOfficials(ctx, vp, state) {
   const officials = state.officials;
   if (!officials) return;
@@ -412,14 +483,17 @@ export function renderMatch(ctx, state, cssWidth, cssHeight) {
     ctx.stroke();
   }
 
+  drawTackleEffects(ctx, vp, state);
+  const poses = tacklePoses(state);
   for (const player of state.players) {
     const team = state.teams[player.teamId];
     if (!team) throw new Error(`renderMatch: tim "${player.teamId}" tidak ditemukan`);
-    drawPlayer(ctx, vp, player, team.colors);
+    drawPlayer(ctx, vp, player, team.colors, poses.get(player.id));
   }
 
   // Pemain yang dikartu merah berjalan keluar lapangan (pudar), lalu hilang.
-  for (const p of state.sentOff ?? []) {
+  // Pemain yang diganti juga berjalan keluar (tanpa kartu merah).
+  for (const p of [...(state.sentOff ?? []), ...(state.subbedOff ?? [])]) {
     if (!p.walking) continue;
     const team = state.teams[p.teamId];
     ctx.save();

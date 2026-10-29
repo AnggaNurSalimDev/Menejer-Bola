@@ -393,3 +393,279 @@ body {
   color: #fff;
   white-space: nowrap;
 }
+
+/* ---- Dua tab: Pertandingan & Tim (29 Okt) ---------------------------------- */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #2b313a;
+}
+
+.tabs button {
+  background: transparent;
+  color: #adb5bd;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 8px 14px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tabs button.is-active {
+  color: #fff;
+  border-bottom-color: #4dabf7;
+}
+
+.sub-toast {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto 8px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #1c3d5a;
+  color: #d0ebff;
+  font-size: 0.85rem;
+}
+
+.sub-toast[hidden] {
+  display: none;
+}
+
+.break-button:disabled {
+  background: #3a414b;
+  color: #868e96;
+  cursor: not-allowed;
+}
+
+.team-tab {
+  background: #1b2027;
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.team-tab__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.team-tab__head h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.team-tab__meta {
+  margin: 4px 0 0;
+  color: #adb5bd;
+  font-size: 0.85rem;
+}
+
+.team-tab__live {
+  margin: 0;
+  color: #69db7c;
+  font-size: 0.8rem;
+}
+
+.team-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+@media (max-width: 640px) {
+  .team-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.team-col h3 {
+  margin: 0 0 6px;
+  font-size: 0.9rem;
+  color: #ced4da;
+}
+
+.roster {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.roster-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 2rem 1fr 2.6rem 4.5rem;
+  align-items: center;
+  gap: 8px;
+  background: #232a33;
+  color: inherit;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.roster-row:hover:not(:disabled) {
+  border-color: #3b4552;
+}
+
+.roster-row.is-selected {
+  border-color: #4dabf7;
+  background: #1c3d5a;
+}
+
+.roster-row.is-queued,
+.roster-row:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.roster-num {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #adb5bd;
+}
+
+.roster-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.roster-role,
+.roster-rating {
+  color: #adb5bd;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.roster-tag {
+  font-size: 0.7rem;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #e8590c;
+  color: #fff;
+}
+
+.card-chip {
+  display: inline-block;
+  width: 7px;
+  height: 10px;
+  background: #ffd43b;
+  border-radius: 1px;
+}
+
+.energy {
+  display: block;
+  height: 6px;
+  background: #11151a;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.energy > span {
+  display: block;
+  height: 100%;
+}
+
+.energy--ok > span {
+  background: #51cf66;
+}
+
+.energy--mid > span {
+  background: #fcc419;
+}
+
+.energy--low > span {
+  background: #ff6b6b;
+}
+
+.roster-note {
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+  color: #adb5bd;
+}
+
+.sub-panel {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #2b313a;
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.sub-pick,
+.sub-when {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.sub-when {
+  color: #adb5bd;
+}
+
+.sub-warn {
+  color: #fcc419;
+}
+
+.sub-queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 0.88rem;
+}
+
+.sub-queue button {
+  margin-left: 8px;
+  background: transparent;
+  border: 1px solid #495057;
+  color: #ced4da;
+  border-radius: 4px;
+  padding: 1px 8px;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.team-msg {
+  margin: 10px 0 0;
+  font-size: 0.85rem;
+}
+
+.team-msg--info {
+  color: #74c0fc;
+}
+
+.team-msg--error {
+  color: #ff8787;
+}
+
+.team-break {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: #1b2027;
+  border-radius: 8px;
+  padding: 10px 14px;
+}
+
+.team-empty {
+  color: #adb5bd;
+}

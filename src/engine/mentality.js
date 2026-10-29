@@ -11,11 +11,11 @@
 // semata kalah fisik. Kalau tertinggal di menit akhir, ia kembali seimbang untuk mengejar.
 // Nanti di layer manajer, pengguna bisa mengubahnya sendiri.
 
-import { PITCH, distance } from "./pitch.js";
+import { PITCH, distance } from './pitch.js';
 
 export const MENTALITIES = Object.freeze({
   bertahan: Object.freeze({
-    label: "Bertahan",
+    label: 'Bertahan',
     blockShift: -8, // meter: seluruh blok mundur ke arah gawang sendiri
     compact: 0.85, // pengali lebar saat bertahan
     pressZone: 0.55, // hanya menekan bila pemegang bola ≤ bagian lapangan ini dari gawang sendiri
@@ -26,7 +26,7 @@ export const MENTALITIES = Object.freeze({
     tempo: 0.85, // pengali lama menahan bola
   }),
   seimbang: Object.freeze({
-    label: "Seimbang",
+    label: 'Seimbang',
     blockShift: 0,
     compact: 1,
     pressZone: 1,
@@ -35,7 +35,7 @@ export const MENTALITIES = Object.freeze({
     tempo: 1,
   }),
   menyerang: Object.freeze({
-    label: "Menyerang",
+    label: 'Menyerang',
     blockShift: 5,
     compact: 1,
     pressZone: 1,
@@ -51,28 +51,17 @@ export const COACH = Object.freeze({
 
 export function getMentality(key) {
   const m = MENTALITIES[key];
-  if (!m)
-    throw new RangeError(
-      `Mentalitas "${key}" tidak dikenal. Pilihan: ${Object.keys(MENTALITIES).join(", ")}`,
-    );
+  if (!m) throw new RangeError(`Mentalitas "${key}" tidak dikenal. Pilihan: ${Object.keys(MENTALITIES).join(', ')}`);
   return m;
 }
 
 // Keputusan AI pelatih untuk satu tim. Murni.
 //   ctx: { own, opponents (jumlah pemain), goalsFor, goalsAgainst, minute, base }
-export function coachMentality({
-  own,
-  opponents,
-  goalsFor,
-  goalsAgainst,
-  minute,
-  base = "seimbang",
-}) {
-  if (!(own > 0 && opponents > 0))
-    throw new RangeError("coachMentality: jumlah pemain tidak valid");
+export function coachMentality({ own, opponents, goalsFor, goalsAgainst, minute, base = 'seimbang' }) {
+  if (!(own > 0 && opponents > 0)) throw new RangeError('coachMentality: jumlah pemain tidak valid');
   if (own < opponents) {
     const chasing = goalsFor < goalsAgainst && minute >= COACH.chaseMinute;
-    return chasing ? "seimbang" : "bertahan";
+    return chasing ? 'seimbang' : 'bertahan';
   }
   return base;
 }
@@ -86,10 +75,7 @@ export function pressAllowed(mentality, holder, defendingAttacksRight) {
     y: PITCH.width / 2,
   };
   const depth = Math.abs(holder.x - ownGoal.x);
-  return (
-    depth <= m.pressZone * PITCH.length ||
-    distance(holder, ownGoal) <= m.pressZone * PITCH.length
-  );
+  return depth <= m.pressZone * PITCH.length || distance(holder, ownGoal) <= m.pressZone * PITCH.length;
 }
 
 export function validateMentality(key) {

@@ -3,6 +3,7 @@
 
 import { validateSentOff, SENDOFF } from './sendoff.js';
 import { validateMentality } from './mentality.js';
+import { benchEntry, validateSubstitutions } from './substitution.js';
 import { PITCH, isInsidePitch } from './pitch.js';
 import { getFormation } from './formations.js';
 import { validateStats } from './stats.js';
@@ -168,6 +169,7 @@ function createStats(teamIds) {
     reds: perTeam(() => 0),
     straightReds: perTeam(() => 0),
     scuffleReds: perTeam(() => 0),
+    subs: perTeam(() => 0), // pergantian pemain yang sudah dijalankan
   };
 }
 
@@ -202,8 +204,8 @@ export function createMatchState(home, away) {
       // chaserId: pemain yang sedang menjemput/menekan bola untuk tim ini.
       // runnerId/runTarget/runTicks: penyerang yang sedang berlari ke belakang garis bek.
       // philosophy: kunci filosofi pelatih (philosophy.js).
-      [home.id]: { id: home.id, name: home.name, colors: home.colors, philosophy: home.philosophy ?? 'seimbang', baseMentality: home.mentality ?? 'seimbang', mentality: home.mentality ?? 'seimbang', attacksRight: true, ...emptyTeamRoles() },
-      [away.id]: { id: away.id, name: away.name, colors: away.colors, philosophy: away.philosophy ?? 'seimbang', baseMentality: away.mentality ?? 'seimbang', mentality: away.mentality ?? 'seimbang', attacksRight: false, ...emptyTeamRoles() },
+      [home.id]: { id: home.id, name: home.name, colors: home.colors, philosophy: home.philosophy ?? 'seimbang', baseMentality: home.mentality ?? 'seimbang', mentality: home.mentality ?? 'seimbang', bench: (home.bench ?? []).map((p) => benchEntry(home.id, p)), subsUsed: 0, subQueue: [], attacksRight: true, ...emptyTeamRoles() },
+      [away.id]: { id: away.id, name: away.name, colors: away.colors, philosophy: away.philosophy ?? 'seimbang', baseMentality: away.mentality ?? 'seimbang', mentality: away.mentality ?? 'seimbang', bench: (away.bench ?? []).map((p) => benchEntry(away.id, p)), subsUsed: 0, subQueue: [], attacksRight: false, ...emptyTeamRoles() },
     },
     ball: createInitialBall(home.id),
     players: [...placeTeam(home, true), ...placeTeam(away, false)],
@@ -221,6 +223,11 @@ export function createMatchState(home, away) {
     incident: null,
     // Pemain yang dikartu merah (tahap 7c): tidak lagi bermain; `walking` = masih berjalan keluar.
     sentOff: [],
+    // Peristiwa tekel terbaru (hanya untuk tampilan): { tick, kind, tacklerId, holderId, x, y, dx, dy }.
+    tackleEvents: [],
+    // Pergantian pemain (8a): pemain yang sudah keluar (berjalan ke pinggir lalu hilang) & pemberitahuan.
+    subbedOff: [],
+    subNotices: [],
     // Babak: first | halftime | second | fulltime. periodTick = tick di babak berjalan.
     period: 'first',
     periodTick: 0,
@@ -353,8 +360,8 @@ export function validateMatchState(state, teams = []) {
     const ids = [...state.incident.protesters, ...state.incident.arguers, ...(state.incident.scuffle?.ids ?? [])];
     if (state.incident.takerId && !byId.get(state.incident.takerId)) errors.push('eksekutor bola mati tidak ada');
     if (!(state.incident.holdLeft >= 0 && state.incident.holdLeft <= state.incident.ticks)) errors.push('sisa drama insiden tidak valid');
-    // Pemain yang baru dikartu merah boleh masih tercatat di insiden (ia sedang berjalan keluar).
-    const out = new Set((state.sentOff ?? []).map((p) => p.id));
+    // Pemain yang baru dikartu merah / diganti boleh masih tercatat di insiden (ia sedang berjalan keluar).
+    const out = new Set([...(state.sentOff ?? []), ...(state.subbedOff ?? [])].map((p) => p.id));
     for (const id of ids) if (!byId.get(id) && !out.has(id)) errors.push(`insiden: pemain "${id}" tidak ada`);
     for (const id of state.incident.dissent) if (!state.incident.protesters.includes(id)) errors.push('kartu protes untuk pemain yang tidak protes');
   }
@@ -420,6 +427,12 @@ export function validateMatchState(state, teams = []) {
     if (team.runnerId !== null && (!team.runTarget || !isInsidePitch(team.runTarget.x, team.runTarget.y))) {
       errors.push(`tim ${teamId}: target lari tidak valid`);
     }
+  }
+  if (!Array.isArray(state.tackleEvents ?? [])) errors.push('tackleEvents bukan daftar');
+  for (const e of validateSubstitutions(state)) errors.push(`pergantian: ${e}`);
+  for (const e of state.tackleEvents ?? []) {
+    if (!['won', 'beaten', 'foul'].includes(e.kind)) errors.push(`peristiwa tekel tidak dikenal: ${e.kind}`);
+    if (!(e.tick <= state.tick)) errors.push('peristiwa tekel dari masa depan');
   }
   for (const team of Object.values(state.teams)) {
     for (const e of validateMentality(team.mentality)) errors.push(`tim ${team.id}: ${e}`);
@@ -497,7 +510,7 @@ export function validateMatchState(state, teams = []) {
       if (!(state.stats.aerialsWon[id] >= 0)) errors.push(`tim ${id}: duel udara tidak valid`);
       if (!(state.stats.offsideMissed[id] >= 0 && state.stats.offsideWrong[id] >= 0)) errors.push(`tim ${id}: catatan salah offside tidak valid`);
       if (!(state.stats.offsideWrong[id] <= state.stats.offsides[id])) errors.push(`tim ${id}: offside salah bendera > offside dinyatakan`);
-      const teamYellows = [...state.players, ...(state.sentOff ?? [])].filter((p) => p.teamId === id).reduce((n, p) => n + p.discipline.yellows, 0);
+      const teamYellows = [...state.players, ...(state.sentOff ?? []), ...(state.subbedOff ?? [])].filter((p) => p.teamId === id).reduce((n, p) => n + p.discipline.yellows, 0);
       if (state.stats.yellows[id] !== teamYellows) errors.push(`tim ${id}: kartu kuning ${state.stats.yellows[id]} ≠ jumlah di pemain ${teamYellows}`);
       const cardSources = state.stats.fouls[id] + state.stats.dissentYellows[id] + state.stats.scuffleYellows[id] + state.stats.scuffleReds[id];
       const st = state.stats;

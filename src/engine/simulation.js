@@ -130,6 +130,12 @@ import {
 } from './attack.js';
 import { hash01 } from './scuffle.js';
 import { coachMentality, getMentality, pressAllowed } from './mentality.js';
+import {
+  queueSubstitution as queueSub,
+  cancelSubstitution as cancelSub,
+  applySubstitutions,
+  aiSubstitutions,
+} from './substitution.js';
 import { scuffleTargets, scuffleRefereeSpot, protestTarget, assignScuffleStyles, SCUFFLE_MOVE, PROTEST_MOVE } from './scuffle.js';
 
 // Pemegang bola
@@ -194,6 +200,7 @@ function cloneStats(stats) {
     reds: { ...stats.reds },
     straightReds: { ...stats.straightReds },
     scuffleReds: { ...stats.scuffleReds },
+    subs: { ...stats.subs },
     scuffles: stats.scuffles,
   };
 }
@@ -970,6 +977,9 @@ export function incidentProgress(incident) {
   return Math.min(1, Math.max(0, 1 - incident.holdLeft / incident.ticks));
 }
 
+// Berapa lama peristiwa tekel disimpan untuk digambar (tick).
+export const TACKLE_EVENT_TICKS = 30;
+
 // ---- Setelah drama (masukan 29 Okt): pemrotes diam dulu, lalu bubar bertahap ----
 export const AFTER_INCIDENT = Object.freeze({
   lingerMin: 8, // tick: diam di tempat terakhir setelah drama selesai
@@ -1122,6 +1132,8 @@ export function kickoffTargets(players, kickOffTeamId) {
   return targets;
 }
 
+// options.aiTeams: tim yang pergantiannya diatur AI pelatih (bawaan: semua tim; aplikasi web memakai
+//   hanya tim lawan, karena tim kandang diatur pengguna).
 // options.startSentOff: daftar id pemain yang sudah dikartu merah sejak awal laga (untuk uji &
 // kalibrasi "bermain dengan 10 orang"; tidak dipakai di laga biasa).
 export function createSimulation(home, away, seed, options = {}) {
@@ -1132,6 +1144,7 @@ export function createSimulation(home, away, seed, options = {}) {
   const teamIds = Object.keys(state.teams);
   state = { ...state, players: state.players.map((p) => ({ ...p, condition: initialCondition(p.skills, rng) })) };
   state = { ...state, officials: createOfficials(rng) };
+  const aiTeams = new Set(options.aiTeams ?? teamIds);
   if (options.startSentOff?.length) {
     const removals = new Map(options.startSentOff.map((id) => [id, { card: 'red', reason: 'test' }]));
     const stats = cloneStats(state.stats);
@@ -1209,7 +1222,31 @@ export function createSimulation(home, away, seed, options = {}) {
   // 0. Persiapan kick-off (awal babak / setelah gol): jam berhenti, semua pemain
   //    berjalan ke posisi formasinya. Hitung mundur tunggu baru berjalan setelah
   //    semua sampai (atau setelah MAX_RETURN_TICKS, supaya tidak menunggu selamanya).
-  function stepPause(prev, tick, stats) {
+  // Pergantian pemain saat bola mati di babak 2 (AI pelatih mengantrikan di awal jeda).
+  // Eksekutor bola mati yang diganti digantikan pemain masuk.
+  function substituteAtStoppage(prev, tick) {
+    if (prev.period !== 'second') return prev;
+    let next = prev;
+    if (prev.pauseElapsed === 0) {
+      const minute = gameClock(prev).minute;
+      for (const id of teamIds) if (aiTeams.has(id)) next = aiSubstitutions(next, id, minute);
+    }
+    if (!teamIds.some((id) => next.teams[id].subQueue.length > 0)) return next;
+    const before = new Set(next.players.map((p) => p.id));
+    next = applySubstitutions(next, tick);
+    const replaced = new Map(
+      next.players.filter((p) => !before.has(p.id)).map((p) => [prev.players.find((q) => q.slot === p.slot && q.teamId === p.teamId && !next.players.some((r) => r.id === q.id))?.id, p.id]),
+    );
+    if (next.incident?.takerId && replaced.has(next.incident.takerId)) {
+      next = { ...next, incident: { ...next.incident, takerId: replaced.get(next.incident.takerId) } };
+    }
+    if (next.ball.ownerId !== null && replaced.has(next.ball.ownerId)) next = { ...next, ball: { ...next.ball, ownerId: replaced.get(next.ball.ownerId) } };
+    return next;
+  }
+
+  function stepPause(prevRaw, tick, stats) {
+    const prev = substituteAtStoppage(prevRaw, tick);
+    stats = { ...stats, subs: { ...prev.stats.subs } };
     const reason = prev.pauseReason;
     const incident = prev.incident;
     const inIncident = incident !== null && incident.holdLeft > 0;
@@ -1314,6 +1351,7 @@ export function createSimulation(home, away, seed, options = {}) {
       tick,
       players,
       sentOff: stepSentOff(prev.sentOff, DT),
+      subbedOff: stepSentOff(prev.subbedOff ?? [], DT),
       stats,
       officials,
       pauseTicks,
@@ -1416,6 +1454,8 @@ export function createSimulation(home, away, seed, options = {}) {
     // Tim yang penyerangnya baru mulai berlari di tick ini: lawan butuh waktu membacanya.
     const runStartedBy = new Set();
     const stumbled = new Set();
+    // Peristiwa tekel untuk tampilan (29 Okt: tekel kurang terasa): won | beaten | foul.
+    const tackleEvents = (prev.tackleEvents ?? []).filter((e) => tick - e.tick <= TACKLE_EVENT_TICKS);
     // Siapa yang melepas bola di tick ini (operan, tembakan, tekel): pemain lain
     // butuh waktu reaksi (stat Antisipasi) sebelum mengubah arah larinya.
     let ballReleasedBy = null;
@@ -1534,6 +1574,19 @@ export function createSimulation(home, away, seed, options = {}) {
           }
         }
 
+        {
+          const d = distance(tackler, holder) || 1;
+          tackleEvents.push({
+            tick,
+            kind: foulStopsPlay ? 'foul' : won ? 'won' : 'beaten',
+            tacklerId: tackler.id,
+            holderId: holder.id,
+            x: holder.x,
+            y: holder.y,
+            dx: (holder.x - tackler.x) / d,
+            dy: (holder.y - tackler.y) / d,
+          });
+        }
         if (foulStopsPlay) {
           cooldownOverrides.set(tackler.id, BEATEN_COOLDOWN_TICKS);
           tackled = true; // bola mati: pemegang bola tidak memutuskan apa-apa
@@ -2221,7 +2274,8 @@ export function createSimulation(home, away, seed, options = {}) {
       whistle = whistle ? { ...whistle, sentOff: [...sendOffs.keys()] } : whistle;
     }
     const officials = stepOfficials(prev.officials, ball, offsideReferences(finalPlayers, ball), false, DT);
-    state = { ...prev, tick, teams, ball, players: finalPlayers, sentOff, stats, ...pause, lastGoal, officials, whistle };
+    const subbedOff = stepSentOff(prev.subbedOff ?? [], DT);
+    state = { ...prev, tick, teams, ball, players: finalPlayers, sentOff, subbedOff, stats, ...pause, lastGoal, officials, whistle, tackleEvents };
     return state;
   }
 
@@ -2259,6 +2313,8 @@ export function createSimulation(home, away, seed, options = {}) {
       throw new Error(`startSecondHalf: hanya bisa saat jeda babak, sekarang "${state.period}"`);
     }
 
+    // Pergantian yang diantrikan di babak 1 dijalankan sekarang (aturan 29 Okt).
+    state = applySubstitutions(state, state.tick);
     const teams = Object.fromEntries(
       teamIds.map((id) => [id, { ...state.teams[id], attacksRight: !state.teams[id].attacksRight, ...emptyTeamRoles() }]),
     );
@@ -2286,6 +2342,7 @@ export function createSimulation(home, away, seed, options = {}) {
       teams,
       players,
       sentOff: state.sentOff.map((p) => ({ ...p, walking: false })),
+      subbedOff: (state.subbedOff ?? []).map((p) => ({ ...p, walking: false })),
       ball: createInitialBall(kickOffTeamId),
       ...kickoffPause('kickoff'),
       period: 'second',
@@ -2297,9 +2354,22 @@ export function createSimulation(home, away, seed, options = {}) {
     return state;
   }
 
+  // Layer manajer: antrikan / batalkan pergantian. Simulasi tetap berjalan; pergantian dijalankan
+  // saat babak 2 dimulai (bila diantrikan di babak 1) atau pada bola mati berikutnya di babak 2.
+  function queueSubstitution(teamId, outId, inId) {
+    state = queueSub(state, teamId, outId, inId);
+    return state;
+  }
+  function cancelSubstitution(teamId, index) {
+    state = cancelSub(state, teamId, index);
+    return state;
+  }
+
   return {
     getState: () => state,
     step,
     startSecondHalf,
+    queueSubstitution,
+    cancelSubstitution,
   };
 }

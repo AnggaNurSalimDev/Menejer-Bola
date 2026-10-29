@@ -114,6 +114,33 @@ export function createTeam({
   return { id, name, colors, formation, philosophy, players };
 }
 
+// Cadangan (29 Okt, layer manajer 8a): 7 pemain bernomor 12–18, sedikit di bawah kualitas
+// starter. Dibuat SETELAH kedua tim supaya nama & stat starter tidak berubah.
+export const BENCH_ROLES = Object.freeze(['GK', 'CB', 'LB', 'DM', 'CM', 'RW', 'ST']);
+export const BENCH_QUALITY_GAP = 1;
+
+export function addBench(team, { seed, usedShortNames, quality }) {
+  if (!team || !Array.isArray(team.players)) throw new TypeError('addBench: tim tidak valid');
+  if (!Number.isFinite(quality)) throw new RangeError('addBench: quality wajib angka');
+  const rng = createRng(seed);
+  const { statBias } = getPhilosophy(team.philosophy);
+  const bench = BENCH_ROLES.map((role, i) => {
+    const number = 12 + i;
+    const { fullName, shortName } = generateUniqueName(rng, usedShortNames);
+    return {
+      id: `${team.id}-${number}`,
+      number,
+      role,
+      fullName,
+      shortName,
+      stats: generateStats(rng, Math.max(STAT_MIN, quality - BENCH_QUALITY_GAP), role, statBias),
+    };
+  });
+  const numbers = new Set(team.players.map((p) => p.number));
+  if (bench.some((p) => numbers.has(p.number))) throw new Error(`addBench: nomor cadangan bentrok di ${team.id}`);
+  return { ...team, bench };
+}
+
 // Dua tim contoh untuk tahap awal. Kualitas (1–20) bisa diatur untuk
 // menguji apakah tim yang lebih bagus memang lebih sering menang.
 // Filosofi bawaan: Persada Bandung bermain fisik, Garuda Merah cepat (28 Okt).
@@ -145,5 +172,9 @@ export function createDemoTeams(
     seed: seed + 1,
   });
 
-  return { home, away };
+  // Cadangan dibuat terakhir: nama & stat 22 starter tetap sama seperti sebelum ada cadangan.
+  return {
+    home: addBench(home, { seed: seed + 100, usedShortNames, quality: homeQuality }),
+    away: addBench(away, { seed: seed + 101, usedShortNames, quality: awayQuality }),
+  };
 }

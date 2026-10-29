@@ -40,6 +40,7 @@ import { createTeam } from '../src/engine/teams.js';
 import { blunderFromStats } from '../src/engine/skill.js';
 import { coachMentality, pressAllowed, MENTALITIES } from '../src/engine/mentality.js';
 import { lingerTicks, freeKickSettleTargets, AFTER_INCIDENT } from '../src/engine/simulation.js';
+import { substitutionErrors, SUBS } from '../src/engine/substitution.js';
 import { repairShape, applySendOffs, emergencyKeeper } from '../src/engine/sendoff.js';
 import { scuffleTargets, assignScuffleStyles, protestTarget } from '../src/engine/scuffle.js';
 import { straightRedChance, yellowChance, isDogso, RED } from '../src/engine/fouls.js';
@@ -517,6 +518,57 @@ console.log('Gerak pertikaian (masukan 29 Okt: jangan menumpuk diam)');
   const a = protestTarget('home-7', 0, 1, ref, 0);
   const b = protestTarget('home-7', 0, 1, ref, 7);
   check('pemrotes maju-mundur di depan wasit', Math.hypot(a.x - b.x, a.y - b.y) > 0.3 ? [] : ['pemrotes diam']);
+}
+
+console.log('Skuad & pergantian pemain (8a)');
+{
+  const teams = createDemoTeams(2026, {});
+  check('7 cadangan per tim, nomor 12–18', teams.home.bench.length === 7 && teams.away.bench.every((p) => p.number >= 12 && p.number <= 18) ? [] : ['bangku salah']);
+  const names = [...teams.home.players, ...teams.home.bench, ...teams.away.players, ...teams.away.bench].map((p) => p.shortName);
+  check('nama punggung unik di 36 pemain', new Set(names).size === names.length ? [] : ['nama ganda']);
+  // Antrian di babak 1 → dijalankan saat babak 2 dimulai; tim kandang diatur pengguna (AI hanya tim tamu).
+  const sim = createSimulation(teams.home, teams.away, 3, { aiTeams: ['away'] });
+  let s = sim.getState();
+  const outP = s.players.find((p) => p.teamId === 'home' && p.role === 'ST');
+  const inP = s.teams.home.bench.find((p) => p.role === 'ST');
+  check('menolak kiper diganti pemain lapangan', substitutionErrors(s, 'home', s.players.find((p) => p.teamId === 'home' && p.role === 'GK').id, inP.id).length > 0 ? [] : ['diterima']);
+  s = sim.queueSubstitution('home', outP.id, inP.id);
+  let errs = [];
+  for (let i = 0; i < 400; i += 1) {
+    s = sim.step();
+    if (s.players.some((p) => p.id === inP.id)) errs.push('pemain masuk di babak 1');
+  }
+  check('antrian babak 1 tidak dijalankan selama babak 1', errs.slice(0, 1));
+  while (s.period === 'first') s = sim.step();
+  s = sim.startSecondHalf();
+  const entered = s.players.find((p) => p.id === inP.id);
+  check('dijalankan saat babak 2 dimulai, mengambil slot pemain keluar', entered && !s.players.some((p) => p.id === outP.id) && entered.slot.lane === outP.slot.lane ? [] : ['tidak terganti']);
+  check('state valid setelah pergantian', validateMatchState(s));
+  // Babak 2: diantrikan saat bola hidup → baru masuk di bola mati berikutnya.
+  const out2 = s.players.find((p) => p.teamId === 'home' && p.role === 'CM');
+  const in2 = s.teams.home.bench.find((p) => p.role === 'CM');
+  while (s.pauseTicks > 0) s = sim.step();
+  s = sim.queueSubstitution('home', out2.id, in2.id);
+  let liveEntry = false;
+  let entered2 = false;
+  errs = [];
+  while (s.period === 'second' && !entered2) {
+    const wasLive = s.pauseTicks === 0;
+    s = sim.step();
+    if (s.players.some((p) => p.id === in2.id)) {
+      entered2 = true;
+      if (wasLive && s.pauseTicks === 0) liveEntry = true;
+    }
+    if (s.tick % 50 === 0) errs.push(...validateMatchState(s));
+  }
+  check('babak 2: pergantian hanya saat bola mati', entered2 && !liveEntry ? [] : [entered2 ? 'masuk saat bola hidup' : 'tidak pernah masuk']);
+  while (s.period === 'second') {
+    s = sim.step();
+    if (s.tick % 50 === 0) errs.push(...validateMatchState(s));
+  }
+  check('laga dengan pergantian lolos invariant', errs);
+  check(`AI pelatih tim tamu memakai pergantian (≤ ${SUBS.max})`, s.teams.away.subsUsed >= 1 && s.teams.away.subsUsed <= SUBS.max ? [] : [`${s.teams.away.subsUsed} pergantian`]);
+  check('tim kandang (pengguna) tidak diganti AI', s.teams.home.subsUsed === 2 ? [] : [`${s.teams.home.subsUsed} pergantian`]);
 }
 
 console.log('Mentalitas & AI pelatih');

@@ -1,5 +1,6 @@
 import { useMemo, useState, useCallback, useRef } from 'react';
 import MatchView from './components/MatchView.jsx';
+import TeamTab from './components/TeamTab.jsx';
 import { createDemoTeams } from './engine/teams.js';
 import { createSimulation } from './engine/simulation.js';
 import { gameClock } from './engine/state.js';
@@ -8,6 +9,9 @@ import { getMentality } from './engine/mentality.js';
 
 const TEAM_SEED = 2026;
 const SPEEDS = [1, 2, 4, 8];
+const USER_TEAM = 'home'; // tim yang diatur pengguna; tim tamu diatur AI pelatih
+const TEAM_VIEW_EVERY_TICKS = 5; // tab Tim diperbarui 2× per detik (cukup untuk bar tenaga)
+const SUB_NOTICE_TICKS = 50;
 
 function randomSeed() {
   return Math.floor(Math.random() * 1_000_000);
@@ -64,6 +68,12 @@ export default function App() {
   // Snapshot state saat jeda babak / peluit akhir (null = sedang bermain).
   // Hanya berubah dua kali per pertandingan, jadi aman memakai state React.
   const [breakState, setBreakState] = useState(null);
+  // Dua tab (29 Okt): keduanya hidup; simulasi tetap berjalan saat tab Tim dibuka.
+  const [tab, setTab] = useState('match');
+  const [teamView, setTeamView] = useState(null);
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+  const subToastRef = useRef(null);
 
   const clockRef = useRef(null);
   const scoreRef = useRef(null);
@@ -76,9 +86,9 @@ export default function App() {
   const { home, away, simulation, namesById } = useMemo(() => {
     const teams = createDemoTeams(TEAM_SEED);
     const names = new Map(
-      [...teams.home.players, ...teams.away.players].map((p) => [p.id, p.shortName]),
+      [...teams.home.players, ...teams.home.bench, ...teams.away.players, ...teams.away.bench].map((p) => [p.id, p.shortName]),
     );
-    return { ...teams, namesById: names, simulation: createSimulation(teams.home, teams.away, matchSeed) };
+    return { ...teams, namesById: names, simulation: createSimulation(teams.home, teams.away, matchSeed, { aiTeams: ['away'] }) };
   }, [matchSeed]);
 
   // Semua angka diperbarui langsung di DOM, tanpa render ulang React setiap tick.
@@ -88,6 +98,26 @@ export default function App() {
         if (el && el.textContent !== text) el.textContent = text;
       };
       const { stats } = state;
+
+      if (tabRef.current === 'team' && state.tick % TEAM_VIEW_EVERY_TICKS === 0) setTeamView(state);
+
+      // Pemberitahuan pergantian pemain (kedua tim), tampil beberapa detik.
+      const toast = subToastRef.current;
+      if (toast) {
+        const recent = (state.subNotices ?? []).filter((n) => state.tick - n.tick <= SUB_NOTICE_TICKS);
+        toast.hidden = recent.length === 0;
+        set(
+          toast,
+          recent
+            .map((n) => {
+              const team = n.teamId === home.id ? home.name : away.name;
+              return n.status === 'masuk'
+                ? `🔁 ${team}: ${namesById.get(n.outId) ?? n.outId} ➜ ${namesById.get(n.inId) ?? n.inId}`
+                : `⚠️ ${team}: pergantian ${namesById.get(n.outId) ?? n.outId} dibatalkan`;
+            })
+            .join('   '),
+        );
+      }
 
       if (state.period === 'halftime' || state.period === 'fulltime') {
         setBreakState((current) => (current?.period === state.period ? current : state));
@@ -191,13 +221,15 @@ export default function App() {
     if (goalBannerRef.current) goalBannerRef.current.hidden = true;
     if (whistleRef.current) whistleRef.current.hidden = true;
     setBreakState(null);
+    setTeamView(null);
     setMatchSeed(randomSeed());
     setRunning(true);
   }
 
   function startSecondHalf() {
     if (simulation.getState().period !== 'halftime') return;
-    simulation.startSecondHalf();
+    const next = simulation.startSecondHalf();
+    setTeamView(next);
     setBreakState(null);
     setRunning(true);
   }
@@ -215,7 +247,42 @@ export default function App() {
         <TeamLabel team={away} align="left" mentalityRef={mentalityRefs.away} />
       </header>
 
+      <nav className="tabs" role="tablist" aria-label="Tampilan">
+        <button type="button" role="tab" aria-selected={tab === 'match'} className={tab === 'match' ? 'is-active' : undefined} onClick={() => setTab('match')}>
+          Pertandingan
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'team'}
+          className={tab === 'team' ? 'is-active' : undefined}
+          onClick={() => {
+            setTeamView(simulation.getState());
+            setTab('team');
+          }}
+        >
+          Tim · {home.name}
+        </button>
+      </nav>
+
       <div ref={whistleRef} className="whistle-banner" hidden aria-live="polite" />
+      <div ref={subToastRef} className="sub-toast" hidden aria-live="polite" />
+
+      {/* Tab Tim: simulasi tetap berjalan di belakang. */}
+      <div hidden={tab !== 'team'}>
+        <TeamTab state={teamView} teamId={USER_TEAM} simulation={simulation} onChange={setTeamView} namesById={namesById} />
+        {breakState?.period === 'halftime' && (
+          <div className="team-break">
+            <span>Turun minum. Antrian pergantian dijalankan saat babak 2 dimulai.</span>
+            <button type="button" className="break-button" onClick={startSecondHalf}>
+              Lanjut babak 2
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Tab Pertandingan. Disembunyikan (bukan dilepas) supaya loop & canvas tetap hidup. */}
+      <div hidden={tab !== 'match'}>
       <div className="pitch-wrap">
         <MatchView simulation={simulation} running={running} speed={speed} onTick={handleTick} />
         <div ref={goalBannerRef} className="goal-banner" hidden aria-live="polite">
@@ -253,6 +320,8 @@ export default function App() {
           </div>
         ))}
       </section>
+
+      </div>
 
       <div className="controls">
         <button type="button" onClick={() => setRunning((r) => !r)}>
