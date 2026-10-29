@@ -85,7 +85,8 @@ export function computeAnchor(player, ball, attacksRight, phase = 'neutral', men
     const retreatLimit = MIN_OUTFIELD_DEPTH + spacingFromDeepestLine * LINE_SPACING_KEPT;
 
     // Blok mundur hanya saat tidak menguasai bola; saat menyerang tim tetap naik.
-    const shift = phase === 'attack' ? Math.max(0, mentality?.blockShift ?? 0) : (mentality?.blockShift ?? 0);
+    const raw = mentality?.blockShift ?? 0;
+    const shift = phase === 'attack' ? Math.max(0, raw) : mentality?.attackOnly ? 0 : raw;
     const width = phase === 'defend' ? shape.width * (mentality?.compact ?? 1) : shape.width;
     x = baseX + (b.x - PITCH.length / 2) * BLOCK_SHIFT + shape.push + shift;
     y = midY + (baseY - midY) * width;

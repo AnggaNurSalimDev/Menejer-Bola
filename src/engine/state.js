@@ -3,6 +3,7 @@
 
 import { validateSentOff, SENDOFF } from './sendoff.js';
 import { validateMentality } from './mentality.js';
+import { defaultTactics, validateTactics } from './tactics.js';
 import { benchEntry, validateSubstitutions } from './substitution.js';
 import { PITCH, isInsidePitch } from './pitch.js';
 import { getFormation } from './formations.js';
@@ -204,8 +205,8 @@ export function createMatchState(home, away) {
       // chaserId: pemain yang sedang menjemput/menekan bola untuk tim ini.
       // runnerId/runTarget/runTicks: penyerang yang sedang berlari ke belakang garis bek.
       // philosophy: kunci filosofi pelatih (philosophy.js).
-      [home.id]: { id: home.id, name: home.name, colors: home.colors, philosophy: home.philosophy ?? 'seimbang', baseMentality: home.mentality ?? 'seimbang', mentality: home.mentality ?? 'seimbang', bench: (home.bench ?? []).map((p) => benchEntry(home.id, p)), subsUsed: 0, subQueue: [], attacksRight: true, ...emptyTeamRoles() },
-      [away.id]: { id: away.id, name: away.name, colors: away.colors, philosophy: away.philosophy ?? 'seimbang', baseMentality: away.mentality ?? 'seimbang', mentality: away.mentality ?? 'seimbang', bench: (away.bench ?? []).map((p) => benchEntry(away.id, p)), subsUsed: 0, subQueue: [], attacksRight: false, ...emptyTeamRoles() },
+      [home.id]: { id: home.id, name: home.name, colors: home.colors, philosophy: home.philosophy ?? 'seimbang', baseMentality: home.mentality ?? 'seimbang', mentality: home.mentality ?? 'seimbang', bench: (home.bench ?? []).map((p) => benchEntry(home.id, p)), subsUsed: 0, subQueue: [], tactics: defaultTactics(home.formation), attacksRight: true, ...emptyTeamRoles() },
+      [away.id]: { id: away.id, name: away.name, colors: away.colors, philosophy: away.philosophy ?? 'seimbang', baseMentality: away.mentality ?? 'seimbang', mentality: away.mentality ?? 'seimbang', bench: (away.bench ?? []).map((p) => benchEntry(away.id, p)), subsUsed: 0, subQueue: [], tactics: defaultTactics(away.formation), attacksRight: false, ...emptyTeamRoles() },
     },
     ball: createInitialBall(home.id),
     players: [...placeTeam(home, true), ...placeTeam(away, false)],
@@ -436,6 +437,7 @@ export function validateMatchState(state, teams = []) {
   }
   for (const team of Object.values(state.teams)) {
     for (const e of validateMentality(team.mentality)) errors.push(`tim ${team.id}: ${e}`);
+    for (const e of validateTactics(team.tactics)) errors.push(`tim ${team.id}: taktik — ${e}`);
     for (const e of validateMentality(team.baseMentality)) errors.push(`tim ${team.id}: dasar ${e}`);
   }
   for (const p of state.players) {

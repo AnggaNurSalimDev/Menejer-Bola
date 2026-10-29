@@ -130,6 +130,7 @@ import {
 } from './attack.js';
 import { hash01 } from './scuffle.js';
 import { coachMentality, getMentality, pressAllowed } from './mentality.js';
+import { applyTactics, TEMPO_OPTIONS, CROSS_OPTIONS, MAX_CROSS_CHANCE } from './tactics.js';
 import {
   queueSubstitution as queueSub,
   cancelSubstitution as cancelSub,
@@ -475,7 +476,8 @@ function decideHolder(holder, ball, players, rng, match) {
   if (!ready) return null;
 
   // Kecenderungan umpan silang dari filosofi pelatih.
-  if (cross && rng.chance(match.philosophies[holder.teamId].crossPreference)) {
+  const crossChance = Math.min(MAX_CROSS_CHANCE, match.philosophies[holder.teamId].crossPreference * (match.crossScale?.[holder.teamId] ?? 1));
+  if (cross && rng.chance(crossChance)) {
     return { type: 'cross', aim: cross.aim, context };
   }
 
@@ -1469,7 +1471,9 @@ export function createSimulation(home, away, seed, options = {}) {
     // AI pelatih: mentalitas tiap tim (kalah jumlah pemain → bertahan; lihat mentality.js).
     for (const id of teamIds) {
       const other = teamIds.find((t) => t !== id);
-      teams[id].mentality = coachMentality({
+      const mode = teams[id].tactics.mentalityMode;
+      // Pilihan pelatih (bukan "otomatis") menimpa AI pelatih.
+      teams[id].mentality = mode !== 'otomatis' ? mode : coachMentality({
         own: prev.players.filter((p) => p.teamId === id).length,
         opponents: prev.players.filter((p) => p.teamId === other).length,
         goalsFor: match.goals[id],
@@ -1479,7 +1483,9 @@ export function createSimulation(home, away, seed, options = {}) {
       });
     }
     match.mentalities = Object.fromEntries(teamIds.map((id) => [id, teams[id].mentality]));
-    const tempoOf = (player) => philosophies[player.teamId].tempo * getMentality(teams[player.teamId].mentality).tempo;
+    match.crossScale = Object.fromEntries(teamIds.map((id) => [id, CROSS_OPTIONS[teams[id].tactics.cross]]));
+    const tempoOf = (player) =>
+      philosophies[player.teamId].tempo * getMentality(teams[player.teamId].mentality).tempo * TEMPO_OPTIONS[teams[player.teamId].tactics.tempo];
     const events = [];
     const note = (playerId, event) => events.push([playerId, event]);
 
@@ -1834,10 +1840,11 @@ export function createSimulation(home, away, seed, options = {}) {
           : player;
       const moveContext = conditionContext(player, prev.players, match);
       const body = stepBody({ ...base, profile: effectiveProfile(player, moveContext) }, moveTarget, DT, moveOptions);
-      const condition = driftConfidence(
-        { ...player.condition, energy: drainEnergy(player, Math.hypot(body.vx, body.vy), DT) },
-        DT,
-      );
+      // Mentalitas memengaruhi seberapa banyak tim berlari (menyerang = lebih cepat lelah).
+      const drained = drainEnergy(player, Math.hypot(body.vx, body.vy), DT);
+      const drainScale = getMentality(team.mentality).energyDrain;
+      const energy = Math.max(0, Math.min(1, player.condition.energy - (player.condition.energy - drained) * drainScale));
+      const condition = driftConfidence({ ...player.condition, energy }, DT);
       const tackleCooldown = cooldownOverrides.get(player.id) ?? Math.max(0, player.tackleCooldown - 1);
       let reactionDelay = Math.max(0, player.reactionDelay - 1);
       // Bola baru saja dilepas: semua orang kecuali pelepas dan penerima yang dituju harus bereaksi.
@@ -2364,6 +2371,14 @@ export function createSimulation(home, away, seed, options = {}) {
     state = cancelSub(state, teamId, index);
     return state;
   }
+  // Taktik (formasi, mentalitas, tempo, umpan silang): berlaku seketika.
+  function setTactics(teamId, changes) {
+    const next = applyTactics(state, teamId, changes);
+    const errors = validateMatchState(next);
+    if (errors.length > 0) throw new Error(`setTactics: state tidak valid:\n- ${errors.join('\n- ')}`);
+    state = next;
+    return state;
+  }
 
   return {
     getState: () => state,
@@ -2371,5 +2386,6 @@ export function createSimulation(home, away, seed, options = {}) {
     startSecondHalf,
     queueSubstitution,
     cancelSubstitution,
+    setTactics,
   };
 }

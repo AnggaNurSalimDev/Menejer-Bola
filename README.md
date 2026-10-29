@@ -28,7 +28,8 @@ Proyek ini dibuat untuk senang-senang.
 - Mentalitas tim (29 Okt): bertahan / seimbang / menyerang. AI pelatih membuat tim yang tinggal 10 orang otomatis bertahan (blok mundur, tidak menekan tinggi, main langsung). Setelah protes, pemain diam sejenak lalu bubar bertahap; bola bisa dimainkan sebelum semua kembali.
 - Tekel lebih terasa (29 Okt): luncuran, kilatan di titik kontak, penekan terhuyung, korban pelanggaran rebah.
 - Skuad & pergantian pemain + dua tab (8a, 29 Okt): tab **Tim** (susunan, tenaga, kartu, 7 cadangan, antrian pergantian) dan tab **Pertandingan**; keduanya tetap berjalan. Pergantian diantrikan: babak 1 → dijalankan saat babak 2 dimulai, babak 2 → pada bola mati berikutnya. Maksimal 5. Tim lawan diganti AI pelatih.
-- Berikutnya: taktik di tab Tim (formasi, mentalitas, filosofi), skema bola mati, lalu liga.
+- Taktik di tab Tim (8b, 29 Okt): formasi (4-4-2, 4-3-3, 4-2-3-1, 4-5-1, 3-5-2), mentalitas (otomatis/bertahan/seimbang/menyerang), tempo, umpan silang — berlaku seketika. Filosofi tetap (identitas tim).
+- Berikutnya: pertahanan yang kuat tanpa menekan (penekan kedua, menutup tembakan) supaya "bertahan" benar-benar bertahan, skema bola mati, lalu liga.
 
 Tip: tambahkan `?seed=13` di alamat (misalnya `http://localhost:5173/?seed=13`) untuk memutar ulang pertandingan tertentu.
 
@@ -61,6 +62,7 @@ npm run build    # build produksi
   - `officials.js` — wasit & hakim garis: gerak, penilaian offside yang bisa salah
   - `scuffle.js` — koreografi pertikaian & protes (gaya gerak tiap pemain)
   - `substitution.js` — antrian & pelaksanaan pergantian pemain, AI pelatih pergantian
+  - `tactics.js` — formasi, mentalitas, tempo, umpan silang yang diatur pelatih
   - `mentality.js` — mentalitas tim & AI pelatih (bertahan saat kalah jumlah)
   - `sendoff.js` — kartu merah: pemain keluar, bentuk tim 10 orang, kiper darurat
   - `aerial.js` — bola udara: lambungan, titik jatuh, duel udara, sundulan (tabel AERIAL, CROSS, HEADER)

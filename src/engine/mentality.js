@@ -16,14 +16,15 @@ import { PITCH, distance } from './pitch.js';
 export const MENTALITIES = Object.freeze({
   bertahan: Object.freeze({
     label: 'Bertahan',
-    blockShift: -8, // meter: seluruh blok mundur ke arah gawang sendiri
-    compact: 0.85, // pengali lebar saat bertahan
-    pressZone: 0.55, // hanya menekan bila pemegang bola ≤ bagian lapangan ini dari gawang sendiri
+    blockShift: -3, // meter: blok mundur ke arah gawang sendiri (saat lawan memegang bola)
+    compact: 0.78, // pengali lebar saat bertahan (rapat di tengah)
+    pressZone: 0.75, // hanya menekan bila pemegang bola ≤ bagian lapangan ini dari gawang sendiri
     runScale: 0.35, // pengali peluang mulai berlari ke belakang garis bek
     // Saat memegang bola: main langsung untuk serangan balik, tidak memutar bola di belakang
     // (uji 29 Okt: tanpa ini tim 10 orang justru MENGUASAI bola 54% — memutar bola di separuh sendiri).
-    directness: 1.5, // pengali bobot "operan ke depan"
-    tempo: 0.85, // pengali lama menahan bola
+    directness: 1.25, // pengali bobot "operan ke depan"
+    tempo: 0.95, // pengali lama menahan bola
+    energyDrain: 0.92, // lebih sedikit berlari
   }),
   seimbang: Object.freeze({
     label: 'Seimbang',
@@ -33,15 +34,20 @@ export const MENTALITIES = Object.freeze({
     runScale: 1,
     directness: 1,
     tempo: 1,
+    energyDrain: 1,
   }),
   menyerang: Object.freeze({
     label: 'Menyerang',
-    blockShift: 5,
+    // Uji 29 Okt: blok maju juga saat bertahan membuat "menyerang" lebih tajam SEKALIGUS lebih aman
+    // (kebobolan 0,63 vs 0,83). Kini maju hanya saat menguasai bola, dan lebih menguras tenaga.
+    blockShift: 6,
+    attackOnly: true,
     compact: 1,
     pressZone: 1,
     runScale: 1.4,
     directness: 1.15,
     tempo: 0.95,
+    energyDrain: 1.2,
   }),
 });
 

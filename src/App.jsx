@@ -80,6 +80,7 @@ export default function App() {
   const goalBannerRef = useRef(null);
   const whistleRef = useRef(null);
   const mentalityRefs = { home: useRef(null), away: useRef(null) };
+  const formationRefs = { home: useRef(null), away: useRef(null) };
   const possessionRefs = { home: useRef(null), away: useRef(null), bar: useRef(null) };
   const rowRefs = useRef({});
 
@@ -139,6 +140,7 @@ export default function App() {
 
       // Mentalitas tim (AI pelatih): tampil hanya saat berubah dari "Seimbang".
       for (const [key, team] of [['home', home], ['away', away]]) {
+        set(formationRefs[key].current, state.teams[team.id]?.tactics?.formation ?? team.formation);
         const el = mentalityRefs[key].current;
         const m = state.teams[team.id]?.mentality ?? 'seimbang';
         if (!el) continue;
@@ -237,14 +239,14 @@ export default function App() {
   return (
     <main className="app">
       <header className="scoreboard">
-        <TeamLabel team={home} align="right" mentalityRef={mentalityRefs.home} />
+        <TeamLabel team={home} align="right" mentalityRef={mentalityRefs.home} formationRef={formationRefs.home} />
         <div className="score">
           <span ref={scoreRef}>0 – 0</span>
           <span ref={clockRef} className="clock">
             0'
           </span>
         </div>
-        <TeamLabel team={away} align="left" mentalityRef={mentalityRefs.away} />
+        <TeamLabel team={away} align="left" mentalityRef={mentalityRefs.away} formationRef={formationRefs.away} />
       </header>
 
       <nav className="tabs" role="tablist" aria-label="Tampilan">
@@ -389,12 +391,14 @@ function BreakScreen({ state, home, away, onContinue }) {
   );
 }
 
-function TeamLabel({ team, align, mentalityRef }) {
+function TeamLabel({ team, align, mentalityRef, formationRef }) {
   return (
     <div className={`team-label team-label--${align}`}>
       <span className="team-swatch" style={{ background: team.colors.shirt }} />
       <span className="team-name">{team.name}</span>
-      <span className="team-formation">{team.formation}</span>
+      <span ref={formationRef} className="team-formation">
+        {team.formation}
+      </span>
       <span className="team-philosophy" title="Filosofi pelatih">
         {getPhilosophy(team.philosophy ?? 'seimbang').label}
       </span>

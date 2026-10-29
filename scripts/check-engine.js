@@ -40,6 +40,7 @@ import { createTeam } from '../src/engine/teams.js';
 import { blunderFromStats } from '../src/engine/skill.js';
 import { coachMentality, pressAllowed, MENTALITIES } from '../src/engine/mentality.js';
 import { lingerTicks, freeKickSettleTargets, AFTER_INCIDENT } from '../src/engine/simulation.js';
+import { reshape, outfieldSlots, tacticsErrors } from '../src/engine/tactics.js';
 import { substitutionErrors, SUBS } from '../src/engine/substitution.js';
 import { repairShape, applySendOffs, emergencyKeeper } from '../src/engine/sendoff.js';
 import { scuffleTargets, assignScuffleStyles, protestTarget } from '../src/engine/scuffle.js';
@@ -520,6 +521,37 @@ console.log('Gerak pertikaian (masukan 29 Okt: jangan menumpuk diam)');
   check('pemrotes maju-mundur di depan wasit', Math.hypot(a.x - b.x, a.y - b.y) > 0.3 ? [] : ['pemrotes diam']);
 }
 
+console.log('Taktik di tab Tim (8b)');
+{
+  const teams = createDemoTeams(2026, {});
+  const sim = createSimulation(teams.home, teams.away, 5, { aiTeams: ['away'] });
+  let s = sim.getState();
+  for (const f of Object.keys(FORMATIONS)) {
+    s = sim.setTactics('home', { formation: f });
+    const mine = s.players.filter((p) => p.teamId === 'home' && p.role !== 'GK');
+    const slots = new Set(mine.map((p) => `${p.slot.depth}|${p.slot.lane}`));
+    check(`formasi ${f}: 10 pemain lapangan di 10 slot berbeda`, slots.size === 10 ? [] : [`${slots.size} slot`]);
+  }
+  check('formasi tidak dikenal ditolak', tacticsErrors({ formation: '2-3-5' }).length > 0 ? [] : ['diterima']);
+  check('tempo tidak dikenal ditolak', tacticsErrors({ tempo: 'kilat' }).length > 0 ? [] : ['diterima']);
+  check('kurang orang (9 di 4-4-2): satu penyerang yang dikosongkan', outfieldSlots('4-4-2', 9).filter((x) => x.role === 'ST').length === 1 && outfieldSlots('4-4-2', 9).filter((x) => x.role === 'CB').length === 2 ? [] : ['slot salah']);
+  const ten = s.players.filter((p) => p.teamId === 'home').slice(0, 10);
+  check('reshape 9 pemain lapangan ke 4-3-3', reshape(ten, '4-3-3').size === 9 ? [] : ['jumlah salah']);
+  s = sim.setTactics('home', { formation: '4-4-2', mentalityMode: 'menyerang', tempo: 'cepat', cross: 'sering' });
+  for (let i = 0; i < 30; i += 1) s = sim.step();
+  check('mentalitas pilihan pelatih dipakai', s.teams.home.mentality === 'menyerang' ? [] : [s.teams.home.mentality]);
+  check('state valid setelah ubah taktik', validateMatchState(s));
+  // Pilihan manual menimpa AI pelatih saat 10 orang.
+  const cb = s.players.find((p) => p.teamId === 'home' && p.role === 'CB');
+  const sim10 = createSimulation(teams.home, teams.away, 5, { aiTeams: ['away'], startSentOff: [cb.id] });
+  let t = sim10.getState();
+  for (let i = 0; i < 60; i += 1) t = sim10.step();
+  check('otomatis: 10 orang → bertahan', t.teams.home.mentality === 'bertahan' ? [] : [t.teams.home.mentality]);
+  t = sim10.setTactics('home', { mentalityMode: 'menyerang' });
+  for (let i = 0; i < 5; i += 1) t = sim10.step();
+  check('pilihan manual menimpa AI pelatih (10 orang tetap menyerang)', t.teams.home.mentality === 'menyerang' ? [] : [t.teams.home.mentality]);
+}
+
 console.log('Skuad & pergantian pemain (8a)');
 {
   const teams = createDemoTeams(2026, {});
@@ -588,7 +620,7 @@ console.log('Mentalitas & AI pelatih');
   const ball = { x: 52, y: 34 };
   const def = computeAnchor(cm, ball, true, 'defend', MENTALITIES.bertahan).x - computeAnchor(cm, ball, true, 'defend').x;
   const att = computeAnchor(cm, ball, true, 'attack', MENTALITIES.bertahan).x - computeAnchor(cm, ball, true, 'attack').x;
-  check('bertahan: blok mundur saat lawan memegang bola', def < -3 ? [] : [`geser ${def.toFixed(1)} m`]);
+  check('bertahan: blok mundur saat lawan memegang bola', def < -2 ? [] : [`geser ${def.toFixed(1)} m`]);
   check('bertahan: blok tidak mundur saat menyerang', Math.abs(att) < 1e-9 ? [] : [`geser ${att.toFixed(1)} m`]);
 }
 
@@ -651,7 +683,7 @@ console.log('Kartu merah & bermain dengan 10 orang (tahap 7c)');
     if (s.tick % 50 === 0) errors.push(...validateMatchState(s));
   }
   check('laga penuh dengan 10 orang lolos invariant', errors);
-  check('tim 10 orang tetap 10 pemain', s.players.filter((p) => p.teamId === teams.home.id).length === 10 ? [] : ['jumlah salah']);
+  check('tim 10 orang tetap ≤ 10 pemain (bisa kena merah lagi)', s.players.filter((p) => p.teamId === teams.home.id).length <= 10 ? [] : ['jumlah salah']);
 
   // Laga biasa: kartu merah muncul dari permainan dan pemain benar-benar keluar.
   let reds = 0;

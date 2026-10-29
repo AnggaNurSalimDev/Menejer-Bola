@@ -264,6 +264,15 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - pengguna mengatur Persada Bandung; AI pelatih tim lawan: mulai menit 55, saat bola mati, mengganti pemain lapangan paling lelah (tenaga < 62%) dengan cadangan selini (maks 1 per bola mati)
    - tab Tim: susunan di lapangan (nomor, nama, posisi, bar tenaga, kartu), cadangan (posisi asli, rating), panel antrian; tab Pertandingan: lapangan & statistik. Papan skor, tulisan peluit, dan pemberitahuan pergantian tampil di kedua tab
    - hasil (200 laga, AI di kedua tim): ~4,7 pergantian per tim, gol 2,26 ± 0,20, 0–0 7%, kejutan 13 vs 11 **10%** (di batas bawah target 10–20%; cadangan tim kuat juga lebih kuat — awasi)
+8b. ✅ Taktik di tab Tim (29 Okt; `tactics.js`): berlaku SEKETIKA (pelatih berteriak dari pinggir; hanya pergantian pemain yang menunggu bola mati / babak 2)
+   - formasi 4-4-2, 4-3-3, 4-2-3-1, 4-5-1, 3-5-2 — pemain dipindah ke slot paling cocok (lini & jalur); kurang orang → slot paling depan dikosongkan
+   - mentalitas otomatis (AI pelatih) / bertahan / seimbang / menyerang — pilihan manual menimpa AI pelatih, juga saat 10 orang
+   - tempo lambat / normal / cepat (×1,25 / 1 / 0,8 lama menahan bola), umpan silang jarang / normal / sering (×0,5 / 1 / 1,5)
+   - filosofi TIDAK bisa diubah di tengah laga (identitas tim dari latihan; geseran stat)
+   - uji keseimbangan (200 laga per pilihan, Persada vs Garuda, kontrol: gol 1,43 vs 0,83, selisih +0,59): formasi 4-3-3 +0,14 (laga terbuka, 2,13 vs 2,00), 4-2-3-1 +0,30, 3-5-2 +0,73, 4-5-1 −0,12 (laga tertutup, 0,73 vs 0,85) — tiap formasi punya karakter, tidak ada yang mutlak unggul. Tempo cepat +0,38
+   - **cacat ditemukan & diperbaiki**: "menyerang" awalnya lebih tajam SEKALIGUS lebih aman (+1,06; kebobolan turun 0,83 → 0,63) karena blok yang maju juga menghimpit lawan saat bertahan. Kini blok hanya maju saat menguasai bola + tenaga terkuras ×1,2 → gol 1,54 vs 1,07 (+0,47): lebih tajam, lebih bocor — trade-off yang benar
+   - **cacat yang BELUM tuntas**: "bertahan" tetap lebih banyak kebobolan dari seimbang (1,11 vs 0,83; dua percobaan: blok −5/−3 m, tekanan sampai 60/75% lapangan, main langsung lebih lunak). Penyebab di engine: pertahanan hanya kuat lewat MENEKAN (1 penekan); blok rendah tidak membuat peluang lawan lebih jelek (tidak ada penekan kedua, penutup tembakan di tepi kotak). Perbaikan = opsi B (keunggulan jumlah secara mekanis). Sementara: bertahan berguna untuk tim 10 orang, bukan untuk "parkir bus" dengan 11 orang
+   - uji 10 orang (setelah penyetelan bertahan): gol 0,38 vs 1,36 (kontrol 1,18 vs 1,14): tim sendiri −68%, lawan +19% (data nyata −65% / +54%)
 7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
 
 ## 7. Keputusan yang Masih Terbuka

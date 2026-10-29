@@ -669,3 +669,72 @@ body {
 .team-empty {
   color: #adb5bd;
 }
+
+/* ---- Panel taktik (8b) ---- */
+.tactics {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: #232a33;
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+}
+
+.tactics h3 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #ced4da;
+}
+
+.tac-row {
+  display: grid;
+  grid-template-columns: 7.5rem 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 520px) {
+  .tac-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
+
+.tac-label {
+  font-size: 0.85rem;
+  color: #adb5bd;
+}
+
+.tac-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tac-options button {
+  background: #1b2027;
+  color: #ced4da;
+  border: 1px solid #3b4552;
+  border-radius: 5px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.tac-options button.is-active {
+  background: #1f4fbf;
+  border-color: #1f4fbf;
+  color: #fff;
+}
+
+.tac-options button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tac-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #adb5bd;
+}
