@@ -738,3 +738,9 @@ body {
   font-size: 0.8rem;
   color: #adb5bd;
 }
+
+.tac-sub {
+  margin: 6px 0 0;
+  font-size: 0.85rem;
+  color: #ced4da;
+}

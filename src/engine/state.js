@@ -122,6 +122,8 @@ export function createInitialBall(kickOffTeamId) {
     restartTeamId: kickOffTeamId,
     // Jenis bola mati: 'kickoff' | 'throwIn' | 'goalKick' | 'corner' | 'freeKick' | null.
     restartKind: 'kickoff',
+    // Tembakan yang lahir dari sepak pojok (≤ 15 dtk setelah pojok diberikan): untuk statistik skema.
+    fromCorner: false,
     // Bola mati yang sedang dieksekusi pemegang bola (untuk pengecualian offside).
     setPieceKind: null,
   };
@@ -170,6 +172,8 @@ function createStats(teamIds) {
     reds: perTeam(() => 0),
     straightReds: perTeam(() => 0),
     scuffleReds: perTeam(() => 0),
+    // Skema bola mati: sepak pojok yang diberikan, tembakan & gol dalam 15 dtk setelahnya.
+    corners: perTeam(() => ({ taken: 0, shots: 0, goals: 0 })),
     subs: perTeam(() => 0), // pergantian pemain yang sudah dijalankan
   };
 }
@@ -205,8 +209,8 @@ export function createMatchState(home, away) {
       // chaserId: pemain yang sedang menjemput/menekan bola untuk tim ini.
       // runnerId/runTarget/runTicks: penyerang yang sedang berlari ke belakang garis bek.
       // philosophy: kunci filosofi pelatih (philosophy.js).
-      [home.id]: { id: home.id, name: home.name, colors: home.colors, philosophy: home.philosophy ?? 'seimbang', baseMentality: home.mentality ?? 'seimbang', mentality: home.mentality ?? 'seimbang', bench: (home.bench ?? []).map((p) => benchEntry(home.id, p)), subsUsed: 0, subQueue: [], tactics: defaultTactics(home.formation), attacksRight: true, ...emptyTeamRoles() },
-      [away.id]: { id: away.id, name: away.name, colors: away.colors, philosophy: away.philosophy ?? 'seimbang', baseMentality: away.mentality ?? 'seimbang', mentality: away.mentality ?? 'seimbang', bench: (away.bench ?? []).map((p) => benchEntry(away.id, p)), subsUsed: 0, subQueue: [], tactics: defaultTactics(away.formation), attacksRight: false, ...emptyTeamRoles() },
+      [home.id]: { id: home.id, name: home.name, colors: home.colors, philosophy: home.philosophy ?? 'seimbang', baseMentality: home.mentality ?? 'seimbang', mentality: home.mentality ?? 'seimbang', bench: (home.bench ?? []).map((p) => benchEntry(home.id, p)), subsUsed: 0, subQueue: [], tactics: defaultTactics(home.formation), cornerAt: null, attacksRight: true, ...emptyTeamRoles() },
+      [away.id]: { id: away.id, name: away.name, colors: away.colors, philosophy: away.philosophy ?? 'seimbang', baseMentality: away.mentality ?? 'seimbang', mentality: away.mentality ?? 'seimbang', bench: (away.bench ?? []).map((p) => benchEntry(away.id, p)), subsUsed: 0, subQueue: [], tactics: defaultTactics(away.formation), cornerAt: null, attacksRight: false, ...emptyTeamRoles() },
     },
     ball: createInitialBall(home.id),
     players: [...placeTeam(home, true), ...placeTeam(away, false)],
@@ -527,6 +531,8 @@ export function validateMatchState(state, teams = []) {
       if (!(state.stats.advantages[id] >= 0 && state.stats.foulsUnseen[id] >= 0)) errors.push(`tim ${id}: catatan pelanggaran tidak valid`);
       const fk = state.stats.freeKicks[id];
       if (!(fk.goals >= 0 && fk.goals <= fk.shots && fk.shots <= fk.awarded)) errors.push(`tim ${id}: statistik tendangan bebas tidak konsisten`);
+      const co = state.stats.corners[id];
+      if (!(co.goals >= 0 && co.goals <= co.shots && co.shots <= state.stats.shots[id].total)) errors.push(`tim ${id}: statistik sepak pojok tidak konsisten`);
       const pen = state.stats.penalties[id];
       if (!(pen.scored >= 0 && pen.scored <= pen.awarded)) errors.push(`tim ${id}: penalti masuk > penalti diberikan`);
     }

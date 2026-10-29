@@ -41,6 +41,8 @@ import { blunderFromStats } from '../src/engine/skill.js';
 import { coachMentality, pressAllowed, MENTALITIES } from '../src/engine/mentality.js';
 import { lingerTicks, freeKickSettleTargets, AFTER_INCIDENT } from '../src/engine/simulation.js';
 import { pickCover } from '../src/engine/roles.js';
+import { parryVelocity } from '../src/engine/keeper.js';
+import { boxRunSpots } from '../src/engine/simulation.js';
 import { reshape, outfieldSlots, tacticsErrors } from '../src/engine/tactics.js';
 import { substitutionErrors, SUBS } from '../src/engine/substitution.js';
 import { repairShape, applySendOffs, emergencyKeeper } from '../src/engine/sendoff.js';
@@ -551,6 +553,53 @@ console.log('Taktik di tab Tim (8b)');
   t = sim10.setTactics('home', { mentalityMode: 'menyerang' });
   for (let i = 0; i < 5; i += 1) t = sim10.step();
   check('pilihan manual menimpa AI pelatih (10 orang tetap menyerang)', t.teams.home.mentality === 'menyerang' ? [] : [t.teams.home.mentality]);
+}
+
+console.log('Skema bola mati (8d)');
+{
+  check('skema tidak dikenal ditolak', tacticsErrors({ corner: 'trik' }).length > 0 && tacticsErrors({ freeKick: 'tendangan pisang' }).length > 0 ? [] : ['diterima']);
+  const teams = createDemoTeams(2026, {});
+  const run = (changes, seeds) => {
+    const total = { fkShots: 0, fkAwarded: 0, corners: 0, cornerShots: 0 };
+    for (const seed of seeds) {
+      const sim = createSimulation(teams.home, teams.away, seed);
+      sim.setTactics('home', changes);
+      let st = sim.getState();
+      while (st.period === 'first') st = sim.step();
+      total.fkShots += st.stats.freeKicks.home.shots;
+      total.fkAwarded += st.stats.freeKicks.home.awarded;
+      total.corners += st.stats.corners.home.taken;
+      total.cornerShots += st.stats.corners.home.shots;
+      const errs = validateMatchState(st);
+      if (errs.length) check(`state valid (${JSON.stringify(changes)}, seed ${seed})`, errs);
+    }
+    return total;
+  };
+  const seeds = [1, 2, 3, 4, 5, 6];
+  const lambung = run({ freeKick: 'lambung' }, seeds);
+  const pendek = run({ freeKick: 'pendek' }, seeds);
+  const tembak = run({ freeKick: 'tembak' }, seeds);
+  check('tendangan bebas "lambung" & "pendek" tidak pernah ditembak langsung', lambung.fkShots === 0 && pendek.fkShots === 0 ? [] : [`${lambung.fkShots} / ${pendek.fkShots}`]);
+  check('tendangan bebas "tembak" dicoba bila ada kesempatan', tembak.fkShots > 0 ? [] : ['tidak pernah']);
+  // Titik serbuan kotak per skema (bola di pojok kiri atas, tim menyerang ke kanan).
+  const cornerBall = { x: PITCH.length, y: 0 };
+  const nearPost = { x: PITCH.length, y: PITCH.width / 2 - PITCH.goalWidth / 2 };
+  const farPost = { x: PITCH.length, y: PITCH.width / 2 + PITCH.goalWidth / 2 };
+  const avgDist = (spots, p) => spots.reduce((t, q) => t + Math.hypot(q.x - p.x, q.y - p.y), 0) / spots.length;
+  const dekat = boxRunSpots(cornerBall, true, 'tiangDekat');
+  const jauh = boxRunSpots(cornerBall, true, 'tiangJauh');
+  check('skema tiang dekat: penyerbu lebih dekat ke tiang dekat', avgDist(dekat, nearPost) < avgDist(jauh, nearPost) ? [] : ['tidak']);
+  check('skema tiang jauh: penyerbu lebih dekat ke tiang jauh', avgDist(jauh, farPost) < avgDist(dekat, farPost) ? [] : ['tidak']);
+  const pendekSpot = boxRunSpots(cornerBall, true, 'pendek')[0];
+  check('skema pendek: satu rekan mendekat ke bola (≤ 12 m)', Math.hypot(pendekSpot.x - cornerBall.x, pendekSpot.y - cornerBall.y) <= 12 ? [] : ['terlalu jauh']);
+  // Tepisan melebar: sebagian tepisan menuju garis gawang sendiri (asal sepak pojok).
+  {
+    const rng = createRng(11);
+    const keeper = { attacksRight: true, y: 30 };
+    let wide = 0;
+    for (let i = 0; i < 400; i += 1) if (parryVelocity(keeper, 20, rng, 30).vx < 0) wide += 1;
+    check('sebagian tepisan kiper melebar ke arah garis gawang (25–55%)', wide / 400 >= 0.25 && wide / 400 <= 0.55 ? [] : [`${((100 * wide) / 400).toFixed(0)}%`]);
+  }
 }
 
 console.log('Skuad & pergantian pemain (8a)');

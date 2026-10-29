@@ -126,7 +126,10 @@ function jerseyPath(ctx, cx, cy, w) {
   ctx.closePath();
 }
 
-// pose (visual tekel): { angle (radian), lying (rebah) }
+// pose (visual tekel): { angle (radian), pivot: 'top' | 'bottom' | 'center', lying }
+//   pivot 'top'   : berputar di bahu → bagian BAWAH jersey (kaki) yang meluncur (masukan 29 Okt:
+//                   miring di bagian atas terlihat seperti pemain melompat menangkap bola dengan tangan)
+//   pivot 'bottom': berputar di kaki → badan yang terhuyung
 function drawPlayer(ctx, vp, player, teamColors, pose = null) {
   const cx = vp.toX(player.x);
   const cy = vp.toY(player.y);
@@ -136,9 +139,10 @@ function drawPlayer(ctx, vp, player, teamColors, pose = null) {
   const angle = pose?.angle ?? 0;
   ctx.save();
   if (angle !== 0) {
-    ctx.translate(cx, cy);
+    const py = pose?.pivot === 'top' ? cy - w * 0.5 : pose?.pivot === 'bottom' ? cy + w * 0.5 : cy;
+    ctx.translate(cx, py);
     ctx.rotate(angle);
-    ctx.translate(-cx, -cy);
+    ctx.translate(-cx, -py);
   }
 
   // Bayangan tipis supaya jersey tidak menyatu dengan rumput.
@@ -401,13 +405,16 @@ export function tacklePoses(state) {
     const age = state.tick - e.tick;
     if (age < 0) continue;
     const heading = Math.atan2(e.dy, e.dx);
+    // Sudut supaya bagian bawah jersey (arah "bawah" layar = (0, 1)) mengayun ke arah bola.
+    const slide = Math.max(-0.9, Math.min(0.9, Math.atan2(-e.dx, e.dy)));
     if (e.kind === 'won' && age <= TACKLE_FX.slideTicks) {
-      poses.set(e.tacklerId, { angle: 0.8 * Math.sign(Math.cos(heading) || 1) * (1 - age / TACKLE_FX.slideTicks) });
+      poses.set(e.tacklerId, { angle: slide * (1 - age / TACKLE_FX.slideTicks), pivot: 'top' });
     } else if (e.kind === 'beaten' && age <= TACKLE_FX.wobbleTicks) {
-      poses.set(e.tacklerId, { angle: 0.55 * Math.sin(age * 1.3) * (1 - age / TACKLE_FX.wobbleTicks) });
+      poses.set(e.tacklerId, { angle: 0.4 * Math.sin(age * 1.3) * (1 - age / TACKLE_FX.wobbleTicks), pivot: 'bottom' });
     } else if (e.kind === 'foul') {
-      if (age <= TACKLE_FX.slideTicks) poses.set(e.tacklerId, { angle: 0.8 * (1 - age / TACKLE_FX.slideTicks) });
-      if (age <= TACKLE_FX.lyingTicks) poses.set(e.holderId, { angle: Math.PI / 2 * Math.min(1, age / 3) * (Math.cos(heading) >= 0 ? 1 : -1), lying: true });
+      if (age <= TACKLE_FX.slideTicks) poses.set(e.tacklerId, { angle: slide * (1 - age / TACKLE_FX.slideTicks), pivot: 'top' });
+      if (age <= TACKLE_FX.lyingTicks)
+        poses.set(e.holderId, { angle: (Math.PI / 2) * Math.min(1, age / 3) * (Math.cos(heading) >= 0 ? 1 : -1), lying: true });
     }
   }
   return poses;

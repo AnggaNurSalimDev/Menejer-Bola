@@ -201,6 +201,7 @@ function cloneStats(stats) {
     reds: { ...stats.reds },
     straightReds: { ...stats.straightReds },
     scuffleReds: { ...stats.scuffleReds },
+    corners: Object.fromEntries(Object.entries(stats.corners).map(([k, v]) => [k, { ...v }])),
     subs: { ...stats.subs },
     scuffles: stats.scuffles,
   };
@@ -319,6 +320,7 @@ const CROSS_ZONE_DEPTH = 30; // m dari garis gawang lawan
 const CROSS_ZONE_MIN_WIDE = 10; // m dari garis tengah memanjang
 const CORNER_RADIUS = 3; // m dari titik pojok
 const CORNER_HOLD_TICKS = 5; // persiapan pojok terjadi di jeda bola keluar
+const CORNER_WINDOW_TICKS = 150; // 15 dtk (termasuk ~2–3 dtk persiapan): tembakan dihitung hasil pojok
 const CROSS_AIM_MIN_DEPTH = 4; // m dari garis gawang
 const CROSS_AIM_MAX_DEPTH = 15;
 const CROSS_AIM_TOWARD_GOAL = 1.5; // m: bidik sedikit di depan sasaran, ke arah gawang
@@ -353,7 +355,8 @@ function inOpponentBox(point, attacksRight) {
 
 // Sasaran umpan silang terbaik: rekan di kotak lawan, tidak offside,
 // dengan keunggulan udara terbesar atas bek terdekatnya. null kalau tidak ada.
-function pickCrossTarget(holder, ball, players) {
+// prefer (opsional): titik tujuan skema pojok — sasaran dekat titik itu lebih disukai.
+function pickCrossTarget(holder, ball, players, prefer = null) {
   const opponents = players.filter((p) => p.teamId !== holder.teamId);
   const line = offsideLine(opponents, holder.attacksRight);
   const goal = opponentGoalPoint(holder.attacksRight);
@@ -369,7 +372,10 @@ function pickCrossTarget(holder, ball, players) {
     }
     const gap = marker ? Math.min(4, distance(marker, mate)) : 4;
     const edge =
-      (mate.skills.duelUdara - (marker ? marker.skills.duelUdara : 1)) / 19 + gap * 0.15 - distance(mate, goal) * 0.02;
+      (mate.skills.duelUdara - (marker ? marker.skills.duelUdara : 1)) / 19 +
+      gap * 0.15 -
+      distance(mate, goal) * 0.02 -
+      (prefer ? distance(mate, prefer) * 0.08 : 0);
     if (!best || edge > best.edge) best = { mate, edge };
   }
   if (!best) return null;
@@ -385,20 +391,39 @@ function pickCrossTarget(holder, ball, players) {
 }
 
 // Titik-titik serbuan kotak: tiang dekat, titik penalti, tiang jauh (dilihat dari sisi bola).
-function boxRunSpots(ball, attacksRight) {
+// Skema pojok (29 Okt) mengubah ke mana penyerang menyerbu:
+//   tiangDekat: dua ke tiang dekat; tiangJauh: dua ke tiang jauh; pendek: satu rekan mendekat ke bola.
+export function boxRunSpots(ball, attacksRight, scheme = 'campur') {
   const mid = PITCH.width / 2;
   const side = ball.y < mid ? -1 : 1;
   const at = (depth, y) => ({ x: attacksRight ? PITCH.length - depth : depth, y });
-  return [at(6, mid + side * 3), at(11, mid), at(6.5, mid - side * 3.5)];
+  const near = at(6, mid + side * 3);
+  const penaltySpot = at(11, mid);
+  const far = at(6.5, mid - side * 3.5);
+  if (scheme === 'tiangDekat') return [near, at(8.5, mid + side * 1), penaltySpot];
+  if (scheme === 'tiangJauh') return [far, at(9, mid - side * 1.5), penaltySpot];
+  if (scheme === 'pendek') {
+    // Rekan datang ke tepi kotak di sisi bola, ~9 m dari pojok: opsi operan pendek.
+    const short = clampToPitch({ x: attacksRight ? PITCH.length - 3 : 3, y: ball.y - side * 9 }, 1);
+    return [short, penaltySpot, near];
+  }
+  return [near, penaltySpot, far];
+}
+
+// Titik bidik pilihan skema pojok (tiang dekat / jauh), atau null.
+function cornerPreferredSpot(ball, attacksRight, scheme) {
+  if (scheme !== 'tiangDekat' && scheme !== 'tiangJauh') return null;
+  const spots = boxRunSpots(ball, attacksRight, scheme);
+  return spots[0];
 }
 
 // Penyerang mana menuju titik serbuan mana. Map playerId → titik.
-function assignBoxRuns(players, teamId, ball, attacksRight, excluded) {
+function assignBoxRuns(players, teamId, ball, attacksRight, excluded, scheme = 'campur') {
   const runs = new Map();
   const free = players.filter(
     (p) => p.teamId === teamId && BOX_RUN_ROLES.includes(p.role) && !excluded.has(p.id),
   );
-  for (const spot of boxRunSpots(ball, attacksRight).slice(0, BOX_RUN_COUNT)) {
+  for (const spot of boxRunSpots(ball, attacksRight, scheme).slice(0, BOX_RUN_COUNT)) {
     let best = null;
     for (const p of free) {
       if (runs.has(p.id)) continue;
@@ -426,11 +451,14 @@ function decideHolder(holder, ball, players, rng, match) {
   if (ball.setPieceKind === 'freeKick') {
     if (ball.heldTicks < FREE_KICK.holdTicks) return null;
     if (ball.heldTicks === FREE_KICK.holdTicks) {
+      // Skema tendangan bebas pilihan pelatih (tactics.js).
+      const scheme = match.setPieces?.[holder.teamId]?.freeKick ?? 'otomatis';
       const goal = opponentGoalPoint(holder.attacksRight);
       const near = distance(ball, goal) <= FREE_KICK.shotRange && goalAngle(ball, holder.attacksRight) >= FREE_KICK.minShotAngle;
-      if (near && rng.chance(FREE_KICK.shotChance)) return { type: 'freeKickShot', context };
-      // Tidak ditembak: lambungkan ke kotak bila cukup dekat & ada sasaran.
-      if (distance(ball, goal) <= FREE_KICK.crossRange) {
+      const shootChance = scheme === 'tembak' ? 1 : scheme === 'otomatis' ? FREE_KICK.shotChance : 0;
+      if (near && rng.chance(shootChance)) return { type: 'freeKickShot', context };
+      // Tidak ditembak: lambungkan ke kotak bila cukup dekat & ada sasaran (skema "pendek": dimainkan biasa).
+      if (scheme !== 'pendek' && distance(ball, goal) <= FREE_KICK.crossRange) {
         const target = pickCrossTarget(holder, ball, players);
         if (target) return { type: 'cross', aim: target.aim, context, freeKick: true };
       }
@@ -464,8 +492,13 @@ function decideHolder(holder, ball, players, rng, match) {
   // Sepak pojok: tunggu rekan masuk kotak, lalu lambungkan.
   const corner = atCornerSpot(ball, holder.attacksRight);
   if (corner && ball.heldTicks < CORNER_HOLD_TICKS) return null;
-  const cross = holder.role !== 'GK' && inCrossZone(ball, holder.attacksRight) ? pickCrossTarget(holder, ball, players) : null;
-  if (cross && corner) return { type: 'cross', aim: cross.aim, context };
+  const cornerScheme = match.setPieces?.[holder.teamId]?.corner ?? 'campur';
+  const cross =
+    holder.role !== 'GK' && inCrossZone(ball, holder.attacksRight)
+      ? pickCrossTarget(holder, ball, players, corner ? cornerPreferredSpot(ball, holder.attacksRight, cornerScheme) : null)
+      : null;
+  // Skema pojok "pendek": tidak dilambungkan, dimainkan ke rekan yang mendekat.
+  if (cross && corner && cornerScheme !== 'pendek') return { type: 'cross', aim: cross.aim, context };
 
   // Rekan mulai berlari ke belakang garis bek: lihat dan layani larinya sekarang.
   const runnerAvailable = players.some((p) => p.teamId === holder.teamId && p.task === 'run');
@@ -529,6 +562,7 @@ function releaseBall(ball, kicker, velocity, extra) {
     vz: 0,
     crossTeamId: null,
     shotKind: null,
+    fromCorner: false,
     ...extra,
   };
 }
@@ -559,8 +593,18 @@ const DEFLECT_SPEED_MIN = 0.25; // bagian dari laju datang
 const DEFLECT_SPEED_MAX = 0.55;
 const DEFLECT_SPREAD = (60 * Math.PI) / 180;
 
+// Blokan membelok (29 Okt): sebagian blokan tidak memantul balik, tetapi membelok ke samping
+// dan terus ke arah gawang → sering keluar lewat garis gawang → sepak pojok.
+const DEFLECT_ON_CHANCE = 0.5;
+
 function deflectVelocity(ball, rng) {
   const speed = Math.hypot(ball.vx, ball.vy);
+  if (rng.chance(DEFLECT_ON_CHANCE)) {
+    const turn = (rng.chance(0.5) ? 1 : -1) * rng.range(0.5, 1.2);
+    const angle = Math.atan2(ball.vy, ball.vx) + turn;
+    const out = speed * rng.range(DEFLECT_SPEED_MIN, DEFLECT_SPEED_MAX);
+    return { vx: Math.cos(angle) * out, vy: Math.sin(angle) * out };
+  }
   const angle = Math.atan2(ball.vy, ball.vx) + Math.PI + rng.range(-DEFLECT_SPREAD, DEFLECT_SPREAD);
   const out = speed * rng.range(DEFLECT_SPEED_MIN, DEFLECT_SPEED_MAX);
   return { vx: Math.cos(angle) * out, vy: Math.sin(angle) * out };
@@ -1037,7 +1081,9 @@ export function restartTargets(players, ball, takerId, teams) {
   const restartTeamId = ball.restartTeamId;
   const ar = teams[restartTeamId].attacksRight;
   const boxRuns =
-    ball.restartKind === 'corner' ? assignBoxRuns(players, restartTeamId, ball, ar, new Set([takerId])) : new Map();
+    ball.restartKind === 'corner'
+      ? assignBoxRuns(players, restartTeamId, ball, ar, new Set([takerId]), teams[restartTeamId].tactics?.corner)
+      : new Map();
   const targets = new Map();
   for (const p of players) {
     if (p.id === takerId) {
@@ -1456,6 +1502,13 @@ export function createSimulation(home, away, seed, options = {}) {
     // Tim yang penyerangnya baru mulai berlari di tick ini: lawan butuh waktu membacanya.
     const runStartedBy = new Set();
     const stumbled = new Set();
+    // Tembakan ≤ CORNER_WINDOW_TICKS setelah sepak pojok diberikan dihitung sebagai hasil pojok.
+    const cornerShot = (teamId) => {
+      const at = teams[teamId].cornerAt;
+      if (at === null || at === undefined || tick - at > CORNER_WINDOW_TICKS) return false;
+      stats.corners[teamId].shots += 1;
+      return true;
+    };
     // Peristiwa tekel untuk tampilan (29 Okt: tekel kurang terasa): won | beaten | foul.
     const tackleEvents = (prev.tackleEvents ?? []).filter((e) => tick - e.tick <= TACKLE_EVENT_TICKS);
     // Siapa yang melepas bola di tick ini (operan, tembakan, tekel): pemain lain
@@ -1483,6 +1536,7 @@ export function createSimulation(home, away, seed, options = {}) {
       });
     }
     match.mentalities = Object.fromEntries(teamIds.map((id) => [id, teams[id].mentality]));
+    match.setPieces = Object.fromEntries(teamIds.map((id) => [id, { corner: teams[id].tactics.corner, freeKick: teams[id].tactics.freeKick }]));
     match.crossScale = Object.fromEntries(teamIds.map((id) => [id, CROSS_OPTIONS[teams[id].tactics.cross]]));
     const tempoOf = (player) =>
       philosophies[player.teamId].tempo * getMentality(teams[player.teamId].mentality).tempo * TEMPO_OPTIONS[teams[player.teamId].tactics.tempo];
@@ -1628,7 +1682,7 @@ export function createSimulation(home, away, seed, options = {}) {
           stats.shots[holder.teamId].total += 1;
           const long = !inOpponentBox(ball, holder.attacksRight);
           if (long) stats.longShots[holder.teamId].shots += 1;
-          ball = releaseBall(ball, holder, velocity, { shotTeamId: holder.teamId, shotKind: long ? 'long' : 'foot' });
+          ball = releaseBall(ball, holder, velocity, { shotTeamId: holder.teamId, shotKind: long ? 'long' : 'foot', fromCorner: cornerShot(holder.teamId) });
           ballReleasedBy = holder.id;
           // Pandangan kiper terhalang: kiper bereaksi lebih lambat dari biasanya.
           if (decision.shot.screened) {
@@ -1639,7 +1693,7 @@ export function createSimulation(home, away, seed, options = {}) {
           if (ball.setPieceKind !== 'penalty') throw new Error(`penalti tanpa bola mati penalti oleh ${holder.id}`);
           const shot = penaltyShot(ball, holder, rng, blunderScale(holder, { ...decision.context, bigChance: true }));
           stats.shots[holder.teamId].total += 1;
-          ball = releaseBall(ball, holder, { vx: shot.velocity.vx, vy: shot.velocity.vy }, { shotTeamId: holder.teamId, shotKind: 'penalty' });
+          ball = releaseBall(ball, holder, { vx: shot.velocity.vx, vy: shot.velocity.vy }, { shotTeamId: holder.teamId, shotKind: 'penalty', fromCorner: cornerShot(holder.teamId) });
           ballReleasedBy = holder.id;
           const keeper = prev.players.find((p) => p.role === 'GK' && p.teamId !== holder.teamId);
           if (keeper) dives.set(keeper.id, keeperDive(keeper, shot.side, rng));
@@ -1650,7 +1704,7 @@ export function createSimulation(home, away, seed, options = {}) {
           const v = freeKickShotVelocity(ball, holder, keeper, rng, blunderScale(holder, { ...decision.context, bigChance: false }));
           stats.shots[holder.teamId].total += 1;
           stats.freeKicks[holder.teamId].shots += 1;
-          ball = releaseBall(ball, holder, { vx: v.vx, vy: v.vy }, { vz: v.vz, shotTeamId: holder.teamId, shotKind: 'freeKick' });
+          ball = releaseBall(ball, holder, { vx: v.vx, vy: v.vy }, { vz: v.vz, shotTeamId: holder.teamId, shotKind: 'freeKick', fromCorner: cornerShot(holder.teamId) });
           ballReleasedBy = holder.id;
         } else if (decision?.type === 'cross') {
           // Guard: umpan silang hanya dari zona sayap dekat garis gawang lawan, atau dari tendangan bebas.
@@ -1747,7 +1801,15 @@ export function createSimulation(home, away, seed, options = {}) {
       (freeKickNearGoal(ball, owner, teams) ? (owner?.teamId ?? ball.restartTeamId) : null);
     if (crossingTeamId !== null) {
       const excluded = new Set([ball.ownerId, teams[crossingTeamId].chaserId, teams[crossingTeamId].runnerId]);
-      boxRuns = assignBoxRuns(prev.players, crossingTeamId, ball, teams[crossingTeamId].attacksRight, excluded);
+      const atCorner = atCornerSpot(ball, teams[crossingTeamId].attacksRight) && (ball.restartKind === 'corner' || ball.heldTicks < CORNER_HOLD_TICKS + 5);
+      boxRuns = assignBoxRuns(
+        prev.players,
+        crossingTeamId,
+        ball,
+        teams[crossingTeamId].attacksRight,
+        excluded,
+        atCorner ? teams[crossingTeamId].tactics.corner : 'campur',
+      );
     }
 
     // Tendangan bebas sedang disiapkan: tim bertahan memasang pagar betis & mundur ≥ 9,15 m.
@@ -1902,6 +1964,7 @@ export function createSimulation(home, away, seed, options = {}) {
       if (longShot) stats.longShots[scoringTeamId].goals += 1;
       const freeKick = ball.shotTeamId === scoringTeamId && ball.shotKind === 'freeKick';
       if (freeKick) stats.freeKicks[scoringTeamId].goals += 1;
+      if (ball.shotTeamId === scoringTeamId && ball.fromCorner) stats.corners[scoringTeamId].goals += 1;
       const penalty = ball.shotTeamId === scoringTeamId && ball.shotKind === 'penalty';
       if (penalty) stats.penalties[scoringTeamId].scored += 1;
       // Kebobolan memanaskan emosi tim (× Temperamen).
@@ -1962,9 +2025,10 @@ export function createSimulation(home, away, seed, options = {}) {
         const v = headerShotVelocity(contact, w.attacksRight, keeper, rng, scale, w);
         stats.shots[w.teamId].total += 1;
         stats.headers[w.teamId].shots += 1;
-        ball = releaseBall({ ...ball, ...contact }, w, { vx: v.vx, vy: v.vy }, { shotTeamId: w.teamId, shotKind: 'header' });
+        ball = releaseBall({ ...ball, ...contact }, w, { vx: v.vx, vy: v.vy }, { shotTeamId: w.teamId, shotKind: 'header', fromCorner: cornerShot(w.teamId) });
       } else if (forwardOf(contact, w.attacksRight) < PITCH.length / 2) {
-        const v = headerClearVelocity(w, rng);
+        const nearOwnLine = (w.attacksRight ? contact.x : PITCH.length - contact.x) <= 14;
+        const v = headerClearVelocity(w, rng, nearOwnLine);
         ball = releaseBall({ ...ball, ...contact }, w, v, { vz: v.vz });
       } else {
         const v = headerKnockVelocity(w, rng);
@@ -2050,6 +2114,10 @@ export function createSimulation(home, away, seed, options = {}) {
     // Bola keluar: jeda singkat (jam berhenti) — eksekutor berjalan ke bola, yang lain mengambil posisi.
     const startRestart = () => {
       const kind = ball.restartKind;
+      if (kind === 'corner') {
+        stats.corners[ball.restartTeamId].taken += 1;
+        teams[ball.restartTeamId].cornerAt = tick;
+      }
       const taker =
         kind === 'goalKick'
           ? players.find((p) => p.teamId === ball.restartTeamId && p.role === 'GK')
@@ -2119,7 +2187,7 @@ export function createSimulation(home, away, seed, options = {}) {
           takeControl(keeper, contact);
         } else {
           stats.saves[keeper.teamId].parried += 1;
-          ball = releaseBall({ ...ball, ...contact }, keeper, parryVelocity(keeper, speed, rng), keepOffside());
+          ball = releaseBall({ ...ball, ...contact }, keeper, parryVelocity(keeper, speed, rng, contact.y), keepOffside());
           startReactions(keeper.id);
         }
       } else if (candidates.length > 0) {
@@ -2192,7 +2260,7 @@ export function createSimulation(home, away, seed, options = {}) {
         } else {
           stats.saves[keeper.teamId].parried += 1;
           note(keeper.id, 'save');
-          ball = releaseBall({ ...ball, ...clampToPitch(contact) }, keeper, parryVelocity(keeper, speed, rng), keepOffside());
+          ball = releaseBall({ ...ball, ...clampToPitch(contact) }, keeper, parryVelocity(keeper, speed, rng, contact.y), keepOffside());
           startReactions(keeper.id);
         }
       } else if (

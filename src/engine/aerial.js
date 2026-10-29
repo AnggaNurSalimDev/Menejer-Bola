@@ -208,8 +208,19 @@ export function headerShotVelocity(from, attacksRight, keeper, rng, scale = 1, p
 }
 
 // Sundulan sapuan: menjauhi gawang sendiri, sedikit melambung.
-export function headerClearVelocity(player, rng) {
+// Sundulan sapuan di dekat garis gawang sendiri kadang meleset ke samping/belakang → sepak pojok
+// atau lemparan (29 Okt). nearOwnLine: kontak ≤ 10 m dari garis gawang sendiri.
+export const HEADER_SLICE_CHANCE = 0.45;
+
+export function headerClearVelocity(player, rng, nearOwnLine = false) {
   const away = player.attacksRight ? 0 : Math.PI;
+  if (nearOwnLine && rng.chance(HEADER_SLICE_CHANCE)) {
+    const side = rng.chance(0.5) ? 1 : -1;
+    const backward = player.attacksRight ? -1 : 1;
+    const angle = Math.atan2(side, backward * rng.range(0.2, 0.9));
+    const speed = rng.range(HEADER.clearSpeedMin, HEADER.clearSpeedMax) * 0.7;
+    return { vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, vz: HEADER.clearLift * 0.6 };
+  }
   const angle = away + rng.range(-1, 1);
   const speed = rng.range(HEADER.clearSpeedMin, HEADER.clearSpeedMax);
   return { vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, vz: HEADER.clearLift };

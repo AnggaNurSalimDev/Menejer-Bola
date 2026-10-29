@@ -17,9 +17,15 @@ export const TEMPO_OPTIONS = Object.freeze({ lambat: 1.25, normal: 1, cepat: 0.8
 export const CROSS_OPTIONS = Object.freeze({ jarang: 0.5, normal: 1, sering: 1.5 });
 export const MENTALITY_MODES = Object.freeze(['otomatis', ...Object.keys(MENTALITIES)]);
 export const MAX_CROSS_CHANCE = 0.95;
+// Skema bola mati (29 Okt):
+//   sepak pojok      : campur (sasaran terbaik di udara) / tiangDekat / tiangJauh / pendek (dimainkan pendek ke rekan)
+//   tendangan bebas  : otomatis (tembak bila dekat, kalau tidak dilambungkan) / tembak (selalu tembak bila dalam
+//                      jangkauan) / lambung (selalu dilambungkan ke kotak) / pendek (dimainkan pendek)
+export const CORNER_SCHEMES = Object.freeze(['campur', 'tiangDekat', 'tiangJauh', 'pendek']);
+export const FREE_KICK_SCHEMES = Object.freeze(['otomatis', 'tembak', 'lambung', 'pendek']);
 
 export function defaultTactics(formation) {
-  return { formation, mentalityMode: 'otomatis', tempo: 'normal', cross: 'normal' };
+  return { formation, mentalityMode: 'otomatis', tempo: 'normal', cross: 'normal', corner: 'campur', freeKick: 'otomatis' };
 }
 
 const lineOfDepth = (depth) => (depth <= 0.24 ? 0 : depth <= 0.4 ? 1 : 2);
@@ -67,6 +73,9 @@ export function tacticsErrors(changes) {
     errors.push(`mentalitas tidak dikenal: ${changes.mentalityMode}`);
   if (changes.tempo !== undefined && !(changes.tempo in TEMPO_OPTIONS)) errors.push(`tempo tidak dikenal: ${changes.tempo}`);
   if (changes.cross !== undefined && !(changes.cross in CROSS_OPTIONS)) errors.push(`umpan silang tidak dikenal: ${changes.cross}`);
+  if (changes.corner !== undefined && !CORNER_SCHEMES.includes(changes.corner)) errors.push(`skema pojok tidak dikenal: ${changes.corner}`);
+  if (changes.freeKick !== undefined && !FREE_KICK_SCHEMES.includes(changes.freeKick))
+    errors.push(`skema tendangan bebas tidak dikenal: ${changes.freeKick}`);
   return errors;
 }
 

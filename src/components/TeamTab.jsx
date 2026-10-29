@@ -4,11 +4,13 @@ import { gameClock } from '../engine/state.js';
 import { getMentality, MENTALITIES } from '../engine/mentality.js';
 import { getPhilosophy } from '../engine/philosophy.js';
 import { FORMATIONS } from '../engine/formations.js';
-import { TEMPO_OPTIONS, CROSS_OPTIONS, MENTALITY_MODES } from '../engine/tactics.js';
+import { TEMPO_OPTIONS, CROSS_OPTIONS, MENTALITY_MODES, CORNER_SCHEMES, FREE_KICK_SCHEMES } from '../engine/tactics.js';
 
 const MODE_LABEL = { otomatis: 'Otomatis (AI)', ...Object.fromEntries(Object.entries(MENTALITIES).map(([k, m]) => [k, m.label])) };
 const TEMPO_LABEL = { lambat: 'Lambat', normal: 'Normal', cepat: 'Cepat' };
 const CROSS_LABEL = { jarang: 'Jarang', normal: 'Normal', sering: 'Sering' };
+const CORNER_LABEL = { campur: 'Campur', tiangDekat: 'Tiang dekat', tiangJauh: 'Tiang jauh', pendek: 'Pendek' };
+const FREE_KICK_LABEL = { otomatis: 'Otomatis', tembak: 'Tembak langsung', lambung: 'Lambung ke kotak', pendek: 'Pendek' };
 
 // Satu baris pilihan (tombol bersegmen).
 function Choice({ label, value, options, labels, onPick, disabled, hint }) {
@@ -165,6 +167,29 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
           onPick={(v) => setTactic({ cross: v }, `Umpan silang ${CROSS_LABEL[v]}`)}
           disabled={state.period === 'fulltime'}
         />
+        <h3 className="tac-sub">Skema bola mati</h3>
+        <Choice
+          label="Sepak pojok"
+          value={team.tactics.corner}
+          options={CORNER_SCHEMES}
+          labels={CORNER_LABEL}
+          onPick={(v) => setTactic({ corner: v }, `Sepak pojok: ${CORNER_LABEL[v]}`)}
+          disabled={state.period === 'fulltime'}
+          hint="Campur: ke penyundul terbaik. Pendek: dimainkan ke rekan yang mendekat"
+        />
+        <Choice
+          label="Tendangan bebas"
+          value={team.tactics.freeKick}
+          options={FREE_KICK_SCHEMES}
+          labels={FREE_KICK_LABEL}
+          onPick={(v) => setTactic({ freeKick: v }, `Tendangan bebas: ${FREE_KICK_LABEL[v]}`)}
+          disabled={state.period === 'fulltime'}
+          hint="Otomatis: tembak bila ≤ 30 m (70%), kalau tidak dilambungkan"
+        />
+        <p className="tac-note">
+          Pojok laga ini: {state.stats.corners[teamId].taken} · tembakan dari pojok {state.stats.corners[teamId].shots} · gol{' '}
+          {state.stats.corners[teamId].goals}
+        </p>
         <p className="tac-note">
           Filosofi: <strong>{getPhilosophy(team.philosophy).label}</strong> — identitas tim dari latihan, tidak bisa diubah di tengah laga.
         </p>

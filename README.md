@@ -30,7 +30,8 @@ Proyek ini dibuat untuk senang-senang.
 - Skuad & pergantian pemain + dua tab (8a, 29 Okt): tab **Tim** (susunan, tenaga, kartu, 7 cadangan, antrian pergantian) dan tab **Pertandingan**; keduanya tetap berjalan. Pergantian diantrikan: babak 1 → dijalankan saat babak 2 dimulai, babak 2 → pada bola mati berikutnya. Maksimal 5. Tim lawan diganti AI pelatih.
 - Taktik di tab Tim (8b, 29 Okt): formasi (4-4-2, 4-3-3, 4-2-3-1, 4-5-1, 3-5-2), mentalitas (otomatis/bertahan/seimbang/menyerang), tempo, umpan silang — berlaku seketika. Filosofi tetap (identitas tim).
 - Penutup tembakan (29 Okt): saat Bertahan dan tidak kalah jumlah di sekitar bola, satu bek menutup jalur tembak di dekat kotak. Catatan: "Bertahan" kini mengurangi gol sendiri tetapi belum mengurangi kebobolan (lihat dokumen arah 8c).
-- Berikutnya: skema bola mati, lalu liga.
+- Skema bola mati (8d, 29 Okt): sepak pojok (campur, tiang dekat, tiang jauh, pendek) dan tendangan bebas (otomatis, tembak langsung, lambung, pendek) di tab Tim. Sepak pojok kini benar-benar terjadi (tepisan melebar, blokan membelok, sundulan bek meleset), rata-rata gol naik ke ~2,4. Tekel: kaki yang meluncur, bukan badan.
+- Berikutnya: bola lebih sering keluar lapangan (lemparan, tendangan gawang, pojok masih terlalu jarang), lalu liga.
 
 Tip: tambahkan `?seed=13` di alamat (misalnya `http://localhost:5173/?seed=13`) untuk memutar ulang pertandingan tertentu.
 

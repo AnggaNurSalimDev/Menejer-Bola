@@ -28,8 +28,23 @@ export function catchChance(ballSpeed, keeper = null) {
   return Math.min(1, Math.max(MIN_CATCH_CHANCE, raw));
 }
 
-export function parryVelocity(keeper, ballSpeed, rng) {
+// Tepisan melebar (29 Okt): dulu tepisan SELALU kembali ke lapangan, sehingga sepak pojok hampir
+// tidak pernah terjadi (~0,1 per laga; nyata ~10). Kini sebagian tepisan didorong melebar ke samping
+// gawang → keluar lewat garis gawang → sepak pojok.
+export const PARRY_WIDE_CHANCE = 0.4;
+
+// ballY (opsional): posisi bola saat ditepis, untuk memilih sisi tepisan melebar.
+export function parryVelocity(keeper, ballSpeed, rng, ballY = null) {
   const base = keeper.attacksRight ? 0 : Math.PI; // ke arah lapangan, menjauhi gawang sendiri
+  if (rng.chance(PARRY_WIDE_CHANCE)) {
+    // Ke samping, sedikit ke belakang (ke arah garis gawang sendiri).
+    const mid = 34;
+    const side = (ballY ?? keeper.y) >= mid ? 1 : -1;
+    const backward = keeper.attacksRight ? -1 : 1;
+    const angle = Math.atan2(side, backward * rng.range(0.7, 1.6));
+    const speed = ballSpeed * rng.range(PARRY_SPEED_MIN, PARRY_SPEED_MAX);
+    return { vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed };
+  }
   const angle = base + rng.range(-PARRY_SPREAD, PARRY_SPREAD);
   const speed = ballSpeed * rng.range(PARRY_SPEED_MIN, PARRY_SPEED_MAX);
   return { vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed };
