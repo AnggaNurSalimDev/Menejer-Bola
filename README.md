@@ -22,7 +22,8 @@ Proyek ini dibuat untuk senang-senang.
 - Wasit & hakim garis (tahap 7a, 28 Okt): wasit mengikuti bola, dua hakim garis berlari sejajar garis offside dan mengangkat bendera. Kick-off: penendang berdiri di titik tengah, lawan di luar lingkaran, lalu peluit. Offside dinilai untuk semua cara bola dimainkan, dan hakim garis bisa salah pada kejadian tipis (tanpa VAR).
 - Pelanggaran & kartu kuning (tahap 7b-1, 29 Okt): tekel bisa jadi pelanggaran (stat baru **Kecerobohan**, emosi/Temperamen, dari belakang, lelah), wasit bisa tidak melihat dan memberi keuntungan, tendangan bebas dengan pagar betis (ditembak langsung atau dilambungkan), kartu kuning, pemain berkartu lebih berhati-hati.
 - Penalti (29 Okt): pelanggaran di kotak penalti = penalti. Jam berhenti, penendang di titik penalti, kiper di garis gawang, pemain lain di tepi luar kotak; kiper menebak arah dan bisa salah. ~74% masuk. Tendangan bebas: bek tidak lagi menumpuk di garis gawang.
-- Berikutnya: 7b-2 (protes & pertikaian), 7c (kartu merah), lalu layer manager.
+- Jeda setelah peluit (7b-2, 29 Okt): pelanggaran, penalti, dan offside menghentikan permainan — wasit mendatangi kejadian, kartu, **protes** (bisa berbuah kuning) dan **pertikaian** antarpemain (pemain yang terlibat jadi lebih emosional), lalu persiapan bola mati dan peluit.
+- Berikutnya: 7c (kartu merah, tim bermain dengan 10 orang), lalu layer manager.
 
 Tip: tambahkan `?seed=13` di alamat (misalnya `http://localhost:5173/?seed=13`) untuk memutar ulang pertandingan tertentu.
 

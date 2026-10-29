@@ -232,7 +232,13 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - uji 600 penalti dipaksa: masuk 73–74%, diselamatkan 19–20%, meleset 6–7% (liga nyata ±75/18/7); posisi benar saat peluit 100%
    - bek jauh lebih hati-hati di kotaknya sendiri (lebih jarang menekel & melanggar, dari Keputusan): tanpa ini 1,37 penalti per laga; dengan ini 0,20 (nyata ~0,3)
    - hasil akhir (200 laga): gol 2,23, 0–0 10%, pelanggaran ~10,5 + ~2,2 tidak terlihat, kuning ~2,5, penalti ~0,2 (masuk ~0,14), kejutan 13 vs 11 15%
-7b-2. Rencana: protes berlebihan (kartu karena protes) dan pertikaian antarpemain, dengan efek emosi (disepakati 29 Okt: pertikaian berefek)
+7b-2. ✅ Jeda setelah peluit, protes & pertikaian (29 Okt; masukan: "setiap pelanggaran langsung dieksekusi, tidak diam dulu"):
+   - setiap pelanggaran, penalti, dan offside kini menghentikan permainan dengan jam berhenti: (1) fase insiden — wasit mendatangi pelaku/kejadian, kartu ditunjukkan, protes, pertikaian; (2) persiapan — eksekutor ke bola, pagar betis, lawan ≥ 9,15 m; (3) "PRIIIT! Tendangan bebas / penalti"
+   - PROTES: pemain tim yang dihukum di dekat wasit/kejadian, makin sering bila Temperamen tinggi, Ketenangan rendah, sedang panas, dan lebih sering setelah kartu/penalti; wasit tegas lebih sering memberi kuning karena protes. Protes offside tanpa kartu
+   - PERTIKAIAN: hanya setelah pelanggaran keras (berkartu atau dari belakang); korban yang emosional memulai, hingga 2 rekan per tim ikut; pemicu (lebih sering) & pelaku bisa dikartu; semua yang terlibat jadi lebih panas (~0,35 emosi, reda ~10–15 menit permainan) → lebih mudah melanggar lagi
+   - tampilan: tulisan berlapis (pelanggaran / pertikaian / protes + kartu), lingkaran merah putus-putus di lokasi pertikaian, tanda "!" di atas pemain yang protes
+   - hasil (200 laga): protes ~4,2 per laga, kuning karena protes ~0,40 (~14% dari ~2,9 kuning), pertikaian ~0,27 per laga (kuning ~0,17), jeda dengan jam berhenti ~74 dtk per laga (kick-off, gol, pelanggaran, offside), gol 2,31, 0–0 7%, kejutan 13 vs 11 13%. Calon kartu merah (kuning kedua) ~0,27 per laga
+   - catatan: lemparan ke dalam, sepak pojok, dan tendangan gawang masih langsung dieksekusi (belum ada jeda)
 7c. Rencana: kartu merah & kuning kedua (tim main dengan 10 orang). Penalti sudah dimajukan ke 7b-1
 7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
 

@@ -340,6 +340,32 @@ function drawFlag(ctx, cx, cy, w, raised) {
   ctx.fillRect(poleX, poleTop + fh / 2, fw / 2, fh / 2);
 }
 
+// Insiden di jeda setelah pelanggaran (tahap 7b-2): lingkaran merah putus-putus saat
+// pertikaian, tanda "!" di atas pemain yang protes.
+function drawIncident(ctx, vp, state) {
+  const incident = state.incident;
+  if (!incident || state.pauseElapsed >= incident.ticks) return;
+  if (incident.scuffle) {
+    ctx.save();
+    ctx.setLineDash([vp.px(0.8), vp.px(0.6)]);
+    ctx.beginPath();
+    ctx.arc(vp.toX(incident.spot.x), vp.toY(incident.spot.y), vp.px(3.2), 0, Math.PI * 2);
+    ctx.lineWidth = Math.max(1.5, vp.px(0.25));
+    ctx.strokeStyle = '#ff4d4d';
+    ctx.stroke();
+    ctx.restore();
+  }
+  ctx.font = `800 ${Math.max(10, Math.round(vp.px(1.6)))}px system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  for (const id of incident.protesters) {
+    const p = state.players.find((x) => x.id === id);
+    if (!p) continue;
+    ctx.fillStyle = '#ffd43b';
+    ctx.fillText('!', vp.toX(p.x), vp.toY(p.y) - vp.px(JERSEY_WIDTH_METERS * 0.7));
+  }
+}
+
 function drawOfficials(ctx, vp, state) {
   const officials = state.officials;
   if (!officials) return;
@@ -382,6 +408,7 @@ export function renderMatch(ctx, state, cssWidth, cssHeight) {
     drawPlayer(ctx, vp, player, team.colors);
   }
 
+  drawIncident(ctx, vp, state);
   drawOfficials(ctx, vp, state);
   drawBall(ctx, vp, state.ball);
 }

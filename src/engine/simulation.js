@@ -20,6 +20,7 @@ import {
   emptyTeamRoles,
   gameClock,
   kickoffPause,
+  setPiecePause,
 } from './state.js';
 import {
   DT,
@@ -30,6 +31,8 @@ import {
   MAX_RETURN_TICKS,
   SETTLE_DISTANCE,
   SETTLE_SPEED,
+  KICKOFF_WAIT_TICKS,
+  MAX_INCIDENT_TICKS,
 } from './constants.js';
 import { blunder } from './skill.js';
 import { getPhilosophy } from './philosophy.js';
@@ -83,6 +86,8 @@ import {
   raiseAgitation,
   calmDown,
   AGITATION,
+  resolveIncident,
+  INCIDENT,
 } from './fouls.js';
 import {
   createOfficials,
@@ -177,6 +182,10 @@ function cloneStats(stats) {
     secondYellows: { ...stats.secondYellows },
     freeKicks: perTeam(stats.freeKicks),
     penalties: perTeam(stats.penalties),
+    protests: { ...stats.protests },
+    dissentYellows: { ...stats.dissentYellows },
+    scuffleYellows: { ...stats.scuffleYellows },
+    scuffles: stats.scuffles,
   };
 }
 
@@ -693,7 +702,7 @@ function restartFromOut(ball, from, outPoint, teams, teamIds) {
 
 // ---- Tendangan bebas (tahap 7b-1) -------------------------------------------
 export const FREE_KICK = Object.freeze({
-  holdTicks: 20, // eksekutor menunggu 2 detik: pagar betis & posisi disiapkan
+  holdTicks: 6, // persiapan terjadi di jeda setelah peluit; eksekutor hanya menunggu sejenak
   wallRange: 32, // meter ke gawang: dalam jarak ini bertahan memasang pagar betis
   wallSize: 3,
   wallSpacing: 0.8,
@@ -917,6 +926,56 @@ function pushAway(target, ball, minDistance) {
   return clampToPitch({ x: target.x, y }, 0.5);
 }
 
+// ---- Jeda setelah pelanggaran (tahap 7b-2) ----------------------------------
+export const FOUL_STOP = Object.freeze({
+  waitTicks: 10, // tunggu 1 detik setelah eksekutor & pertahanan siap
+  takerSettle: 1.0, // meter dari posisinya
+  wallSettle: 1.5,
+  protestGap: 1.6, // meter dari wasit
+  scuffleRing: 1.1, // meter dari titik kejadian
+});
+
+// Posisi saat fase insiden: pemrotes mendatangi wasit, peserta pertikaian berkumpul di titik
+// kejadian. Map playerId → titik (hanya pemain yang terlibat).
+export function incidentTargets(incident, referee) {
+  const targets = new Map();
+  if (!incident) return targets;
+  incident.protesters.forEach((id, i) => {
+    const angle = Math.PI / 2 + i * 1.3;
+    targets.set(id, clampToPitch({ x: referee.x + Math.cos(angle) * FOUL_STOP.protestGap, y: referee.y + Math.sin(angle) * FOUL_STOP.protestGap }, 0.5));
+  });
+  if (incident.scuffle) {
+    const n = incident.scuffle.ids.length;
+    incident.scuffle.ids.forEach((id, i) => {
+      const angle = (i / n) * Math.PI * 2;
+      targets.set(id, clampToPitch({ x: incident.spot.x + Math.cos(angle) * FOUL_STOP.scuffleRing, y: incident.spot.y + Math.sin(angle) * FOUL_STOP.scuffleRing }, 0.5));
+    });
+  }
+  return targets;
+}
+
+// Wasit mendatangi pelaku (untuk kartu) atau titik kejadian.
+function incidentRefereeSpot(incident, players) {
+  const offender = players.find((p) => p.id === incident.offenderId);
+  const anchor = incident.cards?.length || incident.card ? offender ?? incident.spot : incident.spot;
+  return clampToPitch({ x: anchor.x, y: anchor.y + 2.5 }, 1);
+}
+
+// Posisi persiapan tendangan bebas: eksekutor di belakang bola, pagar betis, lawan ≥ 9,15 m
+// (digeser ke samping), pemain lain tetap di tempatnya. Map playerId → titik.
+export function freeKickPauseTargets(players, ball, takerId, teams) {
+  const kickTeamId = ball.restartTeamId;
+  const ar = teams[kickTeamId].attacksRight;
+  const wall = freeKickDefence(ball, players.filter((p) => p.teamId !== kickTeamId), ar);
+  const targets = new Map();
+  for (const p of players) {
+    if (p.id === takerId) targets.set(p.id, clampToPitch({ x: ball.x + (ar ? -0.7 : 0.7), y: ball.y }, 0.3));
+    else if (p.teamId !== kickTeamId && p.role !== 'GK') targets.set(p.id, wall.get(p.id) ?? pushAway({ x: p.x, y: p.y }, ball, FREE_KICK.distance + 0.5));
+    else targets.set(p.id, { x: p.x, y: p.y });
+  }
+  return { targets, wall };
+}
+
 // Bola mati yang dibebaskan dari offside saat dimainkan (Laws of the Game, hukum 11).
 const OFFSIDE_EXEMPT = Object.freeze(['corner', 'throwIn', 'goalKick', 'penalty']);
 
@@ -1043,12 +1102,19 @@ export function createSimulation(home, away, seed) {
   //    berjalan ke posisi formasinya. Hitung mundur tunggu baru berjalan setelah
   //    semua sampai (atau setelah MAX_RETURN_TICKS, supaya tidak menunggu selamanya).
   function stepPause(prev, tick, stats) {
-    const targets =
-      prev.pauseReason === 'penalty'
-        ? penaltyTargets(prev.players, prev.ball.restartTeamId, prev.teams)
-        : kickoffTargets(prev.players, prev.ball.restartTeamId);
+    const reason = prev.pauseReason;
+    const incident = prev.incident;
+    const inIncident = incident !== null && prev.pauseElapsed < incident.ticks;
+    let targets;
+    let wall = new Map();
+    if (reason === 'penalty') targets = penaltyTargets(prev.players, prev.ball.restartTeamId, prev.teams);
+    else if (reason === 'foul') ({ targets, wall } = freeKickPauseTargets(prev.players, prev.ball, incident?.takerId, prev.teams));
+    else targets = kickoffTargets(prev.players, prev.ball.restartTeamId);
+    // Fase insiden: yang terlibat mendatangi wasit / berkumpul; yang lain sudah mulai bersiap.
+    const involved = inIncident ? incidentTargets(incident, prev.officials.referee) : new Map();
+
     const players = prev.players.map((player) => {
-      const target = targets.get(player.id);
+      const target = involved.get(player.id) ?? targets.get(player.id);
       const body = stepBody(player, target, DT);
       const condition = driftConfidence(
         { ...player.condition, energy: drainEnergy(player, Math.hypot(body.vx, body.vy), DT) },
@@ -1066,12 +1132,31 @@ export function createSimulation(home, away, seed) {
       };
     });
     stats.pauseTicks += 1;
-    const settled =
-      prev.pauseElapsed >= MAX_RETURN_TICKS ||
-      players.every((p) => distance(p, targets.get(p.id)) <= SETTLE_DISTANCE && Math.hypot(p.vx, p.vy) <= SETTLE_SPEED);
+
+    const near = (p, t, d) => distance(p, t) <= d && Math.hypot(p.vx, p.vy) <= SETTLE_SPEED;
+    let settled;
+    if (inIncident) {
+      settled = false;
+    } else if (prev.pauseElapsed >= (incident?.ticks ?? 0) + MAX_RETURN_TICKS) {
+      settled = true; // jangan menunggu selamanya
+    } else if (reason === 'foul') {
+      settled = players.every((p) => {
+        if (p.id === incident?.takerId) return near(p, targets.get(p.id), FOUL_STOP.takerSettle);
+        if (wall.has(p.id)) return near(p, wall.get(p.id), FOUL_STOP.wallSettle);
+        if (p.teamId !== prev.ball.restartTeamId && p.role !== 'GK') return distance(p, prev.ball) >= FREE_KICK.distance - 0.3;
+        return true;
+      });
+    } else {
+      settled = players.every((p) => near(p, targets.get(p.id), SETTLE_DISTANCE));
+    }
     const pauseTicks = settled ? prev.pauseTicks - 1 : prev.pauseTicks;
     const done = pauseTicks === 0;
-    const officials = stepOfficials(prev.officials, prev.ball, offsideReferences(players, prev.ball), true, DT);
+
+    // Wasit: ke titik tengah saat kick-off; mendatangi kejadian saat insiden; dekat bola saat bola mati lain.
+    const kickoffLike = reason === 'kickoff' || reason === 'goal';
+    const refTarget = inIncident ? incidentRefereeSpot(incident, prev.players) : null;
+    const officials = stepOfficials(prev.officials, prev.ball, offsideReferences(players, prev.ball), kickoffLike, DT, refTarget);
+    const doneKind = reason === 'penalty' ? 'penalty' : reason === 'foul' ? 'freeKick' : 'kickoff';
     return {
       ...prev,
       tick,
@@ -1079,12 +1164,10 @@ export function createSimulation(home, away, seed) {
       stats,
       officials,
       pauseTicks,
-      pauseReason: done ? null : prev.pauseReason,
+      pauseReason: done ? null : reason,
       pauseElapsed: done ? 0 : prev.pauseElapsed + 1,
-      // Peluit kick-off saat persiapan selesai.
-      whistle: done
-        ? { tick, kind: prev.pauseReason === 'penalty' ? 'penalty' : 'kickoff', teamId: prev.ball.restartTeamId }
-        : prev.whistle,
+      incident: done ? null : incident,
+      whistle: done ? { tick, kind: doneKind, teamId: prev.ball.restartTeamId } : prev.whistle,
     };
   }
 
@@ -1104,12 +1187,55 @@ export function createSimulation(home, away, seed) {
     let ball = { ...prev.ball };
     let lastGoal = prev.lastGoal;
     let whistle = prev.whistle;
-    let pause = { pauseTicks: 0, pauseReason: null, pauseElapsed: 0 };
+    let pause = { pauseTicks: 0, pauseReason: null, pauseElapsed: 0, incident: null };
 
     const cooldownOverrides = new Map();
     // Disiplin yang berubah di tick ini (pelanggaran, kartu, emosi), diterapkan saat pemain bergerak.
     const disciplineUpdates = new Map();
     const disciplineOf = (p) => disciplineUpdates.get(p.id) ?? p.discipline;
+    // Kartu kuning (pelanggaran, protes, pertikaian). Kuning kedua dicatat; kartu merah di 7c.
+    const book = (player) => {
+      const d = disciplineOf(player);
+      if (d.yellows === 0) {
+        disciplineUpdates.set(player.id, raiseAgitation({ ...d, yellows: 1 }, player.skills, AGITATION.booked, false));
+        stats.yellows[player.teamId] += 1;
+        return 'yellow';
+      }
+      stats.secondYellows[player.teamId] += 1;
+      return 'secondYellow';
+    };
+    const heat = (player, amount) => disciplineUpdates.set(player.id, raiseAgitation(disciplineOf(player), player.skills, amount));
+    // Terapkan hasil insiden: statistik, kartu protes/pertikaian, emosi. Mengembalikan data insiden untuk jeda.
+    const applyIncident = (result, base) => {
+      const cards = [];
+      for (const id of result.protesters) {
+        const p = byId.get(id);
+        stats.protests[p.teamId] += 1;
+        heat(p, INCIDENT.protestAgitation);
+      }
+      for (const id of result.dissent) {
+        const p = byId.get(id);
+        stats.dissentYellows[p.teamId] += 1;
+        cards.push({ id, card: book(p), reason: 'protest' });
+      }
+      if (result.scuffle) {
+        stats.scuffles += 1;
+        for (const id of result.scuffle.ids) heat(byId.get(id), INCIDENT.scuffleAgitation);
+        for (const id of result.scuffle.booked) {
+          const p = byId.get(id);
+          stats.scuffleYellows[p.teamId] += 1;
+          cards.push({ id, card: book(p), reason: 'scuffle' });
+        }
+      }
+      return {
+        ...base,
+        protesters: result.protesters,
+        dissent: result.dissent,
+        scuffle: result.scuffle,
+        cards,
+        ticks: Math.min(MAX_INCIDENT_TICKS, result.ticks),
+      };
+    };
     const runCooldowns = new Map();
     // Tim yang penyerangnya baru mulai berlari di tick ini: lawan butuh waktu membacanya.
     const runStartedBy = new Set();
@@ -1189,13 +1315,29 @@ export function createSimulation(home, away, seed) {
             } else {
               foulStopsPlay = true;
               const penalty = foulInPenaltyArea(holder, teams);
+              // Jeda setelah peluit (7b-2): kartu, protes, pertikaian, lalu persiapan bola mati.
+              const incident = applyIncident(
+                resolveIncident(rng, {
+                  kind: 'foul',
+                  offender: tackler,
+                  fouled: holder,
+                  card,
+                  hard: card !== null || fromBehind,
+                  penalty,
+                  spot: { x: holder.x, y: holder.y },
+                  referee,
+                  players: prev.players,
+                }),
+                { kind: 'foul', offenderId: tackler.id, fouledId: holder.id, card, penalty, spot: { x: holder.x, y: holder.y } },
+              );
               if (penalty) {
                 ball = penaltyBall(ball, holder.teamId, teams);
                 stats.penalties[holder.teamId].awarded += 1;
-                pause = kickoffPause('penalty'); // jam berhenti: pemain mengambil posisi penalti
+                pause = setPiecePause('penalty', KICKOFF_WAIT_TICKS, incident);
               } else {
                 ball = freeKickBall(ball, holder, teams);
                 stats.freeKicks[holder.teamId].awarded += 1;
+                pause = setPiecePause('foul', FOUL_STOP.waitTicks, { ...incident, takerId: holder.id });
               }
               for (const id of teamIds) teams[id].chaserId = null;
               whistle = { tick, kind: 'foul', teamId: tackler.teamId, playerId: tackler.id, card, penalty };
@@ -1599,6 +1741,36 @@ export function createSimulation(home, away, seed) {
       }
       for (const id of teamIds) teams[id].chaserId = null;
       whistle = { tick, kind: 'offside', teamId: offender.teamId, playerId: offender.id };
+      // Jeda singkat: protes boleh (tanpa kartu), lalu tendangan bebas untuk tim bertahan.
+      const result = resolveIncident(rng, {
+        kind: 'offside',
+        offender,
+        fouled: null,
+        card: null,
+        hard: false,
+        penalty: false,
+        spot: { x: offender.x, y: offender.y },
+        referee: prev.officials.referee,
+        players,
+      });
+      for (const id of result.protesters) stats.protests[offender.teamId] += 1;
+      const taker = players
+        .filter((p) => p.teamId === defendingTeamId && p.role !== 'GK')
+        .sort((a, b) => distance(a, ball) - distance(b, ball) || a.id.localeCompare(b.id))[0];
+      pause = setPiecePause('foul', FOUL_STOP.waitTicks, {
+        kind: 'offside',
+        offenderId: offender.id,
+        fouledId: null,
+        card: null,
+        penalty: false,
+        spot: { x: offender.x, y: offender.y },
+        protesters: result.protesters,
+        dissent: [],
+        scuffle: null,
+        cards: [],
+        ticks: Math.min(MAX_INCIDENT_TICKS, INCIDENT.baseTicks + (result.protesters.length ? INCIDENT.protestTicks : 0)),
+        takerId: taker?.id ?? null,
+      });
     };
     // Pemain yang sebenarnya offside ikut bermain, tetapi hakim garis tidak mengangkat bendera.
     const noteMissedOffside = (player) => {
@@ -1830,6 +2002,7 @@ export function createSimulation(home, away, seed) {
       pauseTicks: 0,
       pauseReason: null,
       pauseElapsed: 0,
+      incident: null,
       period: state.period === 'first' ? 'halftime' : 'fulltime',
     };
     return state;

@@ -5,7 +5,15 @@ import { PITCH, isInsidePitch } from './pitch.js';
 import { getFormation } from './formations.js';
 import { validateStats } from './stats.js';
 import { deriveMovementProfile } from './movement.js';
-import { HALF_TICKS, GAME_MINUTES_PER_HALF, PERIODS, KICKOFF_WAIT_TICKS, MAX_RETURN_TICKS, PAUSE_REASONS } from './constants.js';
+import {
+  HALF_TICKS,
+  GAME_MINUTES_PER_HALF,
+  PERIODS,
+  KICKOFF_WAIT_TICKS,
+  MAX_RETURN_TICKS,
+  MAX_INCIDENT_TICKS,
+  PAUSE_REASONS,
+} from './constants.js';
 import { CONDITION, validateCondition } from './condition.js';
 import { validateAirBall } from './aerial.js';
 import { validatePhilosophy } from './philosophy.js';
@@ -148,6 +156,11 @@ function createStats(teamIds) {
     secondYellows: perTeam(() => 0),
     freeKicks: perTeam(() => ({ awarded: 0, shots: 0, goals: 0 })),
     penalties: perTeam(() => ({ awarded: 0, scored: 0 })), // per tim penendang
+    // Tahap 7b-2: protes, kartu karena protes, pertikaian (per tim pemain yang terlibat/dikartu).
+    protests: perTeam(() => 0),
+    dissentYellows: perTeam(() => 0),
+    scuffleYellows: perTeam(() => 0),
+    scuffles: 0,
   };
 }
 
@@ -158,8 +171,16 @@ export function emptyTeamRoles() {
 // Setelah gol dan di awal babak, permainan jeda: pemain kembali ke posisi kick-off.
 // Panjang jeda tidak tetap — lihat KICKOFF_WAIT_TICKS & MAX_RETURN_TICKS di constants.js.
 export function kickoffPause(reason) {
-  if (!PAUSE_REASONS.includes(reason)) throw new RangeError(`kickoffPause: alasan tidak dikenal "${reason}"`);
-  return { pauseTicks: KICKOFF_WAIT_TICKS, pauseReason: reason, pauseElapsed: 0 };
+  return setPiecePause(reason, KICKOFF_WAIT_TICKS);
+}
+
+// Jeda bola mati umum. waitTicks: tunggu setelah semua pemain sampai di posisinya.
+// incident (opsional, untuk 'foul'/'penalty'): fase kartu/protes/pertikaian sebelum persiapan.
+export function setPiecePause(reason, waitTicks, incident = null) {
+  if (!PAUSE_REASONS.includes(reason)) throw new RangeError(`setPiecePause: alasan tidak dikenal "${reason}"`);
+  if (!Number.isInteger(waitTicks) || waitTicks < 1) throw new RangeError(`setPiecePause: waitTicks tidak valid ${waitTicks}`);
+  if (incident && !(incident.ticks >= 0 && incident.ticks <= MAX_INCIDENT_TICKS)) throw new RangeError('setPiecePause: lama insiden tidak valid');
+  return { pauseTicks: waitTicks, pauseReason: reason, pauseElapsed: 0, incident };
 }
 
 export function createMatchState(home, away) {
@@ -187,6 +208,8 @@ export function createMatchState(home, away) {
     officials: createOfficials(createRng(1)),
     // Peluit terakhir untuk UI: { tick, kind: 'kickoff' | 'offside', teamId?, playerId? } atau null.
     whistle: null,
+    // Insiden di jeda setelah peluit (tahap 7b-2): kartu, protes, pertikaian — atau null.
+    incident: null,
     // Babak: first | halftime | second | fulltime. periodTick = tick di babak berjalan.
     period: 'first',
     periodTick: 0,
@@ -295,14 +318,26 @@ export function validateMatchState(state, teams = []) {
   if (!Number.isInteger(state.pauseTicks) || state.pauseTicks < 0) errors.push('pauseTicks tidak valid');
   if ((state.pauseTicks > 0) !== (state.pauseReason !== null)) errors.push('pauseReason harus terisi tepat saat jeda');
   if (state.pauseReason !== null && !PAUSE_REASONS.includes(state.pauseReason)) errors.push(`pauseReason tidak dikenal "${state.pauseReason}"`);
-  if (!Number.isInteger(state.pauseElapsed) || state.pauseElapsed < 0 || state.pauseElapsed > MAX_RETURN_TICKS + KICKOFF_WAIT_TICKS) {
+  if (
+    !Number.isInteger(state.pauseElapsed) ||
+    state.pauseElapsed < 0 ||
+    state.pauseElapsed > MAX_INCIDENT_TICKS + MAX_RETURN_TICKS + KICKOFF_WAIT_TICKS + 60
+  ) {
     errors.push(`pauseElapsed tidak valid (${state.pauseElapsed})`);
   }
   if (state.pauseTicks === 0 && state.pauseElapsed !== 0) errors.push('pauseElapsed tersisa di luar jeda');
   if (state.pauseReason === 'goal' && state.lastGoal === null) errors.push('jeda gol tanpa catatan gol');
+  if (state.incident) {
+    if (state.pauseReason !== 'foul' && state.pauseReason !== 'penalty') errors.push('insiden di luar jeda pelanggaran/penalti');
+    const ids = [...state.incident.protesters, ...(state.incident.scuffle?.ids ?? [])];
+    for (const id of ids) if (!byId.get(id)) errors.push(`insiden: pemain "${id}" tidak ada`);
+    for (const id of state.incident.dissent) if (!state.incident.protesters.includes(id)) errors.push('kartu protes untuk pemain yang tidak protes');
+  }
   if (state.pauseTicks > 0) {
     if (ball.restartTeamId === null) errors.push('jeda gol tanpa tim kick-off');
-    if (state.pauseReason === 'penalty') {
+    if (state.pauseReason === 'foul') {
+      if (ball.restartKind !== 'freeKick') errors.push('jeda pelanggaran tanpa bola mati tendangan bebas');
+    } else if (state.pauseReason === 'penalty') {
       const spotX = (attacksRight) => (attacksRight ? PITCH.length - PITCH.penaltySpotDistance : PITCH.penaltySpotDistance);
       const kicker = state.teams[ball.restartTeamId];
       if (!kicker || ball.x !== spotX(kicker.attacksRight) || ball.y !== PITCH.width / 2) errors.push('jeda penalti tetapi bola tidak di titik penalti');
@@ -395,7 +430,7 @@ export function validateMatchState(state, teams = []) {
   for (const e of validateOfficials(state.officials)) errors.push(`perangkat: ${e}`);
   if (
     state.whistle !== null &&
-    !(Number.isInteger(state.whistle.tick) && ['kickoff', 'offside', 'foul', 'advantage', 'penalty'].includes(state.whistle.kind))
+    !(Number.isInteger(state.whistle.tick) && ['kickoff', 'offside', 'foul', 'advantage', 'penalty', 'freeKick'].includes(state.whistle.kind))
   ) {
     errors.push('catatan peluit tidak valid');
   }
@@ -433,7 +468,9 @@ export function validateMatchState(state, teams = []) {
       if (!(state.stats.offsideWrong[id] <= state.stats.offsides[id])) errors.push(`tim ${id}: offside salah bendera > offside dinyatakan`);
       const teamYellows = state.players.filter((p) => p.teamId === id).reduce((n, p) => n + p.discipline.yellows, 0);
       if (state.stats.yellows[id] !== teamYellows) errors.push(`tim ${id}: kartu kuning ${state.stats.yellows[id]} ≠ jumlah di pemain ${teamYellows}`);
-      if (!(state.stats.yellows[id] + state.stats.secondYellows[id] <= state.stats.fouls[id])) errors.push(`tim ${id}: kartu > pelanggaran`);
+      const cardSources = state.stats.fouls[id] + state.stats.dissentYellows[id] + state.stats.scuffleYellows[id];
+      if (!(state.stats.yellows[id] + state.stats.secondYellows[id] <= cardSources)) errors.push(`tim ${id}: kartu > pelanggaran + protes + pertikaian`);
+      if (!(state.stats.dissentYellows[id] <= state.stats.protests[id])) errors.push(`tim ${id}: kartu protes > protes`);
       if (!(state.stats.advantages[id] >= 0 && state.stats.foulsUnseen[id] >= 0)) errors.push(`tim ${id}: catatan pelanggaran tidak valid`);
       const fk = state.stats.freeKicks[id];
       if (!(fk.goals >= 0 && fk.goals <= fk.shots && fk.shots <= fk.awarded)) errors.push(`tim ${id}: statistik tendangan bebas tidak konsisten`);

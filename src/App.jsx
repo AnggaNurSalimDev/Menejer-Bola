@@ -104,25 +104,50 @@ export default function App() {
         set(rowRefs.current[`${row.key}-away`], row.read(stats, away.id));
       }
 
-      // Peluit (tahap 7a): tampil sesaat setelah wasit meniup peluit.
+      // Peluit (tahap 7a) & insiden di jeda setelah pelanggaran (tahap 7b-2).
       const whistleEl = whistleRef.current;
       if (whistleEl) {
         const w = state.whistle;
-        const showing = w !== null && state.tick - w.tick < WHISTLE_SHOW_TICKS;
+        const incident = state.incident;
+        const showingIncident = incident !== null && (state.pauseReason === 'foul' || state.pauseReason === 'penalty');
+        const showing = showingIncident || (w !== null && state.tick - w.tick < WHISTLE_SHOW_TICKS);
         whistleEl.hidden = !showing;
         if (showing) {
-          const offender = w.playerId ? namesById.get(w.playerId) : null;
-          const card = w.card === 'yellow' ? ' 🟨' : w.card === 'secondYellow' ? ' 🟨🟨' : '';
-          const text =
-            w.kind === 'offside'
-              ? `🚩 PRIIIT! Offside${offender ? ` — ${offender}` : ''}`
-              : w.kind === 'foul'
-                ? `PRIIIT! ${w.penalty ? 'PENALTI' : 'Pelanggaran'} — ${offender}${card}`
-                : w.kind === 'penalty'
-                  ? 'PRIIIT! Tendangan penalti'
-                : w.kind === 'advantage'
-                  ? `Keuntungan! Pelanggaran ${offender}${card}`
-                  : 'PRIIIT! Kick-off';
+          const name = (id) => (id ? namesById.get(id) ?? '' : '');
+          const cardIcon = (c) => (c === 'yellow' ? ' 🟨' : c === 'secondYellow' ? ' 🟨🟨' : '');
+          let text;
+          if (showingIncident) {
+            const lines = [];
+            if (incident.kind === 'offside') lines.push(`🚩 Offside — ${name(incident.offenderId)}`);
+            else lines.push(`PRIIIT! ${incident.penalty ? 'PENALTI' : 'Pelanggaran'} — ${name(incident.offenderId)}${cardIcon(incident.card)}`);
+            if (incident.scuffle) {
+              const booked = incident.cards.filter((c) => c.reason === 'scuffle');
+              lines.push(
+                `Pertikaian! ${name(incident.fouledId)} vs ${name(incident.offenderId)}` +
+                  booked.map((c) => ` · ${name(c.id)}${cardIcon(c.card)}`).join(''),
+              );
+            }
+            if (incident.protesters.length > 0) {
+              const dissent = new Map(incident.cards.filter((c) => c.reason === 'protest').map((c) => [c.id, c.card]));
+              lines.push(`Protes: ${incident.protesters.map((id) => `${name(id)}${cardIcon(dissent.get(id))}`).join(', ')}`);
+            }
+            text = lines.join('\n');
+          } else {
+            const offender = name(w.playerId);
+            const card = cardIcon(w.card);
+            text =
+              w.kind === 'offside'
+                ? `🚩 PRIIIT! Offside${offender ? ` — ${offender}` : ''}`
+                : w.kind === 'foul'
+                  ? `PRIIIT! ${w.penalty ? 'PENALTI' : 'Pelanggaran'} — ${offender}${card}`
+                  : w.kind === 'penalty'
+                    ? 'PRIIIT! Tendangan penalti'
+                    : w.kind === 'freeKick'
+                      ? 'PRIIIT! Tendangan bebas'
+                      : w.kind === 'advantage'
+                        ? `Keuntungan! Pelanggaran ${offender}${card}`
+                        : 'PRIIIT! Kick-off';
+          }
           set(whistleEl, text);
         }
       }
@@ -235,7 +260,7 @@ export default function App() {
         <button type="button" onClick={restart}>
           Ulang (seed baru)
         </button>
-        <span className="stage-note">Pelanggaran & kartu + wasit & hakim garis + filosofi pelatih + bola udara (bayangan = bola melambung; bar = tenaga menipis, titik merah = kurang percaya diri, titik oranye = on fire). Seed: {matchSeed}</span>
+        <span className="stage-note">Pelanggaran, protes & pertikaian + wasit & hakim garis + filosofi pelatih + bola udara (bayangan = bola melambung; bar = tenaga menipis, titik merah = kurang percaya diri, titik oranye = on fire). Seed: {matchSeed}</span>
       </div>
     </main>
   );

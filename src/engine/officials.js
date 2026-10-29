@@ -108,10 +108,11 @@ function assistantTarget(assistant, referenceXByHalf) {
 
 // Satu langkah gerak perangkat pertandingan.
 // referenceXByHalf: { right, left } = titik acuan offside di tiap separuh.
-export function stepOfficials(officials, ball, referenceXByHalf, pausing, dt) {
+// refereeOverride: titik tuju wasit (misalnya mendatangi pelaku untuk kartu), atau null.
+export function stepOfficials(officials, ball, referenceXByHalf, pausing, dt, refereeOverride = null) {
   const move = (o, target) => ({ ...o, ...stepBody(o, target, dt) });
   return {
-    referee: move(officials.referee, refereeTarget(ball, pausing)),
+    referee: move(officials.referee, refereeOverride ?? refereeTarget(ball, pausing)),
     assistants: officials.assistants.map((a) => {
       const next = move(a, assistantTarget(a, referenceXByHalf));
       // Hakim garis tetap di garis sampingnya.

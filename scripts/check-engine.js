@@ -32,7 +32,7 @@ import {
 import { canPanicClear } from '../src/engine/simulation.js';
 import { PHILOSOPHIES, validatePhilosophy } from '../src/engine/philosophy.js';
 import { flagChance } from '../src/engine/officials.js';
-import { foulChance, cautionScale, callChance, advantageApplies, initialDiscipline } from '../src/engine/fouls.js';
+import { foulChance, cautionScale, callChance, advantageApplies, initialDiscipline, resolveIncident } from '../src/engine/fouls.js';
 import { kickoffTargets, pickKickoffTaker, penaltyTargets, pickPenaltyTaker, penaltySpot } from '../src/engine/simulation.js';
 import { instinctShotScale } from '../src/engine/condition.js';
 import { shotSpeedFor, isScreened, SHOT_POWER } from '../src/engine/shooting.js';
@@ -362,6 +362,45 @@ console.log('Penalti');
     }
   }
   check('penalti: penendang di titik, kiper di garis, pemain lain di luar kotak, busur, dan di belakang bola', e);
+}
+
+console.log('Jeda setelah pelanggaran: protes & pertikaian (tahap 7b-2)');
+{
+  const e = [];
+  const mkP = (id, teamId, over = {}, agitation = 0) => ({
+    id,
+    teamId,
+    role: 'CM',
+    x: 50,
+    y: 34,
+    skills: { temperamen: 10, ketenangan: 10, ...over },
+    discipline: { ...initialDiscipline(), agitation },
+  });
+  const run = (players, ctxOver, trials = 600, refK = 12) => {
+    const rng = createRng(9);
+    let protests = 0, dissent = 0, scuffles = 0;
+    for (let i = 0; i < trials; i += 1) {
+      const r = resolveIncident(rng, {
+        kind: 'foul', offender: players[0], fouled: players[1], card: null, hard: true, penalty: false,
+        spot: { x: 50, y: 34 }, referee: { x: 52, y: 36, skills: { ketegasan: refK } }, players, ...ctxOver,
+      });
+      protests += r.protesters.length; dissent += r.dissent.length; scuffles += r.scuffle ? 1 : 0;
+      if (r.dissent.some((id) => !r.protesters.includes(id))) e.push('kartu protes tanpa protes');
+      if (r.scuffle && (!r.scuffle.ids.includes(players[0].id) || !r.scuffle.ids.includes(players[1].id))) e.push('pertikaian tanpa pelaku & korban');
+    }
+    return { protests, dissent, scuffles };
+  };
+  const calm = [mkP('a', 'A', { temperamen: 3, ketenangan: 18 }), mkP('b', 'B', { temperamen: 3, ketenangan: 18 })];
+  const hot = [mkP('a', 'A', { temperamen: 19, ketenangan: 3 }, 0.8), mkP('b', 'B', { temperamen: 19, ketenangan: 3 }, 0.8)];
+  const c = run(calm, {});
+  const h = run(hot, {});
+  if (!(h.protests > c.protests * 2)) e.push(`pemain panas tidak lebih sering protes (${h.protests} vs ${c.protests})`);
+  if (!(h.scuffles > c.scuffles * 2)) e.push(`korban panas tidak lebih sering memicu pertikaian (${h.scuffles} vs ${c.scuffles})`);
+  if (run(hot, { hard: false }).scuffles !== 0) e.push('pertikaian setelah pelanggaran ringan');
+  const lenient = run(hot, {}, 600, 2);
+  const strict = run(hot, {}, 600, 19);
+  if (!(strict.dissent > lenient.dissent)) e.push(`wasit tegas tidak lebih sering memberi kuning protes (${strict.dissent} vs ${lenient.dissent})`);
+  check(`protes & pertikaian: panas ${h.protests}/${h.scuffles} vs tenang ${c.protests}/${c.scuffles}; kuning protes tegas ${strict.dissent} vs lunak ${lenient.dissent}`, e);
 }
 
 console.log('Bola udara (umpan silang & sundulan)');
