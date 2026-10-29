@@ -48,7 +48,7 @@ import {
 import { rollBall, MAX_KICK_SPEED } from './ball.js';
 import { computeAnchor } from './shape.js';
 import { stepBody } from './movement.js';
-import { pickChaser, pickPresser } from './roles.js';
+import { pickChaser, pickPresser, pickCover } from './roles.js';
 import { evaluatePassOptions, dribbleTarget, shotLaneBlocker } from './passing.js';
 import { evaluateShot, shotVelocity, shotSpeedFor, goalAngle, SCREEN } from './shooting.js';
 import {
@@ -1714,6 +1714,20 @@ export function createSimulation(home, away, seed, options = {}) {
       team.chaserId = pick ? pick.player.id : null;
       if (pick) roleTargets.set(pick.player.id, pick.point);
 
+      // Penutup tembakan (opsi B): bola lawan dekat gawang sendiri & tidak kalah jumlah.
+      const keeperHoldingNow = owner ? isKeeperHandling(owner, ball) : false;
+      const cover =
+        owner && owner.teamId !== id && !keeperHoldingNow && ball.setPieceKind === null
+          ? pickCover(own, owner, team.attacksRight, {
+              range: getMentality(team.mentality).coverRange,
+              chaserId: team.chaserId,
+              previousId: team.coverId,
+              attackers: prev.players.filter((p) => p.teamId === owner.teamId),
+            })
+          : null;
+      team.coverId = cover ? cover.player.id : null;
+      if (cover) roleTargets.set(cover.player.id, cover.point);
+
       if (updateRunner(team, owner, ball, prev.players, offsideLines[id], runCooldowns) === id) runStartedBy.add(id);
     }
 
@@ -1754,7 +1768,7 @@ export function createSimulation(home, away, seed, options = {}) {
     if (possessingTeamId !== null) {
       for (const id of teamIds) {
         if (id === possessingTeamId) continue;
-        const defenders = prev.players.filter((p) => p.teamId === id && p.id !== teams[id].chaserId);
+        const defenders = prev.players.filter((p) => p.teamId === id && p.id !== teams[id].chaserId && p.id !== teams[id].coverId);
         const attackers = prev.players.filter((p) => p.teamId === possessingTeamId && p.id !== ball.ownerId);
         marksByTeam.set(id, assignMarks(defenders, attackers, teams[id].attacksRight));
       }
@@ -1787,6 +1801,10 @@ export function createSimulation(home, away, seed, options = {}) {
       } else if (team.runnerId === player.id) {
         task = 'run';
         target = team.runTarget;
+        moveOptions = { urgent: true };
+      } else if (team.coverId === player.id) {
+        task = 'cover';
+        target = roleTargets.get(player.id);
         moveOptions = { urgent: true };
       } else if (team.chaserId === player.id) {
         if (owner) task = 'press';

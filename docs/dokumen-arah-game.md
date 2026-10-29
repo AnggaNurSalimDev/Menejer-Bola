@@ -273,6 +273,12 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - **cacat ditemukan & diperbaiki**: "menyerang" awalnya lebih tajam SEKALIGUS lebih aman (+1,06; kebobolan turun 0,83 → 0,63) karena blok yang maju juga menghimpit lawan saat bertahan. Kini blok hanya maju saat menguasai bola + tenaga terkuras ×1,2 → gol 1,54 vs 1,07 (+0,47): lebih tajam, lebih bocor — trade-off yang benar
    - **cacat yang BELUM tuntas**: "bertahan" tetap lebih banyak kebobolan dari seimbang (1,11 vs 0,83; dua percobaan: blok −5/−3 m, tekanan sampai 60/75% lapangan, main langsung lebih lunak). Penyebab di engine: pertahanan hanya kuat lewat MENEKAN (1 penekan); blok rendah tidak membuat peluang lawan lebih jelek (tidak ada penekan kedua, penutup tembakan di tepi kotak). Perbaikan = opsi B (keunggulan jumlah secara mekanis). Sementara: bertahan berguna untuk tim 10 orang, bukan untuk "parkir bus" dengan 11 orang
    - uji 10 orang (setelah penyetelan bertahan): gol 0,38 vs 1,36 (kontrol 1,18 vs 1,14): tim sendiri −68%, lawan +19% (data nyata −65% / +54%)
+8c. ⚠️ Opsi B — pertahanan tanpa menekan (29 Okt): SEBAGIAN berhasil
+   - baru: peran **penutup tembakan** (`roles.js pickCover`, tugas 'cover'): saat pemegang bola lawan ≤ jangkauan dari gawang sendiri DAN tim tidak kalah jumlah dalam radius 18 m, satu bek (bukan penekan/kiper) berdiri 2,6 m di jalur ke gawang. Keunggulan jumlah kini terasa secara mekanis (kalah jumlah → tidak ada penutup)
+   - kalibrasi: penutup untuk SEMUA tim membuat 0–0 naik ke 16% (gol 2,12) → kini hanya mentalitas **bertahan** (jangkauan 36 m). Hasil dasar kembali: gol 2,18 ± 0,19, 0–0 7%, kejutan 13 vs 11 9%
+   - uji pemisahan (100 laga): bentuk bertahan saja → kebobolan 0,70; ditambah main langsung + jarang berlari → 1,05 (kombinasi yang buruk: mundur lalu buru-buru melepas bola). Kini "bertahan" = bentuk (mundur 3 m, rapat ×0,78) + penutup tembakan, cara main normal, tetap menekan di mana saja
+   - **hasil akhir 200 laga: bertahan gol 0,99 vs kebobolan 0,95 (kontrol 1,36 vs 0,81)** — mengurangi gol sendiri, TIDAK mengurangi kebobolan. Lima percobaan; penyetelan angka dihentikan. Langkah berikutnya bila diteruskan: ukur DARI MANA gol masuk saat bertahan (umpan silang? tembakan jauh? bola mati? serangan balik setelah kehilangan bola?) sebelum mengubah apa pun
+   - uji 10 orang (otomatis bertahan): gol 0,39 vs 1,30, penguasaan 50% (kontrol 1,18 vs 1,14)
 7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
 
 ## 7. Keputusan yang Masih Terbuka

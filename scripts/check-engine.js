@@ -40,6 +40,7 @@ import { createTeam } from '../src/engine/teams.js';
 import { blunderFromStats } from '../src/engine/skill.js';
 import { coachMentality, pressAllowed, MENTALITIES } from '../src/engine/mentality.js';
 import { lingerTicks, freeKickSettleTargets, AFTER_INCIDENT } from '../src/engine/simulation.js';
+import { pickCover } from '../src/engine/roles.js';
 import { reshape, outfieldSlots, tacticsErrors } from '../src/engine/tactics.js';
 import { substitutionErrors, SUBS } from '../src/engine/substitution.js';
 import { repairShape, applySendOffs, emergencyKeeper } from '../src/engine/sendoff.js';
@@ -610,10 +611,23 @@ console.log('Mentalitas & AI pelatih');
   check('10 vs 11 → bertahan', coachMentality({ ...base, own: 10, opponents: 11 }) === 'bertahan' ? [] : ['salah']);
   check('10 vs 11, tertinggal di menit 80 → kembali seimbang mengejar', coachMentality({ ...base, own: 10, opponents: 11, goalsAgainst: 1, minute: 80 }) === 'seimbang' ? [] : ['salah']);
   check('11 vs 10 → tidak ikut bertahan', coachMentality({ ...base, own: 11, opponents: 10 }) === 'seimbang' ? [] : ['salah']);
-  // Tim bertahan menyerang ke kanan → gawangnya sendiri di x = 0.
-  check('bertahan tidak menekan tinggi', !pressAllowed('bertahan', { x: 90, y: 34 }, true) ? [] : ['masih menekan di separuh lawan']);
-  check('bertahan tetap menekan di separuh sendiri', pressAllowed('bertahan', { x: 25, y: 34 }, true) ? [] : ['tidak menekan di dekat gawang sendiri']);
-  check('seimbang menekan di mana saja', pressAllowed('seimbang', { x: 90, y: 34 }, true) ? [] : ['tidak menekan']);
+  // Uji pemisahan 29 Okt: berhenti menekan tinggi membuat "bertahan" lebih bocor → semua mentalitas menekan.
+  check('semua mentalitas tetap menekan di mana saja', ['bertahan', 'seimbang', 'menyerang'].every((m) => pressAllowed(m, { x: 90, y: 34 }, true)) ? [] : ['ada yang tidak menekan']);
+  // Penutup tembakan: tim yang bertahan (menyerang ke kanan, gawang di x = 0).
+  {
+    const demo = createDemoTeams(2026, {});
+    const st2 = createMatchState(demo.home, demo.away);
+    const defenders = st2.players.filter((p) => p.teamId === 'home').map((p, i) => ({ ...p, x: 8 + (i % 4) * 4, y: 20 + i * 2.5 }));
+    const attackers = st2.players.filter((p) => p.teamId === 'away');
+    const holderNear = { ...attackers[9], x: 22, y: 34 };
+    const holderFar = { ...attackers[9], x: 60, y: 34 };
+    const lone = [{ ...holderNear }, ...attackers.slice(0, 9).map((p, i) => ({ ...p, x: 20 + (i % 3), y: 30 + i }))];
+    const near = pickCover(defenders, holderNear, true, { range: 26, chaserId: null, previousId: null, attackers: [holderNear] });
+    check('penutup tembakan aktif dekat gawang sendiri', near && near.point.x < holderNear.x ? [] : ['tidak ada penutup']);
+    check('penutup tidak aktif jauh dari gawang', pickCover(defenders, holderFar, true, { range: 26, chaserId: null, previousId: null, attackers: [holderFar] }) === null ? [] : ['aktif']);
+    check('penutup tidak aktif saat kalah jumlah di sekitar bola', pickCover(defenders.slice(0, 2), holderNear, true, { range: 26, chaserId: null, previousId: null, attackers: lone }) === null ? [] : ['aktif']);
+    check('hanya bertahan yang menutup tembakan', MENTALITIES.bertahan.coverRange > 0 && MENTALITIES.seimbang.coverRange === 0 && MENTALITIES.menyerang.coverRange === 0 ? [] : ['salah']);
+  }
   const teams = createDemoTeams(2026, {});
   const st = createMatchState(teams.home, teams.away);
   const cm = st.players.find((p) => p.role === 'CM' && p.teamId === teams.home.id);

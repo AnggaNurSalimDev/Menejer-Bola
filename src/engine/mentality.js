@@ -18,13 +18,15 @@ export const MENTALITIES = Object.freeze({
     label: 'Bertahan',
     blockShift: -3, // meter: blok mundur ke arah gawang sendiri (saat lawan memegang bola)
     compact: 0.78, // pengali lebar saat bertahan (rapat di tengah)
-    pressZone: 0.75, // hanya menekan bila pemegang bola ≤ bagian lapangan ini dari gawang sendiri
-    runScale: 0.35, // pengali peluang mulai berlari ke belakang garis bek
-    // Saat memegang bola: main langsung untuk serangan balik, tidak memutar bola di belakang
-    // (uji 29 Okt: tanpa ini tim 10 orang justru MENGUASAI bola 54% — memutar bola di separuh sendiri).
-    directness: 1.25, // pengali bobot "operan ke depan"
-    tempo: 0.95, // pengali lama menahan bola
+    pressZone: 1, // pengali zona tekan (1 = menekan di mana saja)
+    // Uji pemisahan 29 Okt (100 laga): bentuk saja → kebobolan 0,70 (kontrol 0,98); bentuk + main
+    // langsung + jarang berlari → 1,05. Tim yang mundur lalu buru-buru melepas bola terus diserang
+    // lagi. Jadi "bertahan" = BENTUK (mundur, rapat, menutup tembakan dari jauh), cara main normal.
+    runScale: 1,
+    directness: 1,
+    tempo: 1,
     energyDrain: 0.92, // lebih sedikit berlari
+    coverRange: 36, // meter dari gawang sendiri: mulai menutup jalur tembak (roles.js pickCover)
   }),
   seimbang: Object.freeze({
     label: 'Seimbang',
@@ -35,6 +37,7 @@ export const MENTALITIES = Object.freeze({
     directness: 1,
     tempo: 1,
     energyDrain: 1,
+    coverRange: 0, // tanpa penutup tembakan (kalibrasi 29 Okt: semua tim menutup → 0–0 16%)
   }),
   menyerang: Object.freeze({
     label: 'Menyerang',
@@ -48,6 +51,7 @@ export const MENTALITIES = Object.freeze({
     directness: 1.15,
     tempo: 0.95,
     energyDrain: 1.2,
+    coverRange: 0,
   }),
 });
 

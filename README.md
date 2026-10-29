@@ -29,7 +29,8 @@ Proyek ini dibuat untuk senang-senang.
 - Tekel lebih terasa (29 Okt): luncuran, kilatan di titik kontak, penekan terhuyung, korban pelanggaran rebah.
 - Skuad & pergantian pemain + dua tab (8a, 29 Okt): tab **Tim** (susunan, tenaga, kartu, 7 cadangan, antrian pergantian) dan tab **Pertandingan**; keduanya tetap berjalan. Pergantian diantrikan: babak 1 → dijalankan saat babak 2 dimulai, babak 2 → pada bola mati berikutnya. Maksimal 5. Tim lawan diganti AI pelatih.
 - Taktik di tab Tim (8b, 29 Okt): formasi (4-4-2, 4-3-3, 4-2-3-1, 4-5-1, 3-5-2), mentalitas (otomatis/bertahan/seimbang/menyerang), tempo, umpan silang — berlaku seketika. Filosofi tetap (identitas tim).
-- Berikutnya: pertahanan yang kuat tanpa menekan (penekan kedua, menutup tembakan) supaya "bertahan" benar-benar bertahan, skema bola mati, lalu liga.
+- Penutup tembakan (29 Okt): saat Bertahan dan tidak kalah jumlah di sekitar bola, satu bek menutup jalur tembak di dekat kotak. Catatan: "Bertahan" kini mengurangi gol sendiri tetapi belum mengurangi kebobolan (lihat dokumen arah 8c).
+- Berikutnya: skema bola mati, lalu liga.
 
 Tip: tambahkan `?seed=13` di alamat (misalnya `http://localhost:5173/?seed=13`) untuk memutar ulang pertandingan tertentu.
 

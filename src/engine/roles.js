@@ -94,3 +94,38 @@ export function pickPresser(teamPlayers, holder, attacksRight, previousId) {
     .map((player) => ({ player, point, time: reachTime(player, point) }));
   return pickWithHysteresis(candidates, previousId);
 }
+
+// ---- Penutup tembakan (29 Okt, opsi B: pertahanan yang kuat tanpa menekan) ----------------
+// Saat pemegang bola lawan dekat gawang sendiri DAN tim tidak kalah jumlah di sekitar bola,
+// satu bek (selain penekan) berdiri di jalur tembak antara pemegang bola dan gawang.
+// Pertahanan rapat (lebih banyak orang di dekat bola) jadi benar-benar menutup peluang.
+export const COVER = Object.freeze({
+  gap: 2.6, // meter dari pemegang bola, di garis ke tengah gawang
+  zone: 18, // meter: radius hitung jumlah pemain di sekitar bola
+});
+
+export function coverPoint(holder, attacksRight) {
+  const ownGoal = { x: attacksRight ? 0 : PITCH.length, y: PITCH.width / 2 };
+  const d = distance(holder, ownGoal);
+  if (!(d > 0)) return clampToPitch(holder);
+  const gap = Math.min(COVER.gap, d * 0.5);
+  return clampToPitch({ x: holder.x + ((ownGoal.x - holder.x) / d) * gap, y: holder.y + ((ownGoal.y - holder.y) / d) * gap });
+}
+
+// Jumlah: bek (bukan kiper) vs penyerang (termasuk pemegang bola) di sekitar bola.
+export function outnumberedAt(holder, defenders, attackers) {
+  const near = (list) => list.filter((p) => p.role !== 'GK' && distance(p, holder) <= COVER.zone).length;
+  return near(defenders) < near(attackers);
+}
+
+// Pilih penutup: bek tercepat ke titik tutup, bukan penekan & bukan kiper. null bila tidak perlu.
+export function pickCover(teamPlayers, holder, attacksRight, { range, chaserId, previousId, attackers }) {
+  const ownGoal = { x: attacksRight ? 0 : PITCH.length, y: PITCH.width / 2 };
+  if (!(range > 0) || distance(holder, ownGoal) > range) return null;
+  if (outnumberedAt(holder, teamPlayers, attackers)) return null;
+  const point = coverPoint(holder, attacksRight);
+  const candidates = teamPlayers
+    .filter((p) => p.role !== 'GK' && p.id !== chaserId)
+    .map((player) => ({ player, point, time: reachTime(player, point) }));
+  return pickWithHysteresis(candidates, previousId);
+}

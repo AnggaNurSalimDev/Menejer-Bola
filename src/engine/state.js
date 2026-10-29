@@ -81,7 +81,7 @@ function placeTeam(team, attacksRight) {
   });
 }
 
-export const TASKS = Object.freeze(['shape', 'hold', 'chase', 'receive', 'press', 'run']);
+export const TASKS = Object.freeze(['shape', 'hold', 'chase', 'receive', 'press', 'run', 'cover']);
 
 // Bola punya empat keadaan:
 //   dikuasai     : ownerId terisi, bola menempel di kaki pemegangnya
@@ -175,7 +175,7 @@ function createStats(teamIds) {
 }
 
 export function emptyTeamRoles() {
-  return { chaserId: null, runnerId: null, runTarget: null, runTicks: 0 };
+  return { chaserId: null, coverId: null, runnerId: null, runTarget: null, runTicks: 0 };
 }
 
 // Setelah gol dan di awal babak, permainan jeda: pemain kembali ke posisi kick-off.
@@ -416,6 +416,10 @@ export function validateMatchState(state, teams = []) {
     if (busy.length > 1) errors.push(`tim ${teamId}: ${busy.length} pemain menjemput bola sekaligus`);
     const chaserId = state.teams[teamId].chaserId;
     if ((busy[0]?.id ?? null) !== chaserId) errors.push(`tim ${teamId}: chaserId tidak cocok dengan tugas pemain`);
+    const covers = state.players.filter((p) => p.teamId === teamId && p.task === 'cover');
+    if (covers.length > 1) errors.push(`tim ${teamId}: ${covers.length} penutup tembakan sekaligus`);
+    if ((covers[0]?.id ?? null) !== (state.teams[teamId].coverId ?? null)) errors.push(`tim ${teamId}: coverId tidak cocok dengan tugas pemain`);
+    if (covers[0] && covers[0].id === chaserId) errors.push(`tim ${teamId}: penutup sekaligus penekan`);
   }
 
   // Statistik harus konsisten dengan waktu dan dengan dirinya sendiri.
