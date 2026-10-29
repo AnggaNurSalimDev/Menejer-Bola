@@ -184,21 +184,27 @@ export function calmDown(discipline, dt) {
 //                beberapa rekan dari kedua tim berkumpul; pemicu bisa dikartu kuning;
 //                semua yang terlibat jadi lebih panas (efek beberapa menit).
 export const INCIDENT = Object.freeze({
-  // Lama jeda (tick) di atas waktu persiapan bola mati.
-  baseTicks: 12, // wasit meniup & menunjuk
-  cardTicks: 14, // wasit mendatangi pelaku & menunjukkan kartu
-  protestTicks: 18,
-  scuffleTicks: 30,
-  // Protes: hanya pemain dalam radius ini dari wasit atau dari kejadian.
-  protestRadius: 18,
-  protestBase: 0.12,
-  protestCardBoost: 1.8, // protes lebih sering bila rekan dikartu / penalti
-  maxProtesters: 2,
+  // Lama drama (tick) SETELAH semua yang terlibat sampai di tempatnya (masukan 29 Okt:
+  // drama terlalu singkat untuk dinikmati). Menunggu kedatangan paling lama arrivalCap.
+  baseTicks: 15, // wasit meniup & menunjuk
+  cardTicks: 20, // wasit menunjukkan kartu
+  protestTicks: 35,
+  scuffleTicks: 55,
+  maxHoldTicks: 130,
+  arrivalCap: 50,
+  // Protes: rekan pelaku di dekat wasit/kejadian mengerubungi wasit; lawan ikut berdebat.
+  protestRadius: 20,
+  protestBase: 0.2,
+  protestCardBoost: 1.8, // protes lebih sering bila dikartu / penalti
+  maxProtesters: 3,
+  arguerChance: 0.35, // per pemain tim lawan (× urge × 3), bila ada yang protes
+  maxArguers: 2,
+  // Wasit paling banyak mengartu SATU pemrotes (yang paling keras).
   dissentYellow: Object.freeze({ low: 0.04, high: 0.18 }), // menurut Ketegasan wasit
   // Pertikaian: setelah pelanggaran keras (kartu atau dari belakang).
   scuffleBase: 0.1,
-  scuffleJoinRadius: 14,
-  scuffleMaxJoin: 2, // per tim, selain korban & pelaku
+  scuffleJoinRadius: 18,
+  scuffleMaxJoin: 3, // per tim, selain korban & pelaku
   scuffleInstigatorYellow: Object.freeze({ low: 0.2, high: 0.55 }),
   scuffleOffenderYellow: Object.freeze({ low: 0.05, high: 0.25 }),
   scuffleAgitation: 0.35,
@@ -206,6 +212,7 @@ export const INCIDENT = Object.freeze({
 });
 
 const t01 = (v) => normalizeStat(v);
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 // Kecenderungan protes satu pemain (0–1), sebelum dikali peluang dasar.
 export function protestUrge(player) {
@@ -220,48 +227,50 @@ export function scuffleUrge(fouled) {
 
 // Putuskan insiden setelah peluit. Murni: hanya memakai rng & data masuk.
 //   ctx: { kind: 'foul' | 'offside', offender, fouled, card, hard, penalty, spot, referee, players }
-// Mengembalikan { protesters: [id], dissent: [id], scuffle: { ids, instigatorId, booked: [id] } | null, ticks }.
+// Mengembalikan { protesters, arguers, dissent, scuffle: { ids, instigatorId, booked } | null, ticks }.
 export function resolveIncident(rng, ctx) {
   const { kind, offender, fouled, card, hard, penalty, spot, referee, players } = ctx;
   const strict = t01(referee.skills.ketegasan);
   const lerpRow = (row) => row.low + (row.high - row.low) * strict;
   let ticks = INCIDENT.baseTicks + (card ? INCIDENT.cardTicks : 0);
+  const close = (p) => p.role !== 'GK' && (dist(p, spot) <= INCIDENT.protestRadius || dist(p, referee) <= INCIDENT.protestRadius);
 
   // Protes oleh tim yang dihukum (pelaku termasuk). Offside: tim yang terkena offside.
   const protesters = [];
-  const dissent = [];
   const boost = card || penalty ? INCIDENT.protestCardBoost : 1;
   const nearby = players
-    .filter(
-      (p) =>
-        p.teamId === offender.teamId &&
-        p.role !== 'GK' &&
-        (Math.hypot(p.x - spot.x, p.y - spot.y) <= INCIDENT.protestRadius ||
-          Math.hypot(p.x - referee.x, p.y - referee.y) <= INCIDENT.protestRadius),
-    )
+    .filter((p) => p.teamId === offender.teamId && close(p))
     .sort((a, b) => protestUrge(b) - protestUrge(a) || a.id.localeCompare(b.id));
   for (const p of nearby) {
     if (protesters.length >= INCIDENT.maxProtesters) break;
-    if (rng.chance(Math.min(0.9, INCIDENT.protestBase * boost * protestUrge(p) * 3))) {
-      protesters.push(p.id);
-      if (rng.chance(lerpRow(INCIDENT.dissentYellow) * (0.5 + protestUrge(p)))) dissent.push(p.id);
+    if (rng.chance(Math.min(0.9, INCIDENT.protestBase * boost * protestUrge(p) * 3))) protesters.push(p.id);
+  }
+  // Lawan ikut berdebat membela keputusan (hanya bila ada yang protes).
+  const arguers = [];
+  if (protesters.length > 0) {
+    const others = players
+      .filter((p) => p.teamId !== offender.teamId && close(p))
+      .sort((a, b) => protestUrge(b) - protestUrge(a) || a.id.localeCompare(b.id));
+    for (const p of others) {
+      if (arguers.length >= INCIDENT.maxArguers) break;
+      if (rng.chance(Math.min(0.9, INCIDENT.arguerChance * protestUrge(p) * 3))) arguers.push(p.id);
     }
   }
-  if (protesters.length > 0) ticks += INCIDENT.protestTicks;
+  // Kartu protes: paling banyak satu, untuk pemrotes paling keras.
+  const dissent = [];
+  if (protesters.length > 0) {
+    const loudest = players.find((p) => p.id === protesters[0]);
+    if (rng.chance(lerpRow(INCIDENT.dissentYellow) * (0.5 + protestUrge(loudest)))) dissent.push(loudest.id);
+    ticks += INCIDENT.protestTicks;
+  }
 
   // Pertikaian: hanya setelah pelanggaran keras.
   let scuffle = null;
   if (kind === 'foul' && hard && fouled && rng.chance(Math.min(0.8, INCIDENT.scuffleBase * scuffleUrge(fouled) * 2.5))) {
     const joiners = (teamId, exclude) =>
       players
-        .filter(
-          (p) =>
-            p.teamId === teamId &&
-            p.role !== 'GK' &&
-            !exclude.includes(p.id) &&
-            Math.hypot(p.x - spot.x, p.y - spot.y) <= INCIDENT.scuffleJoinRadius,
-        )
-        .sort((a, b) => Math.hypot(a.x - spot.x, a.y - spot.y) - Math.hypot(b.x - spot.x, b.y - spot.y) || a.id.localeCompare(b.id))
+        .filter((p) => p.teamId === teamId && p.role !== 'GK' && !exclude.includes(p.id) && dist(p, spot) <= INCIDENT.scuffleJoinRadius)
+        .sort((a, b) => dist(a, spot) - dist(b, spot) || a.id.localeCompare(b.id))
         .slice(0, INCIDENT.scuffleMaxJoin)
         .map((p) => p.id);
     const core = [fouled.id, offender.id];
@@ -272,5 +281,15 @@ export function resolveIncident(rng, ctx) {
     scuffle = { ids, instigatorId: fouled.id, booked };
     ticks += INCIDENT.scuffleTicks;
   }
-  return { protesters, dissent, scuffle, ticks };
+  // Pemain pertikaian tidak sekaligus jadi pemrotes/pendebat.
+  const inScuffle = new Set(scuffle?.ids ?? []);
+  const keep = (ids) => ids.filter((id) => !inScuffle.has(id));
+  const finalProtesters = keep(protesters);
+  return {
+    protesters: finalProtesters,
+    arguers: keep(arguers),
+    dissent: dissent.filter((id) => finalProtesters.includes(id)),
+    scuffle,
+    ticks: Math.min(INCIDENT.maxHoldTicks, ticks),
+  };
 }

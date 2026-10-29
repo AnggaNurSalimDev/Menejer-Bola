@@ -23,7 +23,8 @@ Proyek ini dibuat untuk senang-senang.
 - Pelanggaran & kartu kuning (tahap 7b-1, 29 Okt): tekel bisa jadi pelanggaran (stat baru **Kecerobohan**, emosi/Temperamen, dari belakang, lelah), wasit bisa tidak melihat dan memberi keuntungan, tendangan bebas dengan pagar betis (ditembak langsung atau dilambungkan), kartu kuning, pemain berkartu lebih berhati-hati.
 - Penalti (29 Okt): pelanggaran di kotak penalti = penalti. Jam berhenti, penendang di titik penalti, kiper di garis gawang, pemain lain di tepi luar kotak; kiper menebak arah dan bisa salah. ~74% masuk. Tendangan bebas: bek tidak lagi menumpuk di garis gawang.
 - Jeda setelah peluit (7b-2, 29 Okt): pelanggaran, penalti, dan offside menghentikan permainan — wasit mendatangi kejadian, kartu, **protes** (bisa berbuah kuning) dan **pertikaian** antarpemain (pemain yang terlibat jadi lebih emosional), lalu persiapan bola mati dan peluit.
-- Berikutnya: 7c (kartu merah, tim bermain dengan 10 orang), lalu layer manager.
+- Bola mati tidak terburu-buru (29 Okt): drama protes & pertikaian menunggu pemain berkumpul dan berlangsung lebih lama, lebih banyak pemain ikut; lemparan, sepak pojok, dan tendangan gawang juga punya jeda. Tulisan peluit dipindah ke luar lapangan.
+- Berikutnya: 7c (kartu merah, tim bermain dengan 10 orang), lalu layer manager (termasuk skema bola mati).
 
 Tip: tambahkan `?seed=13` di alamat (misalnya `http://localhost:5173/?seed=13`) untuk memutar ulang pertandingan tertentu.
 

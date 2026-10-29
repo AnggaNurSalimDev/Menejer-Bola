@@ -403,6 +403,30 @@ console.log('Jeda setelah pelanggaran: protes & pertikaian (tahap 7b-2)');
   check(`protes & pertikaian: panas ${h.protests}/${h.scuffles} vs tenang ${c.protests}/${c.scuffles}; kuning protes tegas ${strict.dissent} vs lunak ${lenient.dissent}`, e);
 }
 
+console.log('Jeda bola keluar (lemparan, pojok, tendangan gawang)');
+{
+  const e = [];
+  const sim = createSimulation(createDemoTeams(2026).home, createDemoTeams(2026).away, 11);
+  let s = sim.getState();
+  let prev = s;
+  let restarts = 0;
+  const kinds = new Set();
+  while (s.period === 'first') {
+    s = sim.step();
+    if (prev.pauseReason === 'restart' && s.pauseReason === null) {
+      restarts += 1;
+      kinds.add(prev.ball.restartKind);
+      const taker = s.players.find((p) => p.id === prev.incident.takerId);
+      if (!taker || Math.hypot(taker.x - s.ball.x, taker.y - s.ball.y) > 1.5) e.push(`eksekutor ${prev.ball.restartKind} tidak di bola saat jeda selesai`);
+      if (prev.ball.restartKind === 'goalKick' && taker?.role !== 'GK') e.push('tendangan gawang bukan oleh kiper');
+    }
+    if (prev.pauseReason === 'restart' && s.periodTick !== prev.periodTick) e.push('jam berjalan saat jeda bola keluar');
+    prev = s;
+  }
+  if (restarts === 0) e.push('tidak ada bola keluar di babak 1');
+  check(`jeda bola keluar: ${restarts} kali (${[...kinds].join(', ')}), eksekutor di bola, jam berhenti`, e.slice(0, 5));
+}
+
 console.log('Bola udara (umpan silang & sundulan)');
 {
   // Lambungan tiba setinggi kepala di titik bidikan.

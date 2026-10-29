@@ -344,12 +344,13 @@ function drawFlag(ctx, cx, cy, w, raised) {
 // pertikaian, tanda "!" di atas pemain yang protes.
 function drawIncident(ctx, vp, state) {
   const incident = state.incident;
-  if (!incident || state.pauseElapsed >= incident.ticks) return;
+  if (!incident || incident.holdLeft <= 0) return;
   if (incident.scuffle) {
     ctx.save();
     ctx.setLineDash([vp.px(0.8), vp.px(0.6)]);
     ctx.beginPath();
-    ctx.arc(vp.toX(incident.spot.x), vp.toY(incident.spot.y), vp.px(3.2), 0, Math.PI * 2);
+    const r = Math.max(1.6, incident.scuffle.ids.length * 0.45) + 1.8; // sama dengan scuffleRadius di engine + ruang
+    ctx.arc(vp.toX(incident.spot.x), vp.toY(incident.spot.y), vp.px(r), 0, Math.PI * 2);
     ctx.lineWidth = Math.max(1.5, vp.px(0.25));
     ctx.strokeStyle = '#ff4d4d';
     ctx.stroke();

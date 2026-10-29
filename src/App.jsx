@@ -110,6 +110,7 @@ export default function App() {
         const w = state.whistle;
         const incident = state.incident;
         const showingIncident = incident !== null && (state.pauseReason === 'foul' || state.pauseReason === 'penalty');
+        // (insiden 'restart' — lemparan/pojok/tendangan gawang — tidak menampilkan tulisan)
         const showing = showingIncident || (w !== null && state.tick - w.tick < WHISTLE_SHOW_TICKS);
         whistleEl.hidden = !showing;
         if (showing) {
@@ -117,21 +118,14 @@ export default function App() {
           const cardIcon = (c) => (c === 'yellow' ? ' 🟨' : c === 'secondYellow' ? ' 🟨🟨' : '');
           let text;
           if (showingIncident) {
-            const lines = [];
-            if (incident.kind === 'offside') lines.push(`🚩 Offside — ${name(incident.offenderId)}`);
-            else lines.push(`PRIIIT! ${incident.penalty ? 'PENALTI' : 'Pelanggaran'} — ${name(incident.offenderId)}${cardIcon(incident.card)}`);
-            if (incident.scuffle) {
-              const booked = incident.cards.filter((c) => c.reason === 'scuffle');
-              lines.push(
-                `Pertikaian! ${name(incident.fouledId)} vs ${name(incident.offenderId)}` +
-                  booked.map((c) => ` · ${name(c.id)}${cardIcon(c.card)}`).join(''),
-              );
-            }
-            if (incident.protesters.length > 0) {
-              const dissent = new Map(incident.cards.filter((c) => c.reason === 'protest').map((c) => [c.id, c.card]));
-              lines.push(`Protes: ${incident.protesters.map((id) => `${name(id)}${cardIcon(dissent.get(id))}`).join(', ')}`);
-            }
-            text = lines.join('\n');
+            // Hanya satu baris singkat di LUAR lapangan (masukan 29 Okt: tulisan besar menutupi drama).
+            const cardIcon2 = cardIcon(incident.card);
+            text =
+              incident.kind === 'offside'
+                ? `🚩 Offside — ${name(incident.offenderId)}`
+                : incident.kind === 'restart'
+                  ? ''
+                  : `PRIIIT! ${incident.penalty ? 'PENALTI' : 'Pelanggaran'} — ${name(incident.offenderId)}${cardIcon2}`;
           } else {
             const offender = name(w.playerId);
             const card = cardIcon(w.card);
@@ -148,7 +142,8 @@ export default function App() {
                         ? `Keuntungan! Pelanggaran ${offender}${card}`
                         : 'PRIIIT! Kick-off';
           }
-          set(whistleEl, text);
+          whistleEl.hidden = !text;
+          set(whistleEl, text || '');
         }
       }
 
@@ -202,9 +197,9 @@ export default function App() {
         <TeamLabel team={away} align="left" />
       </header>
 
+      <div ref={whistleRef} className="whistle-banner" hidden aria-live="polite" />
       <div className="pitch-wrap">
         <MatchView simulation={simulation} running={running} speed={speed} onTick={handleTick} />
-        <div ref={whistleRef} className="whistle-banner" hidden aria-live="polite" />
         <div ref={goalBannerRef} className="goal-banner" hidden aria-live="polite">
           <span className="goal-banner__title">GOL!</span>
           <span className="goal-banner__detail" />

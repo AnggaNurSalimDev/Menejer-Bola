@@ -180,7 +180,9 @@ export function setPiecePause(reason, waitTicks, incident = null) {
   if (!PAUSE_REASONS.includes(reason)) throw new RangeError(`setPiecePause: alasan tidak dikenal "${reason}"`);
   if (!Number.isInteger(waitTicks) || waitTicks < 1) throw new RangeError(`setPiecePause: waitTicks tidak valid ${waitTicks}`);
   if (incident && !(incident.ticks >= 0 && incident.ticks <= MAX_INCIDENT_TICKS)) throw new RangeError('setPiecePause: lama insiden tidak valid');
-  return { pauseTicks: waitTicks, pauseReason: reason, pauseElapsed: 0, incident };
+  // holdLeft: sisa tick drama (mulai berkurang setelah yang terlibat sampai); waited: tick menunggu kedatangan.
+  const prepared = incident ? { holdLeft: incident.ticks, waited: 0, arguers: [], ...incident } : null;
+  return { pauseTicks: waitTicks, pauseReason: reason, pauseElapsed: 0, incident: prepared };
 }
 
 export function createMatchState(home, away) {
@@ -328,14 +330,18 @@ export function validateMatchState(state, teams = []) {
   if (state.pauseTicks === 0 && state.pauseElapsed !== 0) errors.push('pauseElapsed tersisa di luar jeda');
   if (state.pauseReason === 'goal' && state.lastGoal === null) errors.push('jeda gol tanpa catatan gol');
   if (state.incident) {
-    if (state.pauseReason !== 'foul' && state.pauseReason !== 'penalty') errors.push('insiden di luar jeda pelanggaran/penalti');
-    const ids = [...state.incident.protesters, ...(state.incident.scuffle?.ids ?? [])];
+    if (!['foul', 'penalty', 'restart'].includes(state.pauseReason)) errors.push('insiden di luar jeda bola mati');
+    const ids = [...state.incident.protesters, ...state.incident.arguers, ...(state.incident.scuffle?.ids ?? [])];
+    if (state.incident.takerId && !byId.get(state.incident.takerId)) errors.push('eksekutor bola mati tidak ada');
+    if (!(state.incident.holdLeft >= 0 && state.incident.holdLeft <= state.incident.ticks)) errors.push('sisa drama insiden tidak valid');
     for (const id of ids) if (!byId.get(id)) errors.push(`insiden: pemain "${id}" tidak ada`);
     for (const id of state.incident.dissent) if (!state.incident.protesters.includes(id)) errors.push('kartu protes untuk pemain yang tidak protes');
   }
   if (state.pauseTicks > 0) {
     if (ball.restartTeamId === null) errors.push('jeda gol tanpa tim kick-off');
-    if (state.pauseReason === 'foul') {
+    if (state.pauseReason === 'restart') {
+      if (!['throwIn', 'goalKick', 'corner'].includes(ball.restartKind)) errors.push('jeda bola mati tanpa lemparan/pojok/tendangan gawang');
+    } else if (state.pauseReason === 'foul') {
       if (ball.restartKind !== 'freeKick') errors.push('jeda pelanggaran tanpa bola mati tendangan bebas');
     } else if (state.pauseReason === 'penalty') {
       const spotX = (attacksRight) => (attacksRight ? PITCH.length - PITCH.penaltySpotDistance : PITCH.penaltySpotDistance);
