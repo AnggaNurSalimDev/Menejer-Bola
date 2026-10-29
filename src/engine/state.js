@@ -2,6 +2,7 @@
 // Engine tidak tahu apa-apa soal canvas atau piksel.
 
 import { validateSentOff, SENDOFF } from './sendoff.js';
+import { validateMentality } from './mentality.js';
 import { PITCH, isInsidePitch } from './pitch.js';
 import { getFormation } from './formations.js';
 import { validateStats } from './stats.js';
@@ -201,8 +202,8 @@ export function createMatchState(home, away) {
       // chaserId: pemain yang sedang menjemput/menekan bola untuk tim ini.
       // runnerId/runTarget/runTicks: penyerang yang sedang berlari ke belakang garis bek.
       // philosophy: kunci filosofi pelatih (philosophy.js).
-      [home.id]: { id: home.id, name: home.name, colors: home.colors, philosophy: home.philosophy ?? 'seimbang', attacksRight: true, ...emptyTeamRoles() },
-      [away.id]: { id: away.id, name: away.name, colors: away.colors, philosophy: away.philosophy ?? 'seimbang', attacksRight: false, ...emptyTeamRoles() },
+      [home.id]: { id: home.id, name: home.name, colors: home.colors, philosophy: home.philosophy ?? 'seimbang', baseMentality: home.mentality ?? 'seimbang', mentality: home.mentality ?? 'seimbang', attacksRight: true, ...emptyTeamRoles() },
+      [away.id]: { id: away.id, name: away.name, colors: away.colors, philosophy: away.philosophy ?? 'seimbang', baseMentality: away.mentality ?? 'seimbang', mentality: away.mentality ?? 'seimbang', attacksRight: false, ...emptyTeamRoles() },
     },
     ball: createInitialBall(home.id),
     players: [...placeTeam(home, true), ...placeTeam(away, false)],
@@ -419,6 +420,10 @@ export function validateMatchState(state, teams = []) {
     if (team.runnerId !== null && (!team.runTarget || !isInsidePitch(team.runTarget.x, team.runTarget.y))) {
       errors.push(`tim ${teamId}: target lari tidak valid`);
     }
+  }
+  for (const team of Object.values(state.teams)) {
+    for (const e of validateMentality(team.mentality)) errors.push(`tim ${team.id}: ${e}`);
+    for (const e of validateMentality(team.baseMentality)) errors.push(`tim ${team.id}: dasar ${e}`);
   }
   for (const p of state.players) {
     if (!Number.isInteger(p.runCooldown) || p.runCooldown < 0) errors.push(`pemain ${p.id}: runCooldown tidak valid`);

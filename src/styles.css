@@ -384,3 +384,12 @@ body {
   font-size: 0.85rem;
   margin-left: auto;
 }
+
+.team-mentality {
+  font-size: 0.72rem;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #e03131;
+  color: #fff;
+  white-space: nowrap;
+}

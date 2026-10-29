@@ -25,7 +25,8 @@ Proyek ini dibuat untuk senang-senang.
 - Jeda setelah peluit (7b-2, 29 Okt): pelanggaran, penalti, dan offside menghentikan permainan — wasit mendatangi kejadian, kartu, **protes** (bisa berbuah kuning) dan **pertikaian** antarpemain (pemain yang terlibat jadi lebih emosional), lalu persiapan bola mati dan peluit.
 - Bola mati tidak terburu-buru (29 Okt): drama protes & pertikaian menunggu pemain berkumpul dan berlangsung lebih lama, lebih banyak pemain ikut; lemparan, sepak pojok, dan tendangan gawang juga punya jeda. Tulisan peluit dipindah ke luar lapangan.
 - Kartu merah & 10 orang (tahap 7c, 29 Okt): kuning kedua, merah langsung (menggagalkan peluang gol, tekel sangat keras, kekerasan saat pertikaian), pemain berjalan keluar lapangan, bentuk tim ditambal (penyerang dikorbankan), kiper darurat bila kiper dikartu merah. Pertikaian kini hidup: tiap pemain punya gaya sendiri (menyeruduk, mendorong balik, melerai, menarik rekan, mondar-mandir).
-- Berikutnya: layer manager (skuad, taktik, skema bola mati).
+- Mentalitas tim (29 Okt): bertahan / seimbang / menyerang. AI pelatih membuat tim yang tinggal 10 orang otomatis bertahan (blok mundur, tidak menekan tinggi, main langsung). Setelah protes, pemain diam sejenak lalu bubar bertahap; bola bisa dimainkan sebelum semua kembali.
+- Berikutnya: layer manager (skuad & pergantian pemain, taktik di jeda babak, skema bola mati).
 
 Tip: tambahkan `?seed=13` di alamat (misalnya `http://localhost:5173/?seed=13`) untuk memutar ulang pertandingan tertentu.
 
@@ -57,6 +58,7 @@ npm run build    # build produksi
   - `fouls.js` — pelanggaran, kartu kuning, keuntungan, emosi pemain (tabel FOUL, CARD)
   - `officials.js` — wasit & hakim garis: gerak, penilaian offside yang bisa salah
   - `scuffle.js` — koreografi pertikaian & protes (gaya gerak tiap pemain)
+  - `mentality.js` — mentalitas tim & AI pelatih (bertahan saat kalah jumlah)
   - `sendoff.js` — kartu merah: pemain keluar, bentuk tim 10 orang, kiper darurat
   - `aerial.js` — bola udara: lambungan, titik jatuh, duel udara, sundulan (tabel AERIAL, CROSS, HEADER)
   - `shape.js` — posisi jangkar formasi per fase (menyerang/bertahan/netral)

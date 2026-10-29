@@ -34,7 +34,7 @@ import {
   KICKOFF_WAIT_TICKS,
   MAX_INCIDENT_TICKS,
 } from './constants.js';
-import { blunder } from './skill.js';
+import { blunder, normalizeStat } from './skill.js';
 import { getPhilosophy } from './philosophy.js';
 import {
   PITCH,
@@ -128,6 +128,8 @@ import {
   RUN_COOLDOWN_TICKS,
   RUN_START_CHANCE,
 } from './attack.js';
+import { hash01 } from './scuffle.js';
+import { coachMentality, getMentality, pressAllowed } from './mentality.js';
 import { scuffleTargets, scuffleRefereeSpot, protestTarget, assignScuffleStyles, SCUFFLE_MOVE, PROTEST_MOVE } from './scuffle.js';
 
 // Pemegang bola
@@ -480,6 +482,7 @@ function decideHolder(holder, ball, players, rng, match) {
     rng,
     misjudgeScale: blunderScale(holder, context),
     progressScale: progressWeightScale(holder),
+    directness: getMentality(match.mentalities?.[holder.teamId] ?? 'seimbang').directness,
   });
   const best = options[0] ?? null;
   // Tidak ada operan aman: umpan silang jadi jalan keluar sebelum dipaksa mengoper.
@@ -967,6 +970,49 @@ export function incidentProgress(incident) {
   return Math.min(1, Math.max(0, 1 - incident.holdLeft / incident.ticks));
 }
 
+// ---- Setelah drama (masukan 29 Okt): pemrotes diam dulu, lalu bubar bertahap ----
+export const AFTER_INCIDENT = Object.freeze({
+  lingerMin: 8, // tick: diam di tempat terakhir setelah drama selesai
+  lingerRange: 17, // + hingga 1,7 dtk (Temperamen, emosi, irama pribadi)
+  walkScale: 0.45, // berjalan pelan ke posisinya, tidak berlari
+  supportCount: 2, // rekan eksekutor terdekat mendekati bola
+  supportDistance: Object.freeze({ lateral: 8, back: 10 }),
+});
+
+// Lama seorang pemrotes/peserta pertikaian diam setelah drama (tick).
+export function lingerTicks(player) {
+  const h = hash01(player.id);
+  const temper = normalizeStat(player.skills.temperamen);
+  const heat = Math.min(1, 0.6 * temper + (player.discipline?.agitation ?? 0));
+  return AFTER_INCIDENT.lingerMin + Math.round(AFTER_INCIDENT.lingerRange * (0.4 * h + 0.6 * heat));
+}
+
+// Tujuan pemain setelah drama di jeda tendangan bebas: dua rekan terdekat eksekutor
+// mendekati bola (opsi operan pendek), rekan lain berjalan ke bentuk menyerang, lawan ke
+// bentuk bertahan tetapi ≥ 9,15 m dari bola. Map id → titik. Pagar betis & eksekutor tidak diatur di sini.
+export function freeKickSettleTargets(players, ball, takerId, teams) {
+  const kickTeamId = ball.restartTeamId;
+  const ar = teams[kickTeamId].attacksRight;
+  const targets = new Map();
+  const mates = players
+    .filter((p) => p.teamId === kickTeamId && p.id !== takerId && p.role !== 'GK')
+    .sort((a, b) => distance(a, ball) - distance(b, ball) || a.id.localeCompare(b.id));
+  const forward = ar ? 1 : -1;
+  const supportSpots = [
+    // menyamping (sisi yang lebih lapang), lalu sedikit di belakang bola
+    { x: ball.x, y: ball.y + (ball.y < PITCH.width / 2 ? 1 : -1) * AFTER_INCIDENT.supportDistance.lateral },
+    { x: ball.x - forward * AFTER_INCIDENT.supportDistance.back * 0.8, y: ball.y + (ball.y < PITCH.width / 2 ? -1 : 1) * 4 },
+  ];
+  mates.slice(0, AFTER_INCIDENT.supportCount).forEach((p, i) => targets.set(p.id, clampToPitch(supportSpots[i], 1)));
+  for (const p of players) {
+    if (targets.has(p.id) || p.id === takerId) continue;
+    if (p.teamId === kickTeamId) targets.set(p.id, clampToPitch(computeAnchor(p, ball, ar, 'attack'), 0.5));
+    else if (p.role === 'GK') targets.set(p.id, clampToPitch(computeAnchor(p, ball, !ar, 'defend'), 0.5));
+    else targets.set(p.id, pushAway(clampToPitch(computeAnchor(p, ball, !ar, 'defend'), 0.5), ball, FREE_KICK.distance + 0.5));
+  }
+  return targets;
+}
+
 // ---- Jeda bola keluar (29 Okt): lemparan, tendangan gawang, sepak pojok -----
 export const RESTART_PAUSE = Object.freeze({
   waitTicks: Object.freeze({ throwIn: 8, goalKick: 15, corner: 20 }), // setelah eksekutor siap
@@ -1145,7 +1191,7 @@ export function createSimulation(home, away, seed, options = {}) {
       return undefined;
     }
 
-    if (!inPossession || !rng.chance(RUN_START_CHANCE)) return undefined;
+    if (!inPossession || !rng.chance(RUN_START_CHANCE * getMentality(team.mentality).runScale)) return undefined;
     const pick = pickRunner({
       teammates: players.filter((p) => p.teamId === team.id),
       holder: owner,
@@ -1175,10 +1221,31 @@ export function createSimulation(home, away, seed, options = {}) {
     else targets = kickoffTargets(prev.players, prev.ball.restartTeamId);
     // Fase insiden: yang terlibat mendatangi wasit / berkumpul; yang lain sudah mulai bersiap.
     const involved = inIncident ? incidentTargets(incident, prev.officials.referee, prev.pauseElapsed, prev.players) : new Map();
+    // Setelah drama: yang terlibat diam dulu di tempatnya, lalu berjalan pelan. Di tendangan bebas,
+    // rekan terdekat mendekati bola dan yang lain berjalan ke bentuk timnya; peluit tidak menunggu mereka.
+    const afterDrama = incident !== null && !inIncident && incident.dramaEndAt !== undefined;
+    const involvedIds = afterDrama
+      ? new Set([...incident.protesters, ...incident.arguers, ...(incident.scuffle?.ids ?? [])])
+      : new Set();
+    const settleTargets =
+      afterDrama && reason === 'foul' ? freeKickSettleTargets(prev.players, prev.ball, incident.takerId, prev.teams) : new Map();
+    const sinceDrama = afterDrama ? prev.pauseElapsed - incident.dramaEndAt : 0;
 
     const players = prev.players.map((player) => {
-      const target = involved.get(player.id) ?? targets.get(player.id);
-      const body = stepBody(player, target, DT);
+      let target = involved.get(player.id) ?? targets.get(player.id);
+      let moveOptions = {};
+      const special = player.id === incident?.takerId || wall.has(player.id);
+      if (afterDrama && !special) {
+        if (involvedIds.has(player.id) && sinceDrama < lingerTicks(player)) {
+          target = { x: player.x, y: player.y }; // masih berdiri, belum mau pergi
+        } else if (settleTargets.has(player.id)) {
+          target = settleTargets.get(player.id);
+          moveOptions = { speedScale: AFTER_INCIDENT.walkScale };
+        } else if (involvedIds.has(player.id)) {
+          moveOptions = { speedScale: AFTER_INCIDENT.walkScale };
+        }
+      }
+      const body = stepBody(player, target, DT, moveOptions);
       const condition = driftConfidence(
         { ...player.condition, energy: drainEnergy(player, Math.hypot(body.vx, body.vy), DT) },
         DT,
@@ -1212,6 +1279,7 @@ export function createSimulation(home, away, seed, options = {}) {
         arrived || incident.waited >= INCIDENT.arrivalCap
           ? { ...incident, holdLeft: incident.holdLeft - 1 }
           : { ...incident, waited: incident.waited + 1 };
+      if (nextIncident.holdLeft === 0) nextIncident = { ...nextIncident, dramaEndAt: prev.pauseElapsed + 1 };
     }
     let settled;
     if (inIncident) {
@@ -1358,7 +1426,20 @@ export function createSimulation(home, away, seed, options = {}) {
     // yang dikumpulkan sepanjang tick lalu diterapkan di akhir.
     const philosophies = Object.fromEntries(teamIds.map((id) => [id, getPhilosophy(teams[id].philosophy)]));
     const match = { goals: prev.stats.goals, minute: gameClock(prev).minute, teamIds, philosophies };
-    const tempoOf = (player) => philosophies[player.teamId].tempo;
+    // AI pelatih: mentalitas tiap tim (kalah jumlah pemain → bertahan; lihat mentality.js).
+    for (const id of teamIds) {
+      const other = teamIds.find((t) => t !== id);
+      teams[id].mentality = coachMentality({
+        own: prev.players.filter((p) => p.teamId === id).length,
+        opponents: prev.players.filter((p) => p.teamId === other).length,
+        goalsFor: match.goals[id],
+        goalsAgainst: match.goals[other],
+        minute: match.minute,
+        base: teams[id].baseMentality,
+      });
+    }
+    match.mentalities = Object.fromEntries(teamIds.map((id) => [id, teams[id].mentality]));
+    const tempoOf = (player) => philosophies[player.teamId].tempo * getMentality(teams[player.teamId].mentality).tempo;
     const events = [];
     const note = (playerId, event) => events.push([playerId, event]);
 
@@ -1555,7 +1636,10 @@ export function createSimulation(home, away, seed, options = {}) {
         // Tendangan bebas yang sedang disiapkan: lawan tidak menekan eksekutor.
         const freeKickSetup =
           (ball.setPieceKind === 'freeKick' && ball.heldTicks < FREE_KICK.holdTicks) || ball.setPieceKind === 'penalty';
-        if (owner.teamId !== id && !keeperHolding && !freeKickSetup) pick = pickPresser(own, owner, team.attacksRight, team.chaserId);
+        // Mentalitas bertahan: tidak menekan tinggi, biarkan lawan memegang bola di separuhnya.
+        if (owner.teamId !== id && !keeperHolding && !freeKickSetup && pressAllowed(team.mentality, owner, team.attacksRight)) {
+          pick = pickPresser(own, owner, team.attacksRight, team.chaserId);
+        }
       } else if (ball.restartTeamId !== null && ball.restartTeamId !== id) {
         pick = null; // bola mati milik lawan: tunggu
       } else if (ball.passTeamId === id) {
@@ -1657,7 +1741,7 @@ export function createSimulation(home, away, seed, options = {}) {
         if (isDecisionTick || player.task !== 'shape') {
           let phase = 'neutral';
           if (possessingTeamId !== null) phase = possessingTeamId === player.teamId ? 'attack' : 'defend';
-          target = boxRuns.get(player.id) ?? computeAnchor(player, ball, team.attacksRight, phase);
+          target = boxRuns.get(player.id) ?? computeAnchor(player, ball, team.attacksRight, phase, getMentality(team.mentality));
           if (phase === 'defend') {
             const mark = marksByTeam.get(player.teamId)?.get(player.id);
             const holdLine =

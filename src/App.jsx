@@ -4,6 +4,7 @@ import { createDemoTeams } from './engine/teams.js';
 import { createSimulation } from './engine/simulation.js';
 import { gameClock } from './engine/state.js';
 import { getPhilosophy } from './engine/philosophy.js';
+import { getMentality } from './engine/mentality.js';
 
 const TEAM_SEED = 2026;
 const SPEEDS = [1, 2, 4, 8];
@@ -68,6 +69,7 @@ export default function App() {
   const scoreRef = useRef(null);
   const goalBannerRef = useRef(null);
   const whistleRef = useRef(null);
+  const mentalityRefs = { home: useRef(null), away: useRef(null) };
   const possessionRefs = { home: useRef(null), away: useRef(null), bar: useRef(null) };
   const rowRefs = useRef({});
 
@@ -103,6 +105,16 @@ export default function App() {
       for (const row of STAT_ROWS) {
         set(rowRefs.current[`${row.key}-home`], row.read(stats, home.id));
         set(rowRefs.current[`${row.key}-away`], row.read(stats, away.id));
+      }
+
+      // Mentalitas tim (AI pelatih): tampil hanya saat berubah dari "Seimbang".
+      for (const [key, team] of [['home', home], ['away', away]]) {
+        const el = mentalityRefs[key].current;
+        const m = state.teams[team.id]?.mentality ?? 'seimbang';
+        if (!el) continue;
+        el.hidden = m === 'seimbang';
+        const players = state.players.filter((p) => p.teamId === team.id).length;
+        set(el, m === 'seimbang' ? '' : `${getMentality(m).label}${players < 11 ? ` · ${players} pemain` : ''}`);
       }
 
       // Peluit (tahap 7a) & insiden di jeda setelah pelanggaran (tahap 7b-2).
@@ -193,14 +205,14 @@ export default function App() {
   return (
     <main className="app">
       <header className="scoreboard">
-        <TeamLabel team={home} align="right" />
+        <TeamLabel team={home} align="right" mentalityRef={mentalityRefs.home} />
         <div className="score">
           <span ref={scoreRef}>0 – 0</span>
           <span ref={clockRef} className="clock">
             0'
           </span>
         </div>
-        <TeamLabel team={away} align="left" />
+        <TeamLabel team={away} align="left" mentalityRef={mentalityRefs.away} />
       </header>
 
       <div ref={whistleRef} className="whistle-banner" hidden aria-live="polite" />
@@ -261,7 +273,7 @@ export default function App() {
         <button type="button" onClick={restart}>
           Ulang (seed baru)
         </button>
-        <span className="stage-note">Kartu merah & 10 orang + pelanggaran, protes & pertikaian + wasit & hakim garis + filosofi pelatih + bola udara (bayangan = bola melambung; bar = tenaga menipis, titik merah = kurang percaya diri, titik oranye = on fire). Seed: {matchSeed}</span>
+        <span className="stage-note">Mentalitas (tim 10 orang otomatis bertahan) + kartu merah + pelanggaran, protes & pertikaian + wasit & hakim garis + filosofi pelatih + bola udara (bayangan = bola melambung; bar = tenaga menipis, titik merah = kurang percaya diri, titik oranye = on fire). Seed: {matchSeed}</span>
       </div>
     </main>
   );
@@ -308,7 +320,7 @@ function BreakScreen({ state, home, away, onContinue }) {
   );
 }
 
-function TeamLabel({ team, align }) {
+function TeamLabel({ team, align, mentalityRef }) {
   return (
     <div className={`team-label team-label--${align}`}>
       <span className="team-swatch" style={{ background: team.colors.shirt }} />
@@ -317,6 +329,8 @@ function TeamLabel({ team, align }) {
       <span className="team-philosophy" title="Filosofi pelatih">
         {getPhilosophy(team.philosophy ?? 'seimbang').label}
       </span>
+      {/* Mentalitas dari AI pelatih: hanya tampil bila bukan "Seimbang" (mis. bertahan saat 10 orang). */}
+      <span ref={mentalityRef} className="team-mentality" title="Mentalitas tim" hidden />
     </div>
   );
 }

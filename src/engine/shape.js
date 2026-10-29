@@ -58,7 +58,8 @@ function toTeamFrame(point, attacksRight) {
 // Pencerminan bersifat simetris, jadi fungsi yang sama dipakai bolak-balik.
 const fromTeamFrame = toTeamFrame;
 
-export function computeAnchor(player, ball, attacksRight, phase = 'neutral') {
+// mentality (opsional, mentality.js): { blockShift (meter, + = maju), compact (pengali lebar saat bertahan) }.
+export function computeAnchor(player, ball, attacksRight, phase = 'neutral', mentality = null) {
   if (!player.slot) throw new Error(`computeAnchor: pemain ${player.id} tidak punya slot`);
   const shape = PHASES[phase];
   if (!shape) throw new RangeError(`computeAnchor: fase "${phase}" tidak dikenal`);
@@ -83,8 +84,11 @@ export function computeAnchor(player, ball, attacksRight, phase = 'neutral') {
     const spacingFromDeepestLine = Math.max(0, player.slot.depth - DEEPEST_LINE_DEPTH) * PITCH.length;
     const retreatLimit = MIN_OUTFIELD_DEPTH + spacingFromDeepestLine * LINE_SPACING_KEPT;
 
-    x = baseX + (b.x - PITCH.length / 2) * BLOCK_SHIFT + shape.push;
-    y = midY + (baseY - midY) * shape.width;
+    // Blok mundur hanya saat tidak menguasai bola; saat menyerang tim tetap naik.
+    const shift = phase === 'attack' ? Math.max(0, mentality?.blockShift ?? 0) : (mentality?.blockShift ?? 0);
+    const width = phase === 'defend' ? shape.width * (mentality?.compact ?? 1) : shape.width;
+    x = baseX + (b.x - PITCH.length / 2) * BLOCK_SHIFT + shape.push + shift;
+    y = midY + (baseY - midY) * width;
     y += (b.y - y) * shape.lateralPull;
     x = clamp(x, retreatLimit, PITCH.length - FRONT_MARGIN);
     y = clamp(y, FIELD_MARGIN, PITCH.width - FIELD_MARGIN);

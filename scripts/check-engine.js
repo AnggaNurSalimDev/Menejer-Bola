@@ -38,6 +38,8 @@ import { instinctShotScale } from '../src/engine/condition.js';
 import { shotSpeedFor, isScreened, SHOT_POWER } from '../src/engine/shooting.js';
 import { createTeam } from '../src/engine/teams.js';
 import { blunderFromStats } from '../src/engine/skill.js';
+import { coachMentality, pressAllowed, MENTALITIES } from '../src/engine/mentality.js';
+import { lingerTicks, freeKickSettleTargets, AFTER_INCIDENT } from '../src/engine/simulation.js';
 import { repairShape, applySendOffs, emergencyKeeper } from '../src/engine/sendoff.js';
 import { scuffleTargets, assignScuffleStyles, protestTarget } from '../src/engine/scuffle.js';
 import { straightRedChance, yellowChance, isDogso, RED } from '../src/engine/fouls.js';
@@ -515,6 +517,43 @@ console.log('Gerak pertikaian (masukan 29 Okt: jangan menumpuk diam)');
   const a = protestTarget('home-7', 0, 1, ref, 0);
   const b = protestTarget('home-7', 0, 1, ref, 7);
   check('pemrotes maju-mundur di depan wasit', Math.hypot(a.x - b.x, a.y - b.y) > 0.3 ? [] : ['pemrotes diam']);
+}
+
+console.log('Mentalitas & AI pelatih');
+{
+  const base = { goalsFor: 0, goalsAgainst: 0, minute: 30, base: 'seimbang' };
+  check('11 vs 11 → tetap mentalitas dasar', coachMentality({ ...base, own: 11, opponents: 11 }) === 'seimbang' ? [] : ['salah']);
+  check('10 vs 11 → bertahan', coachMentality({ ...base, own: 10, opponents: 11 }) === 'bertahan' ? [] : ['salah']);
+  check('10 vs 11, tertinggal di menit 80 → kembali seimbang mengejar', coachMentality({ ...base, own: 10, opponents: 11, goalsAgainst: 1, minute: 80 }) === 'seimbang' ? [] : ['salah']);
+  check('11 vs 10 → tidak ikut bertahan', coachMentality({ ...base, own: 11, opponents: 10 }) === 'seimbang' ? [] : ['salah']);
+  // Tim bertahan menyerang ke kanan → gawangnya sendiri di x = 0.
+  check('bertahan tidak menekan tinggi', !pressAllowed('bertahan', { x: 90, y: 34 }, true) ? [] : ['masih menekan di separuh lawan']);
+  check('bertahan tetap menekan di separuh sendiri', pressAllowed('bertahan', { x: 25, y: 34 }, true) ? [] : ['tidak menekan di dekat gawang sendiri']);
+  check('seimbang menekan di mana saja', pressAllowed('seimbang', { x: 90, y: 34 }, true) ? [] : ['tidak menekan']);
+  const teams = createDemoTeams(2026, {});
+  const st = createMatchState(teams.home, teams.away);
+  const cm = st.players.find((p) => p.role === 'CM' && p.teamId === teams.home.id);
+  const ball = { x: 52, y: 34 };
+  const def = computeAnchor(cm, ball, true, 'defend', MENTALITIES.bertahan).x - computeAnchor(cm, ball, true, 'defend').x;
+  const att = computeAnchor(cm, ball, true, 'attack', MENTALITIES.bertahan).x - computeAnchor(cm, ball, true, 'attack').x;
+  check('bertahan: blok mundur saat lawan memegang bola', def < -3 ? [] : [`geser ${def.toFixed(1)} m`]);
+  check('bertahan: blok tidak mundur saat menyerang', Math.abs(att) < 1e-9 ? [] : [`geser ${att.toFixed(1)} m`]);
+}
+
+console.log('Setelah protes: diam dulu, lalu bubar bertahap');
+{
+  const teams = createDemoTeams(2026, {});
+  const st = createMatchState(teams.home, teams.away);
+  const ls = st.players.map((p) => lingerTicks(p));
+  check('pemrotes diam 0,8–2,5 dtk', ls.every((t) => t >= AFTER_INCIDENT.lingerMin && t <= AFTER_INCIDENT.lingerMin + AFTER_INCIDENT.lingerRange) ? [] : ['di luar rentang']);
+  check('lama diam berbeda-beda antarpemain', new Set(ls).size >= 5 ? [] : ['terlalu seragam']);
+  const ball = { ...st.ball, x: 60, y: 30, restartTeamId: teams.home.id };
+  const taker = st.players.find((p) => p.teamId === teams.home.id && p.role === 'CM');
+  const t = freeKickSettleTargets(st.players, ball, taker.id, st.teams);
+  const support = st.players.filter((p) => p.teamId === teams.home.id && p.id !== taker.id && t.has(p.id) && Math.hypot(t.get(p.id).x - ball.x, t.get(p.id).y - ball.y) <= 12);
+  check('rekan eksekutor mendekati bola (≥ 2 opsi pendek)', support.length >= 2 ? [] : [`hanya ${support.length}`]);
+  const tooClose = st.players.filter((p) => p.teamId !== teams.home.id && p.role !== 'GK' && Math.hypot(t.get(p.id).x - ball.x, t.get(p.id).y - ball.y) < 9.15);
+  check('lawan dituju ≥ 9,15 m dari bola', tooClose.length === 0 ? [] : tooClose.map((p) => p.id));
 }
 
 console.log('Kartu merah & bermain dengan 10 orang (tahap 7c)');
