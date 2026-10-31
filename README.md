@@ -34,7 +34,8 @@ Proyek ini dibuat untuk senang-senang.
 - Bola lebih sering keluar (29 Okt): bek yang terdesak membuang bola ke samping, pemain sayap melebar, sebagian umpan silang kelewatan. Lemparan 2,7 → 11,5 per laga; rata-rata gol kini ~2,6.
 - Pemain keluar lewat garis terdekat & ball boy (31 Okt): laga menunggu pemain yang diganti / dikartu merah keluar; bola keluar dibawa pemain terdekat atau dilempar ball boy.
 - Taktik empat kotak (31 Okt): dengan bola, tanpa bola, saat kehilangan bola (counter-press / mundur), saat merebut bola (serangan balik / bangun ulang); dua formasi, bentuk berganti mulus. Catatan: 3-2-5 dan garis tinggi masih terlalu kuat (lihat dokumen arah 8g).
-- Berikutnya: kalibrasi tembakan & kiper (tembakan luar kotak terlalu tajam), lalu liga.
+- Kalibrasi tembakan (31 Okt): tembakan makin meleset makin jauh dari gawang. Konversi 16–22 m 16% → 9%, 22–28 m 5% → 3%. Rata-rata gol 2,52. Catatan: 3-2-5 masih dominan — keunggulannya pindah ke dalam kotak (lihat dokumen arah 8h).
+- Berikutnya: penjagaan di kotak melawan 5 penyerang (3-2-5) & garis tinggi, lalu liga.
 
 Tip: tambahkan `?seed=13` di alamat (misalnya `http://localhost:5173/?seed=13`) untuk memutar ulang pertandingan tertentu.
 

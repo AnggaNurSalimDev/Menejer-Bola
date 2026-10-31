@@ -50,7 +50,7 @@ import { computeAnchor } from './shape.js';
 import { stepBody } from './movement.js';
 import { pickChaser, pickPresser, pickCover } from './roles.js';
 import { evaluatePassOptions, dribbleTarget, shotLaneBlocker } from './passing.js';
-import { evaluateShot, shotVelocity, shotSpeedFor, goalAngle, SCREEN } from './shooting.js';
+import { evaluateShot, shotVelocity, shotSpeedFor, goalAngle, SCREEN, rangeSpreadScale } from './shooting.js';
 import {
   pickTackler,
   tackleSuccessChance,
@@ -1730,7 +1730,8 @@ export function createSimulation(home, away, seed, options = {}) {
           // "Tepat sasaran" dihitung saat tembakan berakhir (gol atau diselamatkan
           // kiper), sesuai definisi statistik sepak bola; tembakan terblok tidak termasuk.
           const bigChance = decision.shot.distance <= BIG_CHANCE_DISTANCE;
-          const spread = blunder(holder, 'shotSpread') * blunderScale(holder, { ...decision.context, bigChance });
+          const spread =
+            blunder(holder, 'shotSpread') * blunderScale(holder, { ...decision.context, bigChance }) * rangeSpreadScale(decision.shot.distance);
           const velocity = shotVelocity(ball, decision.shot.aim, holder.attacksRight, rng, spread, decision.shot.speed);
           stats.shots[holder.teamId].total += 1;
           const long = !inOpponentBox(ball, holder.attacksRight);

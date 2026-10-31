@@ -53,6 +53,16 @@ export function isScreened(origin, aim, keeper, others) {
 }
 export const SHOT_SPREAD = 0.08; // radian, simpangan baku meleset (~4,6°)
 
+// Simpangan membesar dengan jarak (31 Okt, kalibrasi tembakan): dulu tembakan dari 16–22 m masuk 16%
+// (nyata ~5–7%) dan hanya 20% tembakan melebar (nyata ~40%). Menembak dari jauh lebih sulit
+// dikontrol, bukan hanya sudutnya yang membuat meleset lebih jauh.
+export const SHOT_RANGE = Object.freeze({ free: 12, perMeter: 0.1 });
+
+export function rangeSpreadScale(distanceToGoal) {
+  if (!Number.isFinite(distanceToGoal) || distanceToGoal < 0) throw new RangeError(`rangeSpreadScale: jarak tidak valid ${distanceToGoal}`);
+  return 1 + SHOT_RANGE.perMeter * Math.max(0, distanceToGoal - SHOT_RANGE.free);
+}
+
 const MAX_SHOT_DISTANCE = 32; // meter ke tengah gawang
 const MIN_SHOT_ANGLE = 0.2; // radian (~11°) sudut gawang yang terlihat
 const POST_INSET = 0.6; // meter di dalam tiang

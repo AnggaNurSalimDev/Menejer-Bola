@@ -300,6 +300,13 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - **uji keseimbangan (200 laga per pilihan, kontrol +0,65)**: dengan bola 3-2-5 **+1,58** ✗ (dominan), garis tinggi **+1,07** ✗ (lebih tajam DAN lebih aman), garis rendah −0,13 (lebih bocor — masalah lama), tekanan rendah −0,07, counter-press +0,35, mundur −0,01, serangan balik +0,13, bangun ulang +0,28, lebar +0,31, tanpa bola 5-4-1 −0,02
    - tiga percobaan menghukum bentuk menyerang (lari ke belakang bek sesuai luas ruang; transisi bertahan 4,5 dtk; serangan balik otomatis saat lawan terbuka) — **tidak berefek, dikembalikan**
    - **akar masalah ditemukan**: selisih 3-2-5 hampir seluruhnya dari TEMBAKAN LUAR KOTAK (gol 0,31 → 1,25 per laga; konversi 10,7% → 32%; nyata ~3–5%). Bukan karena kiper terhalang (uji tanpa efek "terhalang": tetap 35%). Model tembakan/kiper untuk tembakan dari tepi kotak tanpa tekanan terlalu tajam — kalibrasi tembakan & kiper adalah langkah berikutnya (juga akan menambah tendangan gawang)
+8h. ⚠️ Kalibrasi tembakan jarak jauh (31 Okt):
+   - diagnosis (60 laga): kiper menyelamatkan 70% tembakan tepat sasaran (wajar). Masalahnya simpangan tembakan berupa SUDUT TETAP di semua jarak, jadi tembakan 20 m sama terkontrolnya dengan 8 m: konversi 16–22 m 16% (nyata ~5–7%), 22–28 m 5% (nyata ~3%)
+   - perbaikan: simpangan dikali `1 + 0,1 × (jarak − 12 m)` (`SHOT_RANGE` di shooting.js) — 19 m ×1,7, 25 m ×2,3, 30 m ×2,8. Percobaan 1 (0,06/m) masih 12% di 16–22 m; percobaan 2 (0,1/m) dipakai
+   - hasil (60 laga): 16–22 m **16% → 9%**, 22–28 m **5% → 3%**, > 28 m 4% → 0%; melebar dari luar kotak 19–30% → 36%
+   - kalibrasi 200 laga: gol **2,52 ± 0,20**, 0–0 5%, kejutan 13 vs 11 14%, tembakan 11,5/tim
+   - keseimbangan taktik (200 laga, kontrol +0,47): 3-2-5 **+1,57** ✗, garis tinggi **+1,03** ✗ — TIDAK berubah. Gol jarak jauh 3-2-5 turun 1,25 → 0,32 per laga (perbaikan bekerja), tetapi keunggulannya pindah ke DALAM KOTAK: gol kaki di kotak 1,03 → 1,96 per laga. Diagnosis tembakan jauh sebelumnya hanya sebagian benar: masalah 3-2-5 sebenarnya 5 penyerang melawan 4 bek tanpa ada yang turun menjaga. Perlu tahap tersendiri (penjagaan orang di kotak / bek sayap ikut turun), bukan penyetelan tembakan lagi
+   - sisa selisih dari nyata: konversi total 16% (nyata ~10–11%) karena tembakan dekat < 11 m terlalu sering masuk (~30%) dan jumlah tembakan rendah (11,5 vs ~13 nyata per tim)
 7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
 
 ## 7. Keputusan yang Masih Terbuka

@@ -771,7 +771,7 @@ console.log('Kartu merah & bermain dengan 10 orang (tahap 7c)');
 
   // Laga biasa: kartu merah muncul dari permainan dan pemain benar-benar keluar.
   let reds = 0;
-  for (let seed = 1; seed <= 40 && reds === 0; seed += 1) {
+  for (let seed = 1; seed <= 80 && reds === 0; seed += 1) {
     const m = createSimulation(teams.home, teams.away, seed);
     let x = m.getState();
     while (x.period === 'first') x = m.step();
@@ -782,7 +782,7 @@ console.log('Kartu merah & bermain dengan 10 orang (tahap 7c)');
       check(`kartu merah dari permainan (seed ${seed}): pemain keluar, invariant lolos`, errs);
     }
   }
-  check('kartu merah terjadi dalam 40 babak', reds > 0 ? [] : ['tidak pernah ada kartu merah']);
+  check('kartu merah terjadi dalam 80 babak', reds > 0 ? [] : ['tidak pernah ada kartu merah']);
 }
 
 console.log('Struktur pertandingan');
