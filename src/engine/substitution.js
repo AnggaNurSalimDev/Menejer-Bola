@@ -15,6 +15,7 @@ import { PITCH, clampToPitch } from './pitch.js';
 import { deriveMovementProfile } from './movement.js';
 import { initialDiscipline } from './fouls.js';
 import { CONDITION } from './condition.js';
+import { exitSpot } from './sendoff.js';
 
 export const SUBS = Object.freeze({
   max: 5,
@@ -109,6 +110,10 @@ export function applySubstitutions(state, tick, placeAt = () => entrySpot()) {
         naturalRole: incoming.naturalRole,
         shortName: incoming.shortName,
         slot: out.slot,
+        slotIn: out.slotIn ?? out.slot,
+        slotOut: out.slotOut ?? out.slot,
+        roleIn: out.roleIn ?? out.role,
+        roleOut: out.roleOut ?? out.role,
         profile: deriveMovementProfile(skills),
         skills,
         x: spot.x,
@@ -142,6 +147,7 @@ export function applySubstitutions(state, tick, placeAt = () => entrySpot()) {
           vy: out.vy,
           tick,
           walking: true,
+          exit: exitSpot(out),
         },
       ];
       bench = bench.filter((p) => p.id !== incoming.id);

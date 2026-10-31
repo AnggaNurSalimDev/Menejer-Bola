@@ -744,3 +744,33 @@ body {
   font-size: 0.85rem;
   color: #ced4da;
 }
+
+/* ---- Taktik empat kotak (31 Okt) ---- */
+.tac-boxes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+@media (max-width: 760px) {
+  .tac-boxes {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tac-box {
+  margin: 0;
+  border: 1px solid #333b46;
+  border-radius: 6px;
+  padding: 6px 10px 10px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tac-box legend {
+  padding: 0 4px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #74c0fc;
+}

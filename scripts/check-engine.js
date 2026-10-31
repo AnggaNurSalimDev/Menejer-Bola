@@ -38,12 +38,11 @@ import { instinctShotScale } from '../src/engine/condition.js';
 import { shotSpeedFor, isScreened, SHOT_POWER } from '../src/engine/shooting.js';
 import { createTeam } from '../src/engine/teams.js';
 import { blunderFromStats } from '../src/engine/skill.js';
-import { coachMentality, pressAllowed, MENTALITIES } from '../src/engine/mentality.js';
 import { lingerTicks, freeKickSettleTargets, AFTER_INCIDENT } from '../src/engine/simulation.js';
 import { pickCover } from '../src/engine/roles.js';
 import { parryVelocity } from '../src/engine/keeper.js';
 import { boxRunSpots } from '../src/engine/simulation.js';
-import { reshape, outfieldSlots, tacticsErrors } from '../src/engine/tactics.js';
+import { reshape, outfieldSlots, tacticsErrors, defaultTactics, teamStyle, TRANSITION, coachTactics, pressAllowedAt, LINE_OPTIONS } from '../src/engine/tactics.js';
 import { substitutionErrors, SUBS } from '../src/engine/substitution.js';
 import { repairShape, applySendOffs, emergencyKeeper } from '../src/engine/sendoff.js';
 import { scuffleTargets, assignScuffleStyles, protestTarget } from '../src/engine/scuffle.js';
@@ -524,35 +523,58 @@ console.log('Gerak pertikaian (masukan 29 Okt: jangan menumpuk diam)');
   check('pemrotes maju-mundur di depan wasit', Math.hypot(a.x - b.x, a.y - b.y) > 0.3 ? [] : ['pemrotes diam']);
 }
 
-console.log('Taktik di tab Tim (8b)');
+console.log('Taktik empat kotak (31 Okt)');
 {
   const teams = createDemoTeams(2026, {});
   const sim = createSimulation(teams.home, teams.away, 5, { aiTeams: ['away'] });
   let s = sim.getState();
   for (const f of Object.keys(FORMATIONS)) {
-    s = sim.setTactics('home', { formation: f });
+    s = sim.setTactics('home', { inPossession: { formation: f }, outOfPossession: { formation: f } });
     const mine = s.players.filter((p) => p.teamId === 'home' && p.role !== 'GK');
-    const slots = new Set(mine.map((p) => `${p.slot.depth}|${p.slot.lane}`));
-    check(`formasi ${f}: 10 pemain lapangan di 10 slot berbeda`, slots.size === 10 ? [] : [`${slots.size} slot`]);
+    const slotsIn = new Set(mine.map((p) => `${p.slotIn.depth}|${p.slotIn.lane}`));
+    const slotsOut = new Set(mine.map((p) => `${p.slotOut.depth}|${p.slotOut.lane}`));
+    check(`formasi ${f}: 10 pemain di 10 slot berbeda (dengan & tanpa bola)`, slotsIn.size === 10 && slotsOut.size === 10 ? [] : [`${slotsIn.size}/${slotsOut.size}`]);
   }
-  check('formasi tidak dikenal ditolak', tacticsErrors({ formation: '2-3-5' }).length > 0 ? [] : ['diterima']);
-  check('tempo tidak dikenal ditolak', tacticsErrors({ tempo: 'kilat' }).length > 0 ? [] : ['diterima']);
+  check('formasi tidak dikenal ditolak', tacticsErrors({ inPossession: { formation: '2-3-5' } }).length > 0 ? [] : ['diterima']);
+  check('pengaturan tidak dikenal ditolak', tacticsErrors({ tempo: 'cepat' }).length > 0 && tacticsErrors({ onLoss: 'kabur' }).length > 0 ? [] : ['diterima']);
   check('kurang orang (9 di 4-4-2): satu penyerang yang dikosongkan', outfieldSlots('4-4-2', 9).filter((x) => x.role === 'ST').length === 1 && outfieldSlots('4-4-2', 9).filter((x) => x.role === 'CB').length === 2 ? [] : ['slot salah']);
   const ten = s.players.filter((p) => p.teamId === 'home').slice(0, 10);
   check('reshape 9 pemain lapangan ke 4-3-3', reshape(ten, '4-3-3').size === 9 ? [] : ['jumlah salah']);
-  s = sim.setTactics('home', { formation: '4-4-2', mentalityMode: 'menyerang', tempo: 'cepat', cross: 'sering' });
-  for (let i = 0; i < 30; i += 1) s = sim.step();
-  check('mentalitas pilihan pelatih dipakai', s.teams.home.mentality === 'menyerang' ? [] : [s.teams.home.mentality]);
-  check('state valid setelah ubah taktik', validateMatchState(s));
-  // Pilihan manual menimpa AI pelatih saat 10 orang.
+  // Dua bentuk: 4-4-2 tanpa bola, 3-2-5 dengan bola → bentuk berubah saat bola berpindah.
+  s = sim.setTactics('home', { inPossession: { formation: '3-2-5', width: 'lebar' }, outOfPossession: { formation: '4-4-2', line: 'tinggi' }, onLoss: 'counterPress', onWin: 'seranganBalik' });
+  check('bentuk dengan bola 3-2-5: lima pemain di lini depan', s.players.filter((p) => p.teamId === 'home' && p.slotIn.depth > 0.4).length === 5 ? [] : ['salah']);
+  check('bentuk tanpa bola 4-4-2: empat bek', s.players.filter((p) => p.teamId === 'home' && p.role !== 'GK' && p.slotOut.depth <= 0.24).length === 4 ? [] : ['salah']);
+  let blends = new Set();
+  const errs = [];
+  for (let i = 0; i < 1500; i += 1) {
+    s = sim.step();
+    blends.add(Math.round(s.teams.home.shapeBlend * 4));
+    if (i % 50 === 0) errs.push(...validateMatchState(s));
+  }
+  check('bentuk bergeser mulus di antara dua bentuk (nilai antara terlihat)', blends.has(1) || blends.has(2) || blends.has(3) ? [] : ['melompat']);
+  check('state valid selama taktik empat kotak berjalan', errs.slice(0, 5));
+  // Gaya efektif: jendela transisi.
+  const t1 = defaultTactics('4-4-2');
+  const cp = teamStyle({ ...t1, onLoss: 'counterPress' }, 10, Infinity);
+  const mu = teamStyle({ ...t1, onLoss: 'mundur' }, 10, Infinity);
+  const late = teamStyle({ ...t1, onLoss: 'counterPress' }, TRANSITION.windowTicks + 5, Infinity);
+  check('counter-press aktif hanya di jendela transisi', cp.counterPress && !late.counterPress ? [] : ['salah']);
+  check('mundur: tidak menekan tinggi tepat setelah kehilangan bola', mu.pressZone <= TRANSITION.regroupZone ? [] : ['masih menekan']);
+  const sb = teamStyle({ ...t1, onWin: 'seranganBalik' }, Infinity, 5);
+  const bu = teamStyle({ ...t1, onWin: 'bangunUlang' }, Infinity, 5);
+  check('serangan balik lebih langsung, bangun ulang lebih sabar', sb.directness > 1 && sb.tempo < 1 && bu.directness < 1 && bu.tempo > 1 ? [] : ['salah']);
+  const base = teamStyle(t1);
+  check('taktik bawaan = permainan lama (tanpa geser, tekan di mana saja, lebar 1,35)', base.blockShift === 0 && base.pressZone === 1 && base.widthAttack === 1.35 && base.directness === 1 && base.tempo === 1 ? [] : ['berbeda']);
+  // AI pelatih (tim AI saja): kalah jumlah → garis rendah; tim pengguna tidak diubah.
   const cb = s.players.find((p) => p.teamId === 'home' && p.role === 'CB');
-  const sim10 = createSimulation(teams.home, teams.away, 5, { aiTeams: ['away'], startSentOff: [cb.id] });
+  const sim10 = createSimulation(teams.home, teams.away, 5, { aiTeams: ['home'], startSentOff: [cb.id] });
   let t = sim10.getState();
-  for (let i = 0; i < 60; i += 1) t = sim10.step();
-  check('otomatis: 10 orang → bertahan', t.teams.home.mentality === 'bertahan' ? [] : [t.teams.home.mentality]);
-  t = sim10.setTactics('home', { mentalityMode: 'menyerang' });
-  for (let i = 0; i < 5; i += 1) t = sim10.step();
-  check('pilihan manual menimpa AI pelatih (10 orang tetap menyerang)', t.teams.home.mentality === 'menyerang' ? [] : [t.teams.home.mentality]);
+  for (let i = 0; i < 300; i += 1) t = sim10.step();
+  check('AI pelatih: tim AI yang kalah jumlah → garis rendah', t.teams.home.activeTactics.outOfPossession.line === 'rendah' ? [] : [t.teams.home.activeTactics.outOfPossession.line]);
+  const simUser = createSimulation(teams.home, teams.away, 5, { aiTeams: ['away'], startSentOff: [cb.id] });
+  let u = simUser.getState();
+  for (let i = 0; i < 300; i += 1) u = simUser.step();
+  check('tim pengguna tidak diubah AI saat kalah jumlah', u.teams.home.activeTactics.outOfPossession.line === 'normal' ? [] : ['diubah']);
 }
 
 console.log('Skema bola mati (8d)');
@@ -653,16 +675,14 @@ console.log('Skuad & pergantian pemain (8a)');
   check('tim kandang (pengguna) tidak diganti AI', s.teams.home.subsUsed === 2 ? [] : [`${s.teams.home.subsUsed} pergantian`]);
 }
 
-console.log('Mentalitas & AI pelatih');
+console.log('AI pelatih & penutup tembakan');
 {
-  const base = { goalsFor: 0, goalsAgainst: 0, minute: 30, base: 'seimbang' };
-  check('11 vs 11 → tetap mentalitas dasar', coachMentality({ ...base, own: 11, opponents: 11 }) === 'seimbang' ? [] : ['salah']);
-  check('10 vs 11 → bertahan', coachMentality({ ...base, own: 10, opponents: 11 }) === 'bertahan' ? [] : ['salah']);
-  check('10 vs 11, tertinggal di menit 80 → kembali seimbang mengejar', coachMentality({ ...base, own: 10, opponents: 11, goalsAgainst: 1, minute: 80 }) === 'seimbang' ? [] : ['salah']);
-  check('11 vs 10 → tidak ikut bertahan', coachMentality({ ...base, own: 11, opponents: 10 }) === 'seimbang' ? [] : ['salah']);
-  // Uji pemisahan 29 Okt: berhenti menekan tinggi membuat "bertahan" lebih bocor → semua mentalitas menekan.
-  check('semua mentalitas tetap menekan di mana saja', ['bertahan', 'seimbang', 'menyerang'].every((m) => pressAllowed(m, { x: 90, y: 34 }, true)) ? [] : ['ada yang tidak menekan']);
-  // Penutup tembakan: tim yang bertahan (menyerang ke kanan, gawang di x = 0).
+  const base = defaultTactics('4-4-2');
+  const ctx = { goalsFor: 0, goalsAgainst: 0, minute: 30 };
+  check('11 vs 11 → taktik dasar', coachTactics(base, { ...ctx, own: 11, opponents: 11 }) === base ? [] : ['diubah']);
+  check('10 vs 11 → garis rendah', coachTactics(base, { ...ctx, own: 10, opponents: 11 }).outOfPossession.line === 'rendah' ? [] : ['salah']);
+  check('10 vs 11, tertinggal di menit 80 → kembali ke taktik dasar', coachTactics(base, { ...ctx, own: 10, opponents: 11, goalsAgainst: 1, minute: 80 }) === base ? [] : ['salah']);
+  check('tekanan rendah tidak menekan tinggi', !pressAllowedAt(teamStyle({ ...base, outOfPossession: { ...base.outOfPossession, press: 'rendah' } }), { x: 90, y: 34 }, true) ? [] : ['menekan']);
   {
     const demo = createDemoTeams(2026, {});
     const st2 = createMatchState(demo.home, demo.away);
@@ -675,16 +695,17 @@ console.log('Mentalitas & AI pelatih');
     check('penutup tembakan aktif dekat gawang sendiri', near && near.point.x < holderNear.x ? [] : ['tidak ada penutup']);
     check('penutup tidak aktif jauh dari gawang', pickCover(defenders, holderFar, true, { range: 26, chaserId: null, previousId: null, attackers: [holderFar] }) === null ? [] : ['aktif']);
     check('penutup tidak aktif saat kalah jumlah di sekitar bola', pickCover(defenders.slice(0, 2), holderNear, true, { range: 26, chaserId: null, previousId: null, attackers: lone }) === null ? [] : ['aktif']);
-    check('hanya bertahan yang menutup tembakan', MENTALITIES.bertahan.coverRange > 0 && MENTALITIES.seimbang.coverRange === 0 && MENTALITIES.menyerang.coverRange === 0 ? [] : ['salah']);
+    check('hanya garis rendah yang menutup tembakan', LINE_OPTIONS.rendah.coverRange > 0 && LINE_OPTIONS.normal.coverRange === 0 && LINE_OPTIONS.tinggi.coverRange === 0 ? [] : ['salah']);
   }
   const teams = createDemoTeams(2026, {});
   const st = createMatchState(teams.home, teams.away);
   const cm = st.players.find((p) => p.role === 'CM' && p.teamId === teams.home.id);
   const ball = { x: 52, y: 34 };
-  const def = computeAnchor(cm, ball, true, 'defend', MENTALITIES.bertahan).x - computeAnchor(cm, ball, true, 'defend').x;
-  const att = computeAnchor(cm, ball, true, 'attack', MENTALITIES.bertahan).x - computeAnchor(cm, ball, true, 'attack').x;
-  check('bertahan: blok mundur saat lawan memegang bola', def < -2 ? [] : [`geser ${def.toFixed(1)} m`]);
-  check('bertahan: blok tidak mundur saat menyerang', Math.abs(att) < 1e-9 ? [] : [`geser ${att.toFixed(1)} m`]);
+  const low = teamStyle({ ...base, outOfPossession: { ...base.outOfPossession, line: 'rendah' } });
+  const def = computeAnchor(cm, ball, true, 'defend', low).x - computeAnchor(cm, ball, true, 'defend').x;
+  const att = computeAnchor(cm, ball, true, 'attack', low).x - computeAnchor(cm, ball, true, 'attack').x;
+  check('garis rendah: blok mundur saat tanpa bola', def < -2 ? [] : [`geser ${def.toFixed(1)} m`]);
+  check('garis rendah: tidak berlaku saat dengan bola', Math.abs(att) < 1e-9 ? [] : [`geser ${att.toFixed(1)} m`]);
 }
 
 console.log('Setelah protes: diam dulu, lalu bubar bertahap');

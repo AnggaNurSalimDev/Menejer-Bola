@@ -2,8 +2,7 @@
 // Engine tidak tahu apa-apa soal canvas atau piksel.
 
 import { validateSentOff, SENDOFF } from './sendoff.js';
-import { validateMentality } from './mentality.js';
-import { defaultTactics, validateTactics } from './tactics.js';
+import { defaultTactics, validateTactics, TRANSITION } from './tactics.js';
 import { benchEntry, validateSubstitutions } from './substitution.js';
 import { PITCH, isInsidePitch } from './pitch.js';
 import { getFormation } from './formations.js';
@@ -57,6 +56,11 @@ function placeTeam(team, attacksRight) {
       role: player.role,
       shortName: player.shortName,
       slot: { depth: slot.depth, lane: slot.lane },
+      // Taktik empat kotak (31 Okt): slot & peran DENGAN bola dan TANPA bola. slot/role = yang aktif.
+      slotIn: { depth: slot.depth, lane: slot.lane },
+      slotOut: { depth: slot.depth, lane: slot.lane },
+      roleIn: player.role,
+      roleOut: player.role,
       profile: deriveMovementProfile(player.stats),
       // Salinan stat 1–20, dipakai untuk duel (tekel) dan nanti untuk noise.
       skills: { ...player.stats },
@@ -81,7 +85,7 @@ function placeTeam(team, attacksRight) {
   });
 }
 
-export const TASKS = Object.freeze(['shape', 'hold', 'chase', 'receive', 'press', 'run', 'cover']);
+export const TASKS = Object.freeze(['shape', 'hold', 'chase', 'receive', 'press', 'run', 'cover', 'counter']);
 
 // Bola punya empat keadaan:
 //   dikuasai     : ownerId terisi, bola menempel di kaki pemegangnya
@@ -124,6 +128,8 @@ export function createInitialBall(kickOffTeamId) {
     restartKind: 'kickoff',
     // Tembakan yang lahir dari sepak pojok (≤ 15 dtk setelah pojok diberikan): untuk statistik skema.
     fromCorner: false,
+    // Bola mati setelah bola keluar: { x, y, carried } titik keluar (hanya untuk tampilan ball boy).
+    outFrom: null,
     // Bola mati yang sedang dieksekusi pemegang bola (untuk pengecualian offside).
     setPieceKind: null,
   };
@@ -179,7 +185,7 @@ function createStats(teamIds) {
 }
 
 export function emptyTeamRoles() {
-  return { chaserId: null, coverId: null, runnerId: null, runTarget: null, runTicks: 0 };
+  return { chaserId: null, coverId: null, counterIds: [], runnerId: null, runTarget: null, runTicks: 0 };
 }
 
 // Setelah gol dan di awal babak, permainan jeda: pemain kembali ke posisi kick-off.
@@ -209,8 +215,8 @@ export function createMatchState(home, away) {
       // chaserId: pemain yang sedang menjemput/menekan bola untuk tim ini.
       // runnerId/runTarget/runTicks: penyerang yang sedang berlari ke belakang garis bek.
       // philosophy: kunci filosofi pelatih (philosophy.js).
-      [home.id]: { id: home.id, name: home.name, colors: home.colors, philosophy: home.philosophy ?? 'seimbang', baseMentality: home.mentality ?? 'seimbang', mentality: home.mentality ?? 'seimbang', bench: (home.bench ?? []).map((p) => benchEntry(home.id, p)), subsUsed: 0, subQueue: [], tactics: defaultTactics(home.formation), cornerAt: null, attacksRight: true, ...emptyTeamRoles() },
-      [away.id]: { id: away.id, name: away.name, colors: away.colors, philosophy: away.philosophy ?? 'seimbang', baseMentality: away.mentality ?? 'seimbang', mentality: away.mentality ?? 'seimbang', bench: (away.bench ?? []).map((p) => benchEntry(away.id, p)), subsUsed: 0, subQueue: [], tactics: defaultTactics(away.formation), cornerAt: null, attacksRight: false, ...emptyTeamRoles() },
+      [home.id]: { id: home.id, name: home.name, colors: home.colors, philosophy: home.philosophy ?? 'seimbang', bench: (home.bench ?? []).map((p) => benchEntry(home.id, p)), subsUsed: 0, subQueue: [], tactics: defaultTactics(home.formation), baseTactics: defaultTactics(home.formation), activeTactics: defaultTactics(home.formation), shapeBlend: 0, lostAt: null, wonAt: null, counterIds: [], cornerAt: null, attacksRight: true, ...emptyTeamRoles() },
+      [away.id]: { id: away.id, name: away.name, colors: away.colors, philosophy: away.philosophy ?? 'seimbang', bench: (away.bench ?? []).map((p) => benchEntry(away.id, p)), subsUsed: 0, subQueue: [], tactics: defaultTactics(away.formation), baseTactics: defaultTactics(away.formation), activeTactics: defaultTactics(away.formation), shapeBlend: 0, lostAt: null, wonAt: null, counterIds: [], cornerAt: null, attacksRight: false, ...emptyTeamRoles() },
     },
     ball: createInitialBall(home.id),
     players: [...placeTeam(home, true), ...placeTeam(away, false)],
@@ -230,6 +236,8 @@ export function createMatchState(home, away) {
     sentOff: [],
     // Peristiwa tekel terbaru (hanya untuk tampilan): { tick, kind, tacklerId, holderId, x, y, dx, dy }.
     tackleEvents: [],
+    // Tim yang terakhir menguasai bola (untuk transisi: baru merebut / kehilangan).
+    possessionTeamId: null,
     // Pergantian pemain (8a): pemain yang sudah keluar (berjalan ke pinggir lalu hilang) & pemberitahuan.
     subbedOff: [],
     subNotices: [],
@@ -444,9 +452,12 @@ export function validateMatchState(state, teams = []) {
     if (!(e.tick <= state.tick)) errors.push('peristiwa tekel dari masa depan');
   }
   for (const team of Object.values(state.teams)) {
-    for (const e of validateMentality(team.mentality)) errors.push(`tim ${team.id}: ${e}`);
+    if (!(team.shapeBlend >= 0 && team.shapeBlend <= 1)) errors.push(`tim ${team.id}: shapeBlend di luar 0–1`);
+    for (const e of validateTactics(team.activeTactics)) errors.push(`tim ${team.id}: taktik aktif — ${e}`);
+    const counters = state.players.filter((p) => p.teamId === team.id && p.task === 'counter');
+    if (counters.length > TRANSITION.counterPressers) errors.push(`tim ${team.id}: ${counters.length} pemain counter-press`);
+    if (counters.map((p) => p.id).sort().join() !== [...(team.counterIds ?? [])].sort().join()) errors.push(`tim ${team.id}: counterIds tidak cocok dengan tugas`);
     for (const e of validateTactics(team.tactics)) errors.push(`tim ${team.id}: taktik — ${e}`);
-    for (const e of validateMentality(team.baseMentality)) errors.push(`tim ${team.id}: dasar ${e}`);
   }
   for (const p of state.players) {
     if (!Number.isInteger(p.runCooldown) || p.runCooldown < 0) errors.push(`pemain ${p.id}: runCooldown tidak valid`);

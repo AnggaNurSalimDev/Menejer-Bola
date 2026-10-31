@@ -454,6 +454,57 @@ function drawTackleEffects(ctx, vp, state) {
   }
 }
 
+// ---- Ball boy (31 Okt: bola keluar tidak "pindah gaib") -----------------------------
+// Ball boy berdiri di luar garis: 5 di tiap garis samping, 2 di belakang tiap gawang. Saat bola
+// keluar dan tidak ada pemain ≤ 5 m (engine: ball.outFrom.carried), ball boy terdekat melempar bola
+// melambung ke titik eksekusi. Kalau ada pemain dekat, bola dibawa pemain itu (bergerak rendah).
+const BALL_BOY = Object.freeze({ holdTicks: 3, flightTicks: 10, peak: 3, offset: 2.4 });
+
+function ballBoySpots() {
+  const spots = [];
+  for (const x of [10, 31, 52.5, 74, 95]) {
+    spots.push({ x, y: -BALL_BOY.offset }, { x, y: 68 + BALL_BOY.offset });
+  }
+  for (const y of [22, 46]) {
+    spots.push({ x: -BALL_BOY.offset - 0.6, y }, { x: 105 + BALL_BOY.offset + 0.6, y });
+  }
+  return spots;
+}
+const BALL_BOYS = ballBoySpots();
+
+function nearestBallBoy(point) {
+  return BALL_BOYS.reduce((best, b) =>
+    Math.hypot(b.x - point.x, b.y - point.y) < Math.hypot(best.x - point.x, best.y - point.y) ? b : best,
+  );
+}
+
+function drawBallBoys(ctx, vp) {
+  const r = Math.max(2.5, vp.px(0.7));
+  for (const b of BALL_BOYS) {
+    ctx.beginPath();
+    ctx.arc(vp.toX(b.x), vp.toY(b.y), r, 0, Math.PI * 2);
+    ctx.fillStyle = '#f08c00'; // rompi oranye
+    ctx.fill();
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.stroke();
+  }
+}
+
+// Posisi bola yang DIGAMBAR selama jeda bola keluar (engine sudah menaruh bola di titik eksekusi).
+export function restartBallView(state) {
+  const ball = state.ball;
+  const from = ball.outFrom;
+  if (!from || state.pauseReason !== 'restart' || ball.ownerId !== null) return null;
+  const t = state.pauseElapsed;
+  const source = from.carried ? from : nearestBallBoy(from);
+  if (t < BALL_BOY.holdTicks) return { x: source.x, y: source.y, z: from.carried ? 0 : 1.2 };
+  const u = Math.min(1, (t - BALL_BOY.holdTicks) / BALL_BOY.flightTicks);
+  if (u >= 1) return null;
+  const z = from.carried ? 0 : 4 * BALL_BOY.peak * u * (1 - u);
+  return { x: source.x + (ball.x - source.x) * u, y: source.y + (ball.y - source.y) * u, z };
+}
+
 function drawOfficials(ctx, vp, state) {
   const officials = state.officials;
   if (!officials) return;
@@ -498,18 +549,17 @@ export function renderMatch(ctx, state, cssWidth, cssHeight) {
     drawPlayer(ctx, vp, player, team.colors, poses.get(player.id));
   }
 
-  // Pemain yang dikartu merah berjalan keluar lapangan (pudar), lalu hilang.
-  // Pemain yang diganti juga berjalan keluar (tanpa kartu merah).
+  // Pemain yang dikartu merah / diganti berjalan ke garis terdekat (digambar normal: ia masih
+  // orang sungguhan di lapangan; laga menunggunya keluar), lalu hilang.
   for (const p of [...(state.sentOff ?? []), ...(state.subbedOff ?? [])]) {
     if (!p.walking) continue;
     const team = state.teams[p.teamId];
-    ctx.save();
-    ctx.globalAlpha = 0.55;
     drawPlayer(ctx, vp, { ...p, condition: null }, team.colors);
-    ctx.restore();
   }
 
   drawIncident(ctx, vp, state);
   drawOfficials(ctx, vp, state);
-  drawBall(ctx, vp, state.ball);
+  drawBallBoys(ctx, vp);
+  const thrown = restartBallView(state);
+  drawBall(ctx, vp, thrown ? { ...state.ball, ...thrown } : state.ball);
 }

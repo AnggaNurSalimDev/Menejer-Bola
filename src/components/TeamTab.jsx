@@ -1,12 +1,25 @@
 import { useState } from 'react';
 import { SUBS, substitutionErrors, roleLine } from '../engine/substitution.js';
 import { gameClock } from '../engine/state.js';
-import { getMentality, MENTALITIES } from '../engine/mentality.js';
 import { getPhilosophy } from '../engine/philosophy.js';
 import { FORMATIONS } from '../engine/formations.js';
-import { TEMPO_OPTIONS, CROSS_OPTIONS, MENTALITY_MODES, CORNER_SCHEMES, FREE_KICK_SCHEMES } from '../engine/tactics.js';
+import {
+  TEMPO_OPTIONS,
+  CROSS_OPTIONS,
+  WIDTH_OPTIONS,
+  LINE_OPTIONS,
+  PRESS_OPTIONS,
+  ON_LOSS,
+  ON_WIN,
+  CORNER_SCHEMES,
+  FREE_KICK_SCHEMES,
+} from '../engine/tactics.js';
 
-const MODE_LABEL = { otomatis: 'Otomatis (AI)', ...Object.fromEntries(Object.entries(MENTALITIES).map(([k, m]) => [k, m.label])) };
+const WIDTH_LABEL = { sempit: 'Sempit', normal: 'Normal', lebar: 'Lebar' };
+const LINE_LABEL = { rendah: 'Rendah', normal: 'Normal', tinggi: 'Tinggi' };
+const PRESS_LABEL = { rendah: 'Rendah', sedang: 'Sedang', tinggi: 'Tinggi' };
+const LOSS_LABEL = { counterPress: 'Counter-press', seimbang: 'Seimbang', mundur: 'Mundur ke posisi' };
+const WIN_LABEL = { seranganBalik: 'Serangan balik', seimbang: 'Seimbang', bangunUlang: 'Bangun ulang' };
 const TEMPO_LABEL = { lambat: 'Lambat', normal: 'Normal', cepat: 'Cepat' };
 const CROSS_LABEL = { jarang: 'Jarang', normal: 'Normal', sering: 'Sering' };
 const CORNER_LABEL = { campur: 'Campur', tiangDekat: 'Tiang dekat', tiangJauh: 'Tiang jauh', pendek: 'Pendek' };
@@ -116,6 +129,7 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
     onChange(simulation.cancelSubstitution(teamId, index));
   }
 
+  const locked = state.period === 'fulltime';
   const minute = state.period === 'halftime' ? 'Jeda' : state.period === 'fulltime' ? 'Selesai' : `${gameClock(state).minute}'`;
 
   return (
@@ -124,7 +138,8 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
         <div>
           <h2>{team.name}</h2>
           <p className="team-tab__meta">
-            {minute} · Mentalitas: {getMentality(team.mentality).label} · Pergantian {used}/{SUBS.max}
+            {minute} · Bentuk: {team.tactics.outOfPossession.formation} tanpa bola / {team.tactics.inPossession.formation} dengan bola ·
+            Pergantian {used}/{SUBS.max}
             {team.subQueue.length > 0 ? ` (+${team.subQueue.length} antre)` : ''}
           </p>
         </div>
@@ -133,40 +148,96 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
 
       <div className="tactics">
         <h3>Taktik · berlaku seketika</h3>
-        <Choice
-          label="Formasi"
-          value={team.tactics.formation}
-          options={Object.keys(FORMATIONS)}
-          onPick={(v) => setTactic({ formation: v }, `Formasi ${v}`)}
-          disabled={state.period === 'fulltime'}
-          hint={onPitch.length < 11 ? 'Kurang orang: slot paling depan dikosongkan' : undefined}
-        />
-        <Choice
-          label="Mentalitas"
-          value={team.tactics.mentalityMode}
-          options={MENTALITY_MODES}
-          labels={MODE_LABEL}
-          onPick={(v) => setTactic({ mentalityMode: v }, `Mentalitas ${MODE_LABEL[v]}`)}
-          disabled={state.period === 'fulltime'}
-          hint="Otomatis: AI pelatih bertahan saat tim kalah jumlah pemain"
-        />
-        <Choice
-          label="Tempo"
-          value={team.tactics.tempo}
-          options={Object.keys(TEMPO_OPTIONS)}
-          labels={TEMPO_LABEL}
-          onPick={(v) => setTactic({ tempo: v }, `Tempo ${TEMPO_LABEL[v]}`)}
-          disabled={state.period === 'fulltime'}
-          hint="Seberapa lama pemain menahan bola sebelum mengoper"
-        />
-        <Choice
-          label="Umpan silang"
-          value={team.tactics.cross}
-          options={Object.keys(CROSS_OPTIONS)}
-          labels={CROSS_LABEL}
-          onPick={(v) => setTactic({ cross: v }, `Umpan silang ${CROSS_LABEL[v]}`)}
-          disabled={state.period === 'fulltime'}
-        />
+        <div className="tac-boxes">
+          <fieldset className="tac-box">
+            <legend>Dengan bola</legend>
+            <Choice
+              label="Formasi"
+              value={team.tactics.inPossession.formation}
+              options={Object.keys(FORMATIONS)}
+              onPick={(v) => setTactic({ inPossession: { formation: v } }, `Dengan bola: ${v}`)}
+              disabled={locked}
+              hint={onPitch.length < 11 ? 'Kurang orang: slot paling depan dikosongkan' : undefined}
+            />
+            <Choice
+              label="Lebar"
+              value={team.tactics.inPossession.width}
+              options={Object.keys(WIDTH_OPTIONS)}
+              labels={WIDTH_LABEL}
+              onPick={(v) => setTactic({ inPossession: { width: v } }, `Lebar ${WIDTH_LABEL[v]}`)}
+              disabled={locked}
+            />
+            <Choice
+              label="Tempo"
+              value={team.tactics.inPossession.tempo}
+              options={Object.keys(TEMPO_OPTIONS)}
+              labels={TEMPO_LABEL}
+              onPick={(v) => setTactic({ inPossession: { tempo: v } }, `Tempo ${TEMPO_LABEL[v]}`)}
+              disabled={locked}
+              hint="Seberapa lama pemain menahan bola sebelum mengoper"
+            />
+            <Choice
+              label="Umpan silang"
+              value={team.tactics.inPossession.cross}
+              options={Object.keys(CROSS_OPTIONS)}
+              labels={CROSS_LABEL}
+              onPick={(v) => setTactic({ inPossession: { cross: v } }, `Umpan silang ${CROSS_LABEL[v]}`)}
+              disabled={locked}
+            />
+          </fieldset>
+          <fieldset className="tac-box">
+            <legend>Tanpa bola</legend>
+            <Choice
+              label="Formasi"
+              value={team.tactics.outOfPossession.formation}
+              options={Object.keys(FORMATIONS)}
+              onPick={(v) => setTactic({ outOfPossession: { formation: v } }, `Tanpa bola: ${v}`)}
+              disabled={locked}
+            />
+            <Choice
+              label="Garis bek"
+              value={team.tactics.outOfPossession.line}
+              options={Object.keys(LINE_OPTIONS)}
+              labels={LINE_LABEL}
+              onPick={(v) => setTactic({ outOfPossession: { line: v } }, `Garis bek ${LINE_LABEL[v]}`)}
+              disabled={locked}
+              hint="Rendah: rapat & menutup tembakan. Tinggi: merebut di depan, ruang di belakang terbuka"
+            />
+            <Choice
+              label="Tekanan"
+              value={team.tactics.outOfPossession.press}
+              options={Object.keys(PRESS_OPTIONS)}
+              labels={PRESS_LABEL}
+              onPick={(v) => setTactic({ outOfPossession: { press: v } }, `Tekanan ${PRESS_LABEL[v]}`)}
+              disabled={locked}
+              hint="Tinggi: menekan di mana saja (menguras tenaga). Rendah: hanya dekat gawang sendiri"
+            />
+          </fieldset>
+          <fieldset className="tac-box">
+            <legend>Saat kehilangan bola</legend>
+            <Choice
+              label="Reaksi"
+              value={team.tactics.onLoss}
+              options={ON_LOSS}
+              labels={LOSS_LABEL}
+              onPick={(v) => setTactic({ onLoss: v }, `Kehilangan bola: ${LOSS_LABEL[v]}`)}
+              disabled={locked}
+              hint="Counter-press: 2 pemain tambahan menekan ±5 dtk (menguras tenaga). Mundur: langsung ke bentuk bertahan"
+            />
+          </fieldset>
+          <fieldset className="tac-box">
+            <legend>Saat merebut bola</legend>
+            <Choice
+              label="Reaksi"
+              value={team.tactics.onWin}
+              options={ON_WIN}
+              labels={WIN_LABEL}
+              onPick={(v) => setTactic({ onWin: v }, `Merebut bola: ${WIN_LABEL[v]}`)}
+              disabled={locked}
+              hint="Serangan balik: langsung ke depan ±5 dtk. Bangun ulang: aman & sabar"
+            />
+          </fieldset>
+        </div>
         <h3 className="tac-sub">Skema bola mati</h3>
         <Choice
           label="Sepak pojok"
@@ -174,7 +245,7 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
           options={CORNER_SCHEMES}
           labels={CORNER_LABEL}
           onPick={(v) => setTactic({ corner: v }, `Sepak pojok: ${CORNER_LABEL[v]}`)}
-          disabled={state.period === 'fulltime'}
+          disabled={locked}
           hint="Campur: ke penyundul terbaik. Pendek: dimainkan ke rekan yang mendekat"
         />
         <Choice
@@ -183,7 +254,7 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
           options={FREE_KICK_SCHEMES}
           labels={FREE_KICK_LABEL}
           onPick={(v) => setTactic({ freeKick: v }, `Tendangan bebas: ${FREE_KICK_LABEL[v]}`)}
-          disabled={state.period === 'fulltime'}
+          disabled={locked}
           hint="Otomatis: tembak bila ≤ 30 m (70%), kalau tidak dilambungkan"
         />
         <p className="tac-note">

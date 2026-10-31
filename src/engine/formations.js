@@ -75,6 +75,48 @@ export const FORMATIONS = Object.freeze({
     { role: 'ST', number: 9, depth: 0.45, lane: 0.6 },
     { role: 'ST', number: 11, depth: 0.45, lane: 0.4 },
   ],
+  // Bentuk DENGAN BOLA & TANPA BOLA untuk taktik empat kotak (31 Okt).
+  // 3-2-5: bek sayap masuk ke tengah / naik, lima pemain di depan (satu per lajur).
+  '3-2-5': [
+    { role: 'GK', number: 1, depth: 0.04, lane: 0.5 },
+    { role: 'CB', number: 4, depth: 0.17, lane: 0.74 },
+    { role: 'CB', number: 5, depth: 0.16, lane: 0.5 },
+    { role: 'CB', number: 3, depth: 0.17, lane: 0.26 },
+    { role: 'DM', number: 6, depth: 0.28, lane: 0.62 },
+    { role: 'DM', number: 8, depth: 0.28, lane: 0.38 },
+    { role: 'RW', number: 7, depth: 0.45, lane: 0.92 },
+    { role: 'CM', number: 10, depth: 0.42, lane: 0.68 },
+    { role: 'ST', number: 9, depth: 0.47, lane: 0.5 },
+    { role: 'CM', number: 2, depth: 0.42, lane: 0.32 },
+    { role: 'LW', number: 11, depth: 0.45, lane: 0.08 },
+  ],
+  // 5-4-1: blok rendah tanpa bola (bek sayap ikut di lini belakang).
+  '5-4-1': [
+    { role: 'GK', number: 1, depth: 0.04, lane: 0.5 },
+    { role: 'RB', number: 2, depth: 0.21, lane: 0.9 },
+    { role: 'CB', number: 4, depth: 0.17, lane: 0.7 },
+    { role: 'CB', number: 5, depth: 0.16, lane: 0.5 },
+    { role: 'CB', number: 6, depth: 0.17, lane: 0.3 },
+    { role: 'LB', number: 3, depth: 0.21, lane: 0.1 },
+    { role: 'RM', number: 7, depth: 0.33, lane: 0.84 },
+    { role: 'CM', number: 8, depth: 0.31, lane: 0.6 },
+    { role: 'CM', number: 10, depth: 0.31, lane: 0.4 },
+    { role: 'LM', number: 11, depth: 0.33, lane: 0.16 },
+    { role: 'ST', number: 9, depth: 0.45, lane: 0.5 },
+  ],
+  '3-4-3': [
+    { role: 'GK', number: 1, depth: 0.04, lane: 0.5 },
+    { role: 'CB', number: 4, depth: 0.17, lane: 0.72 },
+    { role: 'CB', number: 5, depth: 0.16, lane: 0.5 },
+    { role: 'CB', number: 3, depth: 0.17, lane: 0.28 },
+    { role: 'RM', number: 2, depth: 0.3, lane: 0.9 },
+    { role: 'CM', number: 8, depth: 0.31, lane: 0.6 },
+    { role: 'CM', number: 6, depth: 0.31, lane: 0.4 },
+    { role: 'LM', number: 10, depth: 0.3, lane: 0.1 },
+    { role: 'RW', number: 7, depth: 0.44, lane: 0.8 },
+    { role: 'ST', number: 9, depth: 0.47, lane: 0.5 },
+    { role: 'LW', number: 11, depth: 0.44, lane: 0.2 },
+  ],
 });
 
 export function getFormation(name) {

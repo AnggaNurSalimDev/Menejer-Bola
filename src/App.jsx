@@ -5,7 +5,6 @@ import { createDemoTeams } from './engine/teams.js';
 import { createSimulation } from './engine/simulation.js';
 import { gameClock } from './engine/state.js';
 import { getPhilosophy } from './engine/philosophy.js';
-import { getMentality } from './engine/mentality.js';
 
 const TEAM_SEED = 2026;
 const SPEEDS = [1, 2, 4, 8];
@@ -139,14 +138,21 @@ export default function App() {
       }
 
       // Mentalitas tim (AI pelatih): tampil hanya saat berubah dari "Seimbang".
-      for (const [key, team] of [['home', home], ['away', away]]) {
-        set(formationRefs[key].current, state.teams[team.id]?.tactics?.formation ?? team.formation);
+      for (const [key, team] of [
+        ['home', home],
+        ['away', away],
+      ]) {
+        const tac = state.teams[team.id]?.activeTactics;
+        const fOut = tac?.outOfPossession.formation ?? team.formation;
+        const fIn = tac?.inPossession.formation ?? team.formation;
+        set(formationRefs[key].current, fOut === fIn ? fOut : `${fOut} / ${fIn}`);
         const el = mentalityRefs[key].current;
-        const m = state.teams[team.id]?.mentality ?? 'seimbang';
         if (!el) continue;
-        el.hidden = m === 'seimbang';
+        // Chip: kalah jumlah pemain (dan garis rendah AI pelatih bila ada).
         const players = state.players.filter((p) => p.teamId === team.id).length;
-        set(el, m === 'seimbang' ? '' : `${getMentality(m).label}${players < 11 ? ` · ${players} pemain` : ''}`);
+        const low = tac?.outOfPossession.line === 'rendah';
+        el.hidden = players >= 11 && !low;
+        set(el, `${low ? 'Garis rendah' : ''}${low && players < 11 ? ' · ' : ''}${players < 11 ? `${players} pemain` : ''}`);
       }
 
       // Peluit (tahap 7a) & insiden di jeda setelah pelanggaran (tahap 7b-2).
@@ -159,7 +165,7 @@ export default function App() {
         const showing = showingIncident || (w !== null && state.tick - w.tick < WHISTLE_SHOW_TICKS);
         whistleEl.hidden = !showing;
         if (showing) {
-          const name = (id) => (id ? namesById.get(id) ?? '' : '');
+          const name = (id) => (id ? (namesById.get(id) ?? '') : '');
           const cardIcon = (c) =>
             c === 'yellow' ? ' 🟨' : c === 'secondYellow' ? ' 🟨🟨→🟥 KARTU MERAH' : c === 'red' ? ' 🟥 KARTU MERAH' : '';
           let text;
@@ -206,7 +212,9 @@ export default function App() {
           const goal = state.lastGoal;
           const team = goal.teamId === home.id ? home : away;
           const scorer = goal.scorerId ? namesById.get(goal.scorerId) : null;
-          const who = goal.ownGoal ? 'gol bunuh diri' : `${scorer ?? team.name}${goal.header ? ' (sundulan)' : goal.penalty ? ' (penalti)' : goal.freeKick ? ' (tendangan bebas)' : goal.longShot ? ' (dari luar kotak)' : ''}`;
+          const who = goal.ownGoal
+            ? 'gol bunuh diri'
+            : `${scorer ?? team.name}${goal.header ? ' (sundulan)' : goal.penalty ? ' (penalti)' : goal.freeKick ? ' (tendangan bebas)' : goal.longShot ? ' (dari luar kotak)' : ''}`;
           set(banner.querySelector('.goal-banner__detail'), `${who} · ${team.name}`);
           banner.style.setProperty('--goal-color', team.colors.shirt);
         }
@@ -250,7 +258,13 @@ export default function App() {
       </header>
 
       <nav className="tabs" role="tablist" aria-label="Tampilan">
-        <button type="button" role="tab" aria-selected={tab === 'match'} className={tab === 'match' ? 'is-active' : undefined} onClick={() => setTab('match')}>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'match'}
+          className={tab === 'match' ? 'is-active' : undefined}
+          onClick={() => setTab('match')}
+        >
           Pertandingan
         </button>
         <button
@@ -285,44 +299,47 @@ export default function App() {
 
       {/* Tab Pertandingan. Disembunyikan (bukan dilepas) supaya loop & canvas tetap hidup. */}
       <div hidden={tab !== 'match'}>
-      <div className="pitch-wrap">
-        <MatchView simulation={simulation} running={running} speed={speed} onTick={handleTick} />
-        <div ref={goalBannerRef} className="goal-banner" hidden aria-live="polite">
-          <span className="goal-banner__title">GOL!</span>
-          <span className="goal-banner__detail" />
+        <div className="pitch-wrap">
+          <MatchView simulation={simulation} running={running} speed={speed} onTick={handleTick} />
+          <div ref={goalBannerRef} className="goal-banner" hidden aria-live="polite">
+            <span className="goal-banner__title">GOL!</span>
+            <span className="goal-banner__detail" />
+          </div>
+          {breakState && (
+            <BreakScreen
+              state={breakState}
+              home={home}
+              away={away}
+              onContinue={breakState.period === 'halftime' ? startSecondHalf : restart}
+            />
+          )}
         </div>
-        {breakState && (
-          <BreakScreen
-            state={breakState}
-            home={home}
-            away={away}
-            onContinue={breakState.period === 'halftime' ? startSecondHalf : restart}
-          />
-        )}
-      </div>
 
-      <section className="match-stats" aria-label="Statistik pertandingan">
-        <div className="stat-row">
-          <span ref={possessionRefs.home} className="stat-value">0%</span>
-          <span className="stat-label">Penguasaan bola</span>
-          <span ref={possessionRefs.away} className="stat-value stat-value--away">0%</span>
-        </div>
-        <div className="possession-track" style={{ background: away.colors.shirt }}>
-          <div ref={possessionRefs.bar} className="possession-fill" style={{ background: home.colors.shirt }} />
-        </div>
-        {STAT_ROWS.map((row) => (
-          <div key={row.key} className="stat-row">
-            <span ref={(el) => (rowRefs.current[`${row.key}-home`] = el)} className="stat-value">
-              –
+        <section className="match-stats" aria-label="Statistik pertandingan">
+          <div className="stat-row">
+            <span ref={possessionRefs.home} className="stat-value">
+              0%
             </span>
-            <span className="stat-label">{row.label}</span>
-            <span ref={(el) => (rowRefs.current[`${row.key}-away`] = el)} className="stat-value stat-value--away">
-              –
+            <span className="stat-label">Penguasaan bola</span>
+            <span ref={possessionRefs.away} className="stat-value stat-value--away">
+              0%
             </span>
           </div>
-        ))}
-      </section>
-
+          <div className="possession-track" style={{ background: away.colors.shirt }}>
+            <div ref={possessionRefs.bar} className="possession-fill" style={{ background: home.colors.shirt }} />
+          </div>
+          {STAT_ROWS.map((row) => (
+            <div key={row.key} className="stat-row">
+              <span ref={(el) => (rowRefs.current[`${row.key}-home`] = el)} className="stat-value">
+                –
+              </span>
+              <span className="stat-label">{row.label}</span>
+              <span ref={(el) => (rowRefs.current[`${row.key}-away`] = el)} className="stat-value stat-value--away">
+                –
+              </span>
+            </div>
+          ))}
+        </section>
       </div>
 
       <div className="controls">
@@ -331,12 +348,7 @@ export default function App() {
         </button>
         <div className="speed-group" role="group" aria-label="Kecepatan">
           {SPEEDS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              className={s === speed ? 'is-active' : undefined}
-              onClick={() => setSpeed(s)}
-            >
+            <button key={s} type="button" className={s === speed ? 'is-active' : undefined} onClick={() => setSpeed(s)}>
               {s}×
             </button>
           ))}
@@ -344,7 +356,11 @@ export default function App() {
         <button type="button" onClick={restart}>
           Ulang (seed baru)
         </button>
-        <span className="stage-note">Mentalitas (tim 10 orang otomatis bertahan) + kartu merah + pelanggaran, protes & pertikaian + wasit & hakim garis + filosofi pelatih + bola udara (bayangan = bola melambung; bar = tenaga menipis, titik merah = kurang percaya diri, titik oranye = on fire). Seed: {matchSeed}</span>
+        <span className="stage-note">
+          Taktik empat kotak + ball boy + kartu merah + pelanggaran, protes & pertikaian + wasit & hakim garis + filosofi pelatih + bola
+          udara (bayangan = bola melambung; bar = tenaga menipis, titik merah = kurang percaya diri, titik oranye = on fire). Seed:{' '}
+          {matchSeed}
+        </span>
       </div>
     </main>
   );
@@ -403,7 +419,7 @@ function TeamLabel({ team, align, mentalityRef, formationRef }) {
         {getPhilosophy(team.philosophy ?? 'seimbang').label}
       </span>
       {/* Mentalitas dari AI pelatih: hanya tampil bila bukan "Seimbang" (mis. bertahan saat 10 orang). */}
-      <span ref={mentalityRef} className="team-mentality" title="Mentalitas tim" hidden />
+      <span ref={mentalityRef} className="team-mentality" title="Keadaan tim" hidden />
     </div>
   );
 }

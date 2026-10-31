@@ -91,7 +91,7 @@ import {
   isDogso,
   straightRedChance,
 } from './fouls.js';
-import { applySendOffs, stepSentOff } from './sendoff.js';
+import { applySendOffs, stepSentOff, stillLeaving, SENDOFF } from './sendoff.js';
 import {
   createOfficials,
   stepOfficials,
@@ -131,8 +131,16 @@ import {
   RUN_START_CHANCE,
 } from './attack.js';
 import { hash01 } from './scuffle.js';
-import { coachMentality, getMentality, pressAllowed } from './mentality.js';
-import { applyTactics, TEMPO_OPTIONS, CROSS_OPTIONS, MAX_CROSS_CHANCE } from './tactics.js';
+import {
+  applyTactics,
+  MAX_CROSS_CHANCE,
+  teamStyle,
+  pressAllowedAt,
+  coachTactics,
+  blendStep,
+  reslotTeam,
+  TRANSITION,
+} from './tactics.js';
 import {
   queueSubstitution as queueSub,
   cancelSubstitution as cancelSub,
@@ -341,6 +349,7 @@ const CROSS_ZONE_DEPTH = 30; // m dari garis gawang lawan
 const CROSS_ZONE_MIN_WIDE = 10; // m dari garis tengah memanjang
 const CORNER_RADIUS = 3; // m dari titik pojok
 const CORNER_HOLD_TICKS = 5; // persiapan pojok terjadi di jeda bola keluar
+const BALL_PICKUP_RADIUS = 5; // meter: pemain sedekat ini memungut sendiri bola yang keluar
 const CORNER_WINDOW_TICKS = 150; // 15 dtk (termasuk ~2–3 dtk persiapan): tembakan dihitung hasil pojok
 const CROSS_AIM_MIN_DEPTH = 4; // m dari garis gawang
 const CROSS_AIM_MAX_DEPTH = 15;
@@ -545,7 +554,7 @@ function decideHolder(holder, ball, players, rng, match) {
     rng,
     misjudgeScale: blunderScale(holder, context),
     progressScale: progressWeightScale(holder),
-    directness: getMentality(match.mentalities?.[holder.teamId] ?? 'seimbang').directness,
+    directness: match.styles?.[holder.teamId]?.directness ?? 1,
   });
   const best = options[0] ?? null;
   // Tidak ada operan aman: umpan silang jadi jalan keluar sebelum dipaksa mengoper.
@@ -588,6 +597,7 @@ function releaseBall(ball, kicker, velocity, extra) {
     crossTeamId: null,
     shotKind: null,
     fromCorner: false,
+    outFrom: null,
     ...extra,
   };
 }
@@ -1277,7 +1287,7 @@ export function createSimulation(home, away, seed, options = {}) {
       return undefined;
     }
 
-    if (!inPossession || !rng.chance(RUN_START_CHANCE * getMentality(team.mentality).runScale)) return undefined;
+    if (!inPossession || !rng.chance(Math.min(1, RUN_START_CHANCE * (team.runScale ?? 1)))) return undefined;
     const pick = pickRunner({
       teammates: players.filter((p) => p.teamId === team.id),
       holder: owner,
@@ -1409,6 +1419,9 @@ export function createSimulation(home, away, seed, options = {}) {
     } else {
       settled = players.every((p) => near(p, targets.get(p.id), SETTLE_DISTANCE));
     }
+    // Bola mati menunggu pemain yang dikartu merah / diganti benar-benar keluar lapangan.
+    const leaving = (stillLeaving(prev.sentOff) || stillLeaving(prev.subbedOff)) && prev.pauseElapsed < SENDOFF.waitTicks;
+    if (leaving) settled = false;
     const pauseTicks = settled ? prev.pauseTicks - 1 : prev.pauseTicks;
     const done = pauseTicks === 0;
 
@@ -1423,8 +1436,11 @@ export function createSimulation(home, away, seed, options = {}) {
       ...prev,
       tick,
       players,
-      sentOff: stepSentOff(prev.sentOff, DT),
-      subbedOff: stepSentOff(prev.subbedOff ?? [], DT),
+      // Peluit: siapa pun yang belum sampai garis dianggap sudah keluar (batas tunggu).
+      sentOff: done ? stepSentOff(prev.sentOff, DT).map((p) => ({ ...p, walking: false })) : stepSentOff(prev.sentOff, DT),
+      subbedOff: done
+        ? stepSentOff(prev.subbedOff ?? [], DT).map((p) => ({ ...p, walking: false }))
+        : stepSentOff(prev.subbedOff ?? [], DT),
       stats,
       officials,
       pauseTicks,
@@ -1546,25 +1562,31 @@ export function createSimulation(home, away, seed, options = {}) {
     // yang dikumpulkan sepanjang tick lalu diterapkan di akhir.
     const philosophies = Object.fromEntries(teamIds.map((id) => [id, getPhilosophy(teams[id].philosophy)]));
     const match = { goals: prev.stats.goals, minute: gameClock(prev).minute, teamIds, philosophies };
-    // AI pelatih: mentalitas tiap tim (kalah jumlah pemain → bertahan; lihat mentality.js).
+    // Taktik aktif tiap tim: tim yang diatur AI menyesuaikan diri (kalah jumlah → garis rendah);
+    // tim pengguna memakai taktiknya apa adanya. Lalu gaya efektif tick ini, termasuk jendela
+    // transisi (baru kehilangan / merebut bola).
+    const styles = {};
     for (const id of teamIds) {
       const other = teamIds.find((t) => t !== id);
-      const mode = teams[id].tactics.mentalityMode;
-      // Pilihan pelatih (bukan "otomatis") menimpa AI pelatih.
-      teams[id].mentality = mode !== 'otomatis' ? mode : coachMentality({
-        own: prev.players.filter((p) => p.teamId === id).length,
-        opponents: prev.players.filter((p) => p.teamId === other).length,
-        goalsFor: match.goals[id],
-        goalsAgainst: match.goals[other],
-        minute: match.minute,
-        base: teams[id].baseMentality,
-      });
+      teams[id].activeTactics = aiTeams.has(id)
+        ? coachTactics(teams[id].baseTactics, {
+            own: prev.players.filter((p) => p.teamId === id).length,
+            opponents: prev.players.filter((p) => p.teamId === other).length,
+            goalsFor: match.goals[id],
+            goalsAgainst: match.goals[other],
+            minute: match.minute,
+          })
+        : teams[id].tactics;
+      const since = (at) => (at === null || at === undefined ? Infinity : tick - at);
+      styles[id] = teamStyle(teams[id].activeTactics, since(teams[id].lostAt), since(teams[id].wonAt));
+      teams[id].runScale = styles[id].runScale;
     }
-    match.mentalities = Object.fromEntries(teamIds.map((id) => [id, teams[id].mentality]));
-    match.setPieces = Object.fromEntries(teamIds.map((id) => [id, { corner: teams[id].tactics.corner, freeKick: teams[id].tactics.freeKick }]));
-    match.crossScale = Object.fromEntries(teamIds.map((id) => [id, CROSS_OPTIONS[teams[id].tactics.cross]]));
-    const tempoOf = (player) =>
-      philosophies[player.teamId].tempo * getMentality(teams[player.teamId].mentality).tempo * TEMPO_OPTIONS[teams[player.teamId].tactics.tempo];
+    match.styles = styles;
+    match.setPieces = Object.fromEntries(
+      teamIds.map((id) => [id, { corner: teams[id].activeTactics.corner, freeKick: teams[id].activeTactics.freeKick }]),
+    );
+    match.crossScale = Object.fromEntries(teamIds.map((id) => [id, styles[id].crossScale]));
+    const tempoOf = (player) => philosophies[player.teamId].tempo * styles[player.teamId].tempo;
     const events = [];
     const note = (playerId, event) => events.push([playerId, event]);
 
@@ -1781,7 +1803,7 @@ export function createSimulation(home, away, seed, options = {}) {
         const freeKickSetup =
           (ball.setPieceKind === 'freeKick' && ball.heldTicks < FREE_KICK.holdTicks) || ball.setPieceKind === 'penalty';
         // Mentalitas bertahan: tidak menekan tinggi, biarkan lawan memegang bola di separuhnya.
-        if (owner.teamId !== id && !keeperHolding && !freeKickSetup && pressAllowed(team.mentality, owner, team.attacksRight)) {
+        if (owner.teamId !== id && !keeperHolding && !freeKickSetup && pressAllowedAt(styles[id], owner, team.attacksRight)) {
           pick = pickPresser(own, owner, team.attacksRight, team.chaserId);
         }
       } else if (ball.restartTeamId !== null && ball.restartTeamId !== id) {
@@ -1804,7 +1826,7 @@ export function createSimulation(home, away, seed, options = {}) {
       const cover =
         owner && owner.teamId !== id && !keeperHoldingNow && ball.setPieceKind === null
           ? pickCover(own, owner, team.attacksRight, {
-              range: getMentality(team.mentality).coverRange,
+              range: styles[id].coverRange,
               chaserId: team.chaserId,
               previousId: team.coverId,
               attackers: prev.players.filter((p) => p.teamId === owner.teamId),
@@ -1812,6 +1834,22 @@ export function createSimulation(home, away, seed, options = {}) {
           : null;
       team.coverId = cover ? cover.player.id : null;
       if (cover) roleTargets.set(cover.player.id, cover.point);
+
+      // Counter-press (31 Okt): baru kehilangan bola → 2 pemain terdekat (selain penekan & penutup)
+      // ikut menutup pemegang bola dari sisi masing-masing.
+      team.counterIds = [];
+      if (owner && owner.teamId !== id && styles[id].counterPress && !isKeeperHandling(owner, ball) && ball.setPieceKind === null) {
+        const helpers = own
+          .filter((p) => p.role !== 'GK' && p.id !== team.chaserId && p.id !== team.coverId && distance(p, owner) <= TRANSITION.counterRadius)
+          .sort((a, b) => distance(a, owner) - distance(b, owner) || a.id.localeCompare(b.id))
+          .slice(0, TRANSITION.counterPressers);
+        for (const h of helpers) {
+          const d = distance(h, owner) || 1;
+          const gap = Math.min(2.5, d);
+          roleTargets.set(h.id, clampToPitch({ x: owner.x + ((h.x - owner.x) / d) * gap, y: owner.y + ((h.y - owner.y) / d) * gap }));
+          team.counterIds.push(h.id);
+        }
+      }
 
       if (updateRunner(team, owner, ball, prev.players, offsideLines[id], runCooldowns) === id) runStartedBy.add(id);
     }
@@ -1861,7 +1899,9 @@ export function createSimulation(home, away, seed, options = {}) {
     if (possessingTeamId !== null) {
       for (const id of teamIds) {
         if (id === possessingTeamId) continue;
-        const defenders = prev.players.filter((p) => p.teamId === id && p.id !== teams[id].chaserId && p.id !== teams[id].coverId);
+        const defenders = prev.players.filter(
+          (p) => p.teamId === id && p.id !== teams[id].chaserId && p.id !== teams[id].coverId && !teams[id].counterIds.includes(p.id),
+        );
         const attackers = prev.players.filter((p) => p.teamId === possessingTeamId && p.id !== ball.ownerId);
         marksByTeam.set(id, assignMarks(defenders, attackers, teams[id].attacksRight));
       }
@@ -1895,6 +1935,10 @@ export function createSimulation(home, away, seed, options = {}) {
         task = 'run';
         target = team.runTarget;
         moveOptions = { urgent: true };
+      } else if (team.counterIds?.includes(player.id)) {
+        task = 'counter';
+        target = roleTargets.get(player.id);
+        moveOptions = { urgent: true };
       } else if (team.coverId === player.id) {
         task = 'cover';
         target = roleTargets.get(player.id);
@@ -1911,7 +1955,12 @@ export function createSimulation(home, away, seed, options = {}) {
         if (isDecisionTick || player.task !== 'shape') {
           let phase = 'neutral';
           if (possessingTeamId !== null) phase = possessingTeamId === player.teamId ? 'attack' : 'defend';
-          target = boxRuns.get(player.id) ?? computeAnchor(player, ball, team.attacksRight, phase, getMentality(team.mentality));
+          // Dua bentuk (31 Okt): jangkar tanpa bola & dengan bola, dicampur menurut shapeBlend tim.
+          const style = styles[player.teamId];
+          const outA = computeAnchor({ ...player, slot: player.slotOut ?? player.slot }, ball, team.attacksRight, phase, style);
+          const inA = computeAnchor({ ...player, slot: player.slotIn ?? player.slot }, ball, team.attacksRight, phase, style);
+          const b = team.shapeBlend ?? 0;
+          target = boxRuns.get(player.id) ?? { x: outA.x + (inA.x - outA.x) * b, y: outA.y + (inA.y - outA.y) * b };
           if (phase === 'defend') {
             const mark = marksByTeam.get(player.teamId)?.get(player.id);
             const holdLine =
@@ -1953,7 +2002,7 @@ export function createSimulation(home, away, seed, options = {}) {
       const body = stepBody({ ...base, profile: effectiveProfile(player, moveContext) }, moveTarget, DT, moveOptions);
       // Mentalitas memengaruhi seberapa banyak tim berlari (menyerang = lebih cepat lelah).
       const drained = drainEnergy(player, Math.hypot(body.vx, body.vy), DT);
-      const drainScale = getMentality(team.mentality).energyDrain;
+      const drainScale = styles[player.teamId].energyDrain;
       const energy = Math.max(0, Math.min(1, player.condition.energy - (player.condition.energy - drained) * drainScale));
       const condition = driftConfidence({ ...player.condition, energy }, DT);
       const tackleCooldown = cooldownOverrides.get(player.id) ?? Math.max(0, player.tackleCooldown - 1);
@@ -2143,8 +2192,14 @@ export function createSimulation(home, away, seed, options = {}) {
       }
     };
     // Bola keluar: jeda singkat (jam berhenti) — eksekutor berjalan ke bola, yang lain mengambil posisi.
-    const startRestart = () => {
+    const startRestart = (outPoint = null) => {
       const kind = ball.restartKind;
+      // Asal bola untuk tampilan (31 Okt: bola tidak "pindah gaib"): titik keluar, dan apakah ada
+      // pemain ≤ 5 m yang memungutnya (kalau tidak, ball boy terdekat melempar bola ke titik eksekusi).
+      if (outPoint) {
+        const near = players.some((p) => Math.hypot(p.x - outPoint.x, p.y - outPoint.y) <= BALL_PICKUP_RADIUS);
+        ball = { ...ball, outFrom: { x: outPoint.x, y: outPoint.y, carried: near && kind !== 'goalKick' } };
+      }
       if (kind === 'corner') {
         stats.corners[ball.restartTeamId].taken += 1;
         teams[ball.restartTeamId].cornerAt = tick;
@@ -2204,7 +2259,7 @@ export function createSimulation(home, away, seed, options = {}) {
         } else {
           stats.outOfPlay += 1;
           ball = restartFromOut(ball, from, flight, teams, teamIds);
-          startRestart();
+          startRestart(flight);
         }
       } else if (candidates.length > 0 && freeKickShot) {
         // Kiper menjangkau tendangan bebas: tangkap atau tepis (seperti tembakan biasa).
@@ -2235,7 +2290,7 @@ export function createSimulation(home, away, seed, options = {}) {
       } else if (!isInsidePitch(flight.x, flight.y)) {
         stats.outOfPlay += 1;
         ball = restartFromOut(ball, from, flight, teams, teamIds);
-          startRestart();
+          startRestart(flight);
       } else if (flight.z <= AERIAL.footMax) {
         const touch = findController(from, flight, players, canTouch);
         if (touch && ball.offsideFlagIds.includes(touch.player.id)) {
@@ -2353,7 +2408,7 @@ export function createSimulation(home, away, seed, options = {}) {
       } else if (!isInsidePitch(rolled.x, rolled.y)) {
         stats.outOfPlay += 1;
         ball = restartFromOut(ball, from, rolled, teams, teamIds);
-        startRestart();
+        startRestart(rolled);
       } else {
         ball = { ...ball, ...rolled, kickCooldown: cooldown };
       }
@@ -2393,6 +2448,10 @@ export function createSimulation(home, away, seed, options = {}) {
     let finalPlayers = players;
     if (sendOffs.size > 0) {
       ({ players: finalPlayers, sentOff } = applySendOffs(players, sentOff, sendOffs, tick));
+      // Kurang orang: susun ulang kedua bentuk (dengan & tanpa bola) dari taktik tim.
+      for (const teamId of new Set([...sendOffs.keys()].map((pid) => players.find((p) => p.id === pid)?.teamId))) {
+        if (teamId) finalPlayers = reslotTeam(finalPlayers, teamId, teams[teamId].activeTactics, teams[teamId].shapeBlend);
+      }
       if (ball.ownerId !== null && sendOffs.has(ball.ownerId)) {
         const teamId = ball.restartTeamId ?? players.find((p) => p.id === ball.ownerId).teamId;
         const next = finalPlayers
@@ -2412,7 +2471,41 @@ export function createSimulation(home, away, seed, options = {}) {
     }
     const officials = stepOfficials(prev.officials, ball, offsideReferences(finalPlayers, ball), false, DT);
     const subbedOff = stepSentOff(prev.subbedOff ?? [], DT);
-    state = { ...prev, tick, teams, ball, players: finalPlayers, sentOff, subbedOff, stats, ...pause, lastGoal, officials, whistle, tackleEvents };
+
+    // Transisi & dua bentuk (31 Okt): catat kapan tiap tim baru merebut / kehilangan bola, lalu
+    // geser bentuk menuju "dengan bola" (1) atau "tanpa bola" (0). Peran aktif ikut bentuk.
+    const nowPoss = possessingTeamId;
+    if (nowPoss !== null && prev.possessionTeamId && nowPoss !== prev.possessionTeamId) {
+      teams[nowPoss].wonAt = tick;
+      teams[prev.possessionTeamId].lostAt = tick;
+    }
+    for (const id of teamIds) {
+      const target = nowPoss === null ? teams[id].shapeBlend : nowPoss === id ? 1 : 0;
+      teams[id].shapeBlend = blendStep(teams[id].shapeBlend, target, teams[id].activeTactics);
+    }
+    finalPlayers = finalPlayers.map((p) => {
+      if (p.role === 'GK' || !p.slotIn) return p;
+      const inShape = teams[p.teamId].shapeBlend >= 0.5;
+      const slot = inShape ? p.slotIn : p.slotOut;
+      const role = inShape ? p.roleIn : p.roleOut;
+      return slot === p.slot && role === p.role ? p : { ...p, slot, role };
+    });
+    state = {
+      ...prev,
+      tick,
+      teams,
+      ball,
+      players: finalPlayers,
+      sentOff,
+      subbedOff,
+      stats,
+      ...pause,
+      lastGoal,
+      officials,
+      whistle,
+      tackleEvents,
+      possessionTeamId: nowPoss ?? prev.possessionTeamId ?? null,
+    };
     return state;
   }
 

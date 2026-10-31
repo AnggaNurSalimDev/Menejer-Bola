@@ -11,7 +11,9 @@ import { PITCH } from './pitch.js';
 import { deriveMovementProfile, stepBody } from './movement.js';
 
 export const SENDOFF = Object.freeze({
-  walkSpeed: 0.22, // bagian dari laju maksimal: berjalan lesu
+  walkSpeed: 0.45, // bagian dari laju maksimal: berjalan cepat keluar (±3,3 m/s)
+  waitTicks: 70, // jeda bola mati menunggu pemain keluar paling lama 7 dtk (lalu dianggap sudah keluar)
+  goalMouthClear: 12, // meter dari tengah gawang: jangan keluar lewat gawang, pakai garis samping
   emergencyKeeperStat: 4, // stat kiper bek yang dipaksa jaga gawang
   minPlayers: 7, // aturan: laga dihentikan bila kurang dari 7 (di sini dijaga lewat invariant)
 });
@@ -134,15 +136,31 @@ export function applySendOffs(players, sentOff, removals, tick) {
       reason: info.reason,
       tick,
       walking: true,
+      exit: exitSpot(gone),
     });
   }
   return { players: list, sentOff: out };
 }
 
 // Titik keluar: garis samping atas, dekat garis tengah (lorong ruang ganti).
+// Aturan IFAB Law 3 (2019): pemain yang diganti / dikartu merah keluar lewat TITIK GARIS TERDEKAT
+// (masukan 31 Okt: dulu berjalan pelan ke garis tengah sambil laga berjalan — "hantu" di lapangan).
+// Garis gawang hanya dipakai bila tidak di depan gawang.
 export function exitSpot(p) {
-  const x = PITCH.length / 2 + (p.x < PITCH.length / 2 ? -4 : 4);
-  return { x, y: 0 };
+  const mid = PITCH.width / 2;
+  const options = [
+    { d: p.y, pt: { x: p.x, y: 0 } },
+    { d: PITCH.width - p.y, pt: { x: p.x, y: PITCH.width } },
+  ];
+  if (Math.abs(p.y - mid) > SENDOFF.goalMouthClear) {
+    options.push({ d: p.x, pt: { x: 0, y: p.y } }, { d: PITCH.length - p.x, pt: { x: PITCH.length, y: p.y } });
+  }
+  options.sort((a, b) => a.d - b.d);
+  return options[0].pt;
+}
+
+export function stillLeaving(list) {
+  return (list ?? []).some((p) => p.walking);
 }
 
 // Gerakkan pemain yang sedang berjalan keluar (satu tick).
@@ -150,9 +168,9 @@ export function stepSentOff(sentOff, dt) {
   if (!sentOff.some((p) => p.walking)) return sentOff;
   return sentOff.map((p) => {
     if (!p.walking) return p;
-    const target = exitSpot(p);
+    const target = p.exit ?? exitSpot(p);
     const body = stepBody(p, target, dt, { speedScale: SENDOFF.walkSpeed });
-    const arrived = Math.hypot(body.x - target.x, body.y - target.y) < 1.2;
+    const arrived = Math.hypot(body.x - target.x, body.y - target.y) < 1;
     return { ...p, ...body, walking: !arrived };
   });
 }

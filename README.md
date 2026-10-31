@@ -32,7 +32,9 @@ Proyek ini dibuat untuk senang-senang.
 - Penutup tembakan (29 Okt): saat Bertahan dan tidak kalah jumlah di sekitar bola, satu bek menutup jalur tembak di dekat kotak. Catatan: "Bertahan" kini mengurangi gol sendiri tetapi belum mengurangi kebobolan (lihat dokumen arah 8c).
 - Skema bola mati (8d, 29 Okt): sepak pojok (campur, tiang dekat, tiang jauh, pendek) dan tendangan bebas (otomatis, tembak langsung, lambung, pendek) di tab Tim. Sepak pojok kini benar-benar terjadi (tepisan melebar, blokan membelok, sundulan bek meleset), rata-rata gol naik ke ~2,4. Tekel: kaki yang meluncur, bukan badan.
 - Bola lebih sering keluar (29 Okt): bek yang terdesak membuang bola ke samping, pemain sayap melebar, sebagian umpan silang kelewatan. Lemparan 2,7 → 11,5 per laga; rata-rata gol kini ~2,6.
-- Berikutnya: akurasi tembakan & operan yang kelewatan (supaya tendangan gawang dan lemparan mendekati angka nyata), lalu liga.
+- Pemain keluar lewat garis terdekat & ball boy (31 Okt): laga menunggu pemain yang diganti / dikartu merah keluar; bola keluar dibawa pemain terdekat atau dilempar ball boy.
+- Taktik empat kotak (31 Okt): dengan bola, tanpa bola, saat kehilangan bola (counter-press / mundur), saat merebut bola (serangan balik / bangun ulang); dua formasi, bentuk berganti mulus. Catatan: 3-2-5 dan garis tinggi masih terlalu kuat (lihat dokumen arah 8g).
+- Berikutnya: kalibrasi tembakan & kiper (tembakan luar kotak terlalu tajam), lalu liga.
 
 Tip: tambahkan `?seed=13` di alamat (misalnya `http://localhost:5173/?seed=13`) untuk memutar ulang pertandingan tertentu.
 
@@ -65,8 +67,7 @@ npm run build    # build produksi
   - `officials.js` — wasit & hakim garis: gerak, penilaian offside yang bisa salah
   - `scuffle.js` — koreografi pertikaian & protes (gaya gerak tiap pemain)
   - `substitution.js` — antrian & pelaksanaan pergantian pemain, AI pelatih pergantian
-  - `tactics.js` — formasi, mentalitas, tempo, umpan silang yang diatur pelatih
-  - `mentality.js` — mentalitas tim & AI pelatih (bertahan saat kalah jumlah)
+  - `tactics.js` — taktik empat kotak (dengan/tanpa bola, transisi), AI pelatih, skema bola mati
   - `sendoff.js` — kartu merah: pemain keluar, bentuk tim 10 orang, kiper darurat
   - `aerial.js` — bola udara: lambungan, titik jatuh, duel udara, sundulan (tabel AERIAL, CROSS, HEADER)
   - `shape.js` — posisi jangkar formasi per fase (menyerang/bertahan/netral)
