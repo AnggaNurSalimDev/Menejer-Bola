@@ -42,7 +42,7 @@ import { lingerTicks, freeKickSettleTargets, AFTER_INCIDENT } from '../src/engin
 import { pickCover } from '../src/engine/roles.js';
 import { parryVelocity } from '../src/engine/keeper.js';
 import { boxRunSpots } from '../src/engine/simulation.js';
-import { reshape, outfieldSlots, tacticsErrors, defaultTactics, teamStyle, TRANSITION, coachTactics, pressAllowedAt, LINE_OPTIONS } from '../src/engine/tactics.js';
+import { reshape, outfieldSlots, tacticsErrors, defaultTactics, teamStyle, TRANSITION, coachTactics, pressAllowedAt, LINE_OPTIONS, laneSlot, LANES } from '../src/engine/tactics.js';
 import { substitutionErrors, SUBS } from '../src/engine/substitution.js';
 import { repairShape, applySendOffs, emergencyKeeper } from '../src/engine/sendoff.js';
 import { scuffleTargets, assignScuffleStyles, protestTarget } from '../src/engine/scuffle.js';
@@ -575,6 +575,61 @@ console.log('Taktik empat kotak (31 Okt)');
   let u = simUser.getState();
   for (let i = 0; i < 300; i += 1) u = simUser.step();
   check('tim pengguna tidak diubah AI saat kalah jumlah', u.teams.home.activeTactics.outOfPossession.line === 'normal' ? [] : ['diubah']);
+}
+
+console.log('Taktik 5 jalur (1 Nov)');
+{
+  // laneSlot: bingkai tim, jalur 0 = kiri.
+  const lw = { depth: 0.45, lane: 0.08 };
+  const cm = { depth: 0.33, lane: 0.62 };
+  const st = { depth: 0.47, lane: 0.5 };
+  check('half-space: sayap kiri masuk ke half-space kiri', laneSlot(lw, 'halfSpace').lane === LANES.halfSpace ? [] : [laneSlot(lw, 'halfSpace').lane]);
+  check('melebar: gelandang kanan ke sayap kanan', laneSlot(cm, 'melebar').lane === 1 - LANES.wide ? [] : [laneSlot(cm, 'melebar').lane]);
+  check('kotak: gelandang naik ke lini depan & merapat', laneSlot(cm, 'kotak').depth >= LANES.boxDepth && Math.abs(laneSlot(cm, 'kotak').lane - 0.5) < Math.abs(cm.lane - 0.5) ? [] : ['salah']);
+  check('pemain di tengah tetap di tengah saat diminta half-space / melebar', laneSlot(st, 'halfSpace') === st && laneSlot(st, 'melebar') === st ? [] : ['bergeser']);
+  check('tetap = slot asli', laneSlot(cm, 'tetap') === cm ? [] : ['berubah']);
+  let threw = false;
+  try { laneSlot(cm, 'terbang'); } catch { threw = true; }
+  check('instruksi jalur tidak dikenal ditolak', threw ? [] : ['diterima']);
+  check('pengaturan fokus / lindungi divalidasi', tacticsErrors({ inPossession: { focus: 'atas' } }).length > 0 && tacticsErrors({ outOfPossession: { protect: 'semua' } }).length > 0 && tacticsErrors({ inPossession: { focus: 'kiri' }, outOfPossession: { protect: 'tengah' } }).length === 0 ? [] : ['salah']);
+  const d = teamStyle(defaultTactics('4-4-2'));
+  check('bawaan 5 jalur tidak mengubah permainan lama', d.focusShift === 0 && d.protectWidth === 1 && d.widthAttack === 1.35 ? [] : ['berbeda']);
+  // Fokus kiri: jangkar menyerang bergeser ke kiri tim (bingkai tim: y lebih kecil untuk tim yang menyerang ke kanan).
+  const p = { id: 'x', role: 'CM', slot: { depth: 0.33, lane: 0.5 } };
+  const ball = { x: 60, y: 34 };
+  const yBase = computeAnchor(p, ball, true, 'attack', teamStyle(defaultTactics('4-4-2'))).y;
+  const yLeft = computeAnchor(p, ball, true, 'attack', teamStyle({ ...defaultTactics('4-4-2'), inPossession: { ...defaultTactics('4-4-2').inPossession, focus: 'kiri' } })).y;
+  const yLeftAway = computeAnchor(p, ball, false, 'attack', teamStyle({ ...defaultTactics('4-4-2'), inPossession: { ...defaultTactics('4-4-2').inPossession, focus: 'kiri' } })).y;
+  const yBaseAway = computeAnchor(p, ball, false, 'attack', teamStyle(defaultTactics('4-4-2'))).y;
+  check('fokus kiri menggeser bentuk ke kiri tim (kedua arah serang)', yLeft < yBase && yLeftAway > yBaseAway ? [] : [`${yLeft}/${yBase} ${yLeftAway}/${yBaseAway}`]);
+  // Instruksi per pemain di simulasi.
+  const teams = createDemoTeams(2026, {});
+  const sim = createSimulation(teams.home, teams.away, 7, { aiTeams: ['away'] });
+  const s0 = sim.getState();
+  const gk = s0.players.find((q) => q.teamId === 'home' && q.role === 'GK');
+  const wing = s0.players.find((q) => q.teamId === 'home' && q.role !== 'GK' && Math.abs(q.slotIn.lane - 0.5) > 0.3);
+  const foe = s0.players.find((q) => q.teamId === 'away' && q.role !== 'GK');
+  let gkErr = false;
+  try { sim.setTactics('home', { playerLanes: { [gk.id]: 'kotak' } }); } catch { gkErr = true; }
+  let foeErr = false;
+  try { sim.setTactics('home', { playerLanes: { [foe.id]: 'kotak' } }); } catch { foeErr = true; }
+  check('kiper & pemain lawan tidak bisa diberi instruksi jalur', gkErr && foeErr ? [] : ['diterima']);
+  let s = sim.setTactics('home', { playerLanes: { [wing.id]: 'halfSpace' }, inPossession: { focus: 'tengah' }, outOfPossession: { protect: 'sayap' } });
+  check('instruksi jalur tersimpan', s.teams.home.tactics.playerLanes[wing.id] === 'halfSpace' && s.teams.home.activeTactics.playerLanes[wing.id] === 'halfSpace' ? [] : ['hilang']);
+  const errs = [];
+  for (let i = 0; i < 1200; i += 1) {
+    s = sim.step();
+    if (i % 60 === 0) errs.push(...validateMatchState(s));
+  }
+  check('state valid dengan taktik 5 jalur', errs.slice(0, 5));
+  // Pergantian: pemain masuk mewarisi instruksi.
+  const benchIn = s.teams.home.bench.find((q) => q.role !== 'GK');
+  s = sim.queueSubstitution('home', wing.id, benchIn.id);
+  while (s.period === 'first') s = sim.step();
+  s = sim.startSecondHalf();
+  for (let i = 0; i < 20 && s.teams.home.subsUsed === 0; i += 1) s = sim.step();
+  const lanes = s.teams.home.tactics.playerLanes;
+  check('pemain masuk mewarisi instruksi jalur pemain yang diganti', lanes[benchIn.id] === 'halfSpace' && lanes[wing.id] === undefined ? [] : [JSON.stringify(lanes)]);
 }
 
 console.log('Skema bola mati (8d)');

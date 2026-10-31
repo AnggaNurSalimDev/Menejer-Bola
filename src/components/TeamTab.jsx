@@ -13,6 +13,9 @@ import {
   ON_WIN,
   CORNER_SCHEMES,
   FREE_KICK_SCHEMES,
+  FOCUS_OPTIONS,
+  PROTECT_OPTIONS,
+  LANE_INSTRUCTIONS,
 } from '../engine/tactics.js';
 
 const WIDTH_LABEL = { sempit: 'Sempit', normal: 'Normal', lebar: 'Lebar' };
@@ -23,6 +26,9 @@ const WIN_LABEL = { seranganBalik: 'Serangan balik', seimbang: 'Seimbang', bangu
 const TEMPO_LABEL = { lambat: 'Lambat', normal: 'Normal', cepat: 'Cepat' };
 const CROSS_LABEL = { jarang: 'Jarang', normal: 'Normal', sering: 'Sering' };
 const CORNER_LABEL = { campur: 'Campur', tiangDekat: 'Tiang dekat', tiangJauh: 'Tiang jauh', pendek: 'Pendek' };
+const FOCUS_LABEL = { seimbang: 'Seimbang', kiri: 'Kiri', tengah: 'Tengah', kanan: 'Kanan' };
+const PROTECT_LABEL = { seimbang: 'Seimbang', tengah: 'Tengah', sayap: 'Sayap' };
+const LANE_LABEL = { tetap: 'Tetap di jalur', halfSpace: 'Masuk half-space', melebar: 'Melebar ke sayap', kotak: 'Naik ke kotak' };
 const FREE_KICK_LABEL = { otomatis: 'Otomatis', tembak: 'Tembak langsung', lambung: 'Lambung ke kotak', pendek: 'Pendek' };
 
 // Satu baris pilihan (tombol bersegmen).
@@ -184,6 +190,15 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
               onPick={(v) => setTactic({ inPossession: { cross: v } }, `Umpan silang ${CROSS_LABEL[v]}`)}
               disabled={locked}
             />
+            <Choice
+              label="Fokus serangan"
+              value={team.tactics.inPossession.focus ?? 'seimbang'}
+              options={Object.keys(FOCUS_OPTIONS)}
+              labels={FOCUS_LABEL}
+              onPick={(v) => setTactic({ inPossession: { focus: v } }, `Fokus serangan ${FOCUS_LABEL[v]}`)}
+              disabled={locked}
+              hint="Kiri/kanan: seluruh bentuk bergeser ke sisi itu (dilihat dari arah serang tim). Tengah: merapat ke tengah"
+            />
           </fieldset>
           <fieldset className="tac-box">
             <legend>Tanpa bola</legend>
@@ -211,6 +226,15 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
               onPick={(v) => setTactic({ outOfPossession: { press: v } }, `Tekanan ${PRESS_LABEL[v]}`)}
               disabled={locked}
               hint="Tinggi: menekan di mana saja (menguras tenaga). Rendah: hanya dekat gawang sendiri"
+            />
+            <Choice
+              label="Lindungi"
+              value={team.tactics.outOfPossession.protect ?? 'seimbang'}
+              options={Object.keys(PROTECT_OPTIONS)}
+              labels={PROTECT_LABEL}
+              onPick={(v) => setTactic({ outOfPossession: { protect: v } }, `Lindungi ${PROTECT_LABEL[v]}`)}
+              disabled={locked}
+              hint="Tengah: blok sempit, lawan dipaksa ke sayap. Sayap: blok lebar, tengah lebih renggang"
             />
           </fieldset>
           <fieldset className="tac-box">
@@ -271,6 +295,7 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
       <div className="team-columns">
         <div className="team-col">
           <h3>Di lapangan ({onPitch.length})</h3>
+          <p className="roster-hint">Jalur dengan bola: kiri │ half-space │ tengah │ half-space │ kanan</p>
           <ul className="roster">
             {onPitch.map((p) => (
               <li key={p.id}>
@@ -289,6 +314,21 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
                   <span className="roster-role">{p.role}</span>
                   <EnergyBar value={p.condition.energy} />
                 </button>
+                {p.role !== 'GK' && (
+                  <select
+                    className="lane-select"
+                    aria-label={`Jalur dengan bola ${p.shortName}`}
+                    value={team.tactics.playerLanes?.[p.id] ?? 'tetap'}
+                    disabled={locked}
+                    onChange={(e) => setTactic({ playerLanes: { [p.id]: e.target.value } }, `${p.shortName}: ${LANE_LABEL[e.target.value]}`)}
+                  >
+                    {LANE_INSTRUCTIONS.map((v) => (
+                      <option key={v} value={v}>
+                        {LANE_LABEL[v]}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </li>
             ))}
           </ul>

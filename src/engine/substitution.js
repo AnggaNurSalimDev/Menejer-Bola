@@ -16,6 +16,7 @@ import { deriveMovementProfile } from './movement.js';
 import { initialDiscipline } from './fouls.js';
 import { CONDITION } from './condition.js';
 import { exitSpot } from './sendoff.js';
+import { transferLaneInstruction } from './tactics.js';
 
 export const SUBS = Object.freeze({
   max: 5,
@@ -155,7 +156,15 @@ export function applySubstitutions(state, tick, placeAt = () => entrySpot()) {
       stats.subs[teamId] += 1;
       notices.push({ tick, teamId, outId: out.id, inId: incoming.id, status: 'masuk' });
     }
-    teams[teamId] = { ...team, bench, subsUsed, subQueue: [] };
+    // Instruksi jalur (taktik 5 jalur) ikut ke pemain masuk.
+    let { tactics, baseTactics, activeTactics } = team;
+    for (const n of notices) {
+      if (n.teamId !== teamId || n.tick !== tick || n.status !== 'masuk') continue;
+      if (tactics) tactics = transferLaneInstruction(tactics, n.outId, n.inId);
+      if (baseTactics) baseTactics = transferLaneInstruction(baseTactics, n.outId, n.inId);
+      if (activeTactics) activeTactics = transferLaneInstruction(activeTactics, n.outId, n.inId);
+    }
+    teams[teamId] = { ...team, bench, subsUsed, subQueue: [], tactics, baseTactics, activeTactics };
   }
   if (!changed) return state;
   return { ...state, players, subbedOff, teams, stats, subNotices: notices.filter((n) => tick - n.tick <= SUBS.noticeTicks) };

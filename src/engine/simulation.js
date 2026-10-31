@@ -140,6 +140,7 @@ import {
   pressAllowedAt,
   coachTactics,
   blendStep,
+  laneSlot,
   reslotTeam,
   TRANSITION,
 } from './tactics.js';
@@ -2017,7 +2018,8 @@ export function createSimulation(home, away, seed, options = {}) {
           // Dua bentuk (31 Okt): jangkar tanpa bola & dengan bola, dicampur menurut shapeBlend tim.
           const style = styles[player.teamId];
           const outA = computeAnchor({ ...player, slot: player.slotOut ?? player.slot }, ball, team.attacksRight, phase, style);
-          const inA = computeAnchor({ ...player, slot: player.slotIn ?? player.slot }, ball, team.attacksRight, phase, style);
+          const laneOrder = player.role === 'GK' ? 'tetap' : (team.activeTactics?.playerLanes?.[player.id] ?? 'tetap');
+          const inA = computeAnchor({ ...player, slot: laneSlot(player.slotIn ?? player.slot, laneOrder) }, ball, team.attacksRight, phase, style);
           const b = team.shapeBlend ?? 0;
           target = boxRuns.get(player.id) ?? { x: outA.x + (inA.x - outA.x) * b, y: outA.y + (inA.y - outA.y) * b };
           if (phase === 'defend') {

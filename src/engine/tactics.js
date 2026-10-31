@@ -53,6 +53,39 @@ export const TRANSITION = Object.freeze({
   blendRateFast: 1 / 7, // mundur / serangan balik: lebih cepat
   blendRateSlow: 1 / 40, // counter-press: tetap di bentuk menyerang lebih lama
 });
+// Taktik 5 jalur (1 Nov): lapangan dibagi kiri / half-space kiri / tengah / half-space kanan / kanan.
+// "Kiri" = sisi kiri tim saat menghadap gawang lawan (jalur 0 di bingkai tim; LW ada di 0,08).
+//   fokus serangan (dengan bola): seluruh bentuk bergeser ke satu sisi, atau merapat ke tengah
+//   lindungi (tanpa bola)       : tengah = blok sempit (lawan dipaksa ke sayap); sayap = blok lebar
+//   instruksi pemain (dengan bola): tetap di jalurnya / masuk half-space / melebar / naik ke kotak
+export const FOCUS_OPTIONS = Object.freeze({
+  seimbang: Object.freeze({ shift: 0, squeeze: 1 }),
+  kiri: Object.freeze({ shift: -6, squeeze: 1 }), // meter di bingkai tim
+  tengah: Object.freeze({ shift: 0, squeeze: 0.85 }),
+  kanan: Object.freeze({ shift: 6, squeeze: 1 }),
+});
+export const PROTECT_OPTIONS = Object.freeze({ seimbang: 1, tengah: 0.85, sayap: 1.15 });
+export const LANE_INSTRUCTIONS = Object.freeze(['tetap', 'halfSpace', 'melebar', 'kotak']);
+export const LANES = Object.freeze({ halfSpace: 0.32, wide: 0.08, boxDepth: 0.45, boxNarrow: 0.4 });
+
+// Slot dengan bola setelah instruksi pemain. slot = { depth, lane } (bingkai tim, lane 0 = kiri).
+export function laneSlot(slot, instruction = 'tetap') {
+  if (!slot || !Number.isFinite(slot.lane) || !Number.isFinite(slot.depth)) throw new TypeError('laneSlot: slot tidak valid');
+  if (!LANE_INSTRUCTIONS.includes(instruction)) throw new RangeError(`laneSlot: instruksi tidak dikenal ${instruction}`);
+  const left = slot.lane < 0.5;
+  const center = Math.abs(slot.lane - 0.5) < 0.05;
+  switch (instruction) {
+    case 'halfSpace':
+      return center ? slot : { ...slot, lane: left ? LANES.halfSpace : 1 - LANES.halfSpace };
+    case 'melebar':
+      return center ? slot : { ...slot, lane: left ? LANES.wide : 1 - LANES.wide };
+    case 'kotak':
+      return { depth: Math.max(slot.depth, LANES.boxDepth), lane: 0.5 + (slot.lane - 0.5) * LANES.boxNarrow };
+    default:
+      return slot;
+  }
+}
+
 export const MAX_CROSS_CHANCE = 0.95;
 // Skema bola mati (29 Okt):
 //   sepak pojok      : campur / tiangDekat / tiangJauh / pendek
@@ -62,8 +95,9 @@ export const FREE_KICK_SCHEMES = Object.freeze(['otomatis', 'tembak', 'lambung',
 
 export function defaultTactics(formation) {
   return {
-    inPossession: { formation, width: 'normal', tempo: 'normal', cross: 'normal' },
-    outOfPossession: { formation, line: 'normal', press: 'tinggi' },
+    inPossession: { formation, width: 'normal', tempo: 'normal', cross: 'normal', focus: 'seimbang' },
+    outOfPossession: { formation, line: 'normal', press: 'tinggi', protect: 'seimbang' },
+    playerLanes: {}, // id pemain → instruksi jalur dengan bola (tanpa entri = 'tetap')
     onLoss: 'seimbang',
     onWin: 'seimbang',
     corner: 'campur',
@@ -89,7 +123,9 @@ export function teamStyle(tactics, sinceLoss = Infinity, sinceWin = Infinity) {
     compact: line.compact,
     coverRange: line.coverRange,
     pressZone,
-    widthAttack: WIDTH_OPTIONS[tactics.inPossession.width],
+    widthAttack: WIDTH_OPTIONS[tactics.inPossession.width] * FOCUS_OPTIONS[tactics.inPossession.focus ?? 'seimbang'].squeeze,
+    focusShift: FOCUS_OPTIONS[tactics.inPossession.focus ?? 'seimbang'].shift,
+    protectWidth: PROTECT_OPTIONS[tactics.outOfPossession.protect ?? 'seimbang'],
     tempo: TEMPO_OPTIONS[tactics.inPossession.tempo] * (winMod?.tempo ?? 1),
     crossScale: CROSS_OPTIONS[tactics.inPossession.cross],
     directness: winMod?.directness ?? 1,
@@ -183,11 +219,13 @@ const PHASE_KEYS = Object.freeze({
     width: (v) => v in WIDTH_OPTIONS,
     tempo: (v) => v in TEMPO_OPTIONS,
     cross: (v) => v in CROSS_OPTIONS,
+    focus: (v) => v in FOCUS_OPTIONS,
   }),
   outOfPossession: Object.freeze({
     formation: (v) => Boolean(FORMATIONS[v]),
     line: (v) => v in LINE_OPTIONS,
     press: (v) => v in PRESS_OPTIONS,
+    protect: (v) => v in PROTECT_OPTIONS,
   }),
 });
 
@@ -210,7 +248,13 @@ export function tacticsErrors(changes) {
   if (changes.corner !== undefined && !CORNER_SCHEMES.includes(changes.corner)) errors.push(`skema pojok tidak dikenal: ${changes.corner}`);
   if (changes.freeKick !== undefined && !FREE_KICK_SCHEMES.includes(changes.freeKick))
     errors.push(`skema tendangan bebas tidak dikenal: ${changes.freeKick}`);
-  const known = new Set(['inPossession', 'outOfPossession', 'onLoss', 'onWin', 'corner', 'freeKick']);
+  if (changes.playerLanes !== undefined) {
+    if (typeof changes.playerLanes !== 'object' || changes.playerLanes === null) errors.push('playerLanes harus objek');
+    else
+      for (const [id, v] of Object.entries(changes.playerLanes))
+        if (!LANE_INSTRUCTIONS.includes(v)) errors.push(`instruksi jalur ${id} tidak dikenal: ${v}`);
+  }
+  const known = new Set(['inPossession', 'outOfPossession', 'onLoss', 'onWin', 'corner', 'freeKick', 'playerLanes']);
   for (const k of Object.keys(changes)) if (!known.has(k)) errors.push(`pengaturan taktik tidak dikenal: ${k}`);
   return errors;
 }
@@ -221,7 +265,16 @@ export function mergeTactics(tactics, changes) {
     ...changes,
     inPossession: { ...tactics.inPossession, ...(changes.inPossession ?? {}) },
     outOfPossession: { ...tactics.outOfPossession, ...(changes.outOfPossession ?? {}) },
+    playerLanes: { ...(tactics.playerLanes ?? {}), ...(changes.playerLanes ?? {}) },
   };
+}
+
+// Pemain masuk mewarisi instruksi jalur pemain yang ia gantikan.
+export function transferLaneInstruction(tactics, outId, inId) {
+  const lanes = { ...(tactics.playerLanes ?? {}) };
+  if (lanes[outId] !== undefined) lanes[inId] = lanes[outId];
+  delete lanes[outId];
+  return { ...tactics, playerLanes: lanes };
 }
 
 // Terapkan perubahan taktik ke state (murni). changes boleh sebagian, mis. { outOfPossession: { line: 'tinggi' } }.
@@ -230,6 +283,11 @@ export function applyTactics(state, teamId, changes) {
   if (!team) throw new Error(`applyTactics: tim ${teamId} tidak ada`);
   const errors = tacticsErrors(changes);
   if (errors.length > 0) throw new RangeError(`applyTactics: ${errors.join('; ')}`);
+  for (const id of Object.keys(changes.playerLanes ?? {})) {
+    const p = state.players.find((q) => q.id === id);
+    if (!p || p.teamId !== teamId) throw new RangeError(`applyTactics: ${id} tidak sedang bermain untuk tim ${teamId}`);
+    if (p.role === 'GK') throw new RangeError(`applyTactics: kiper ${id} tidak diberi instruksi jalur`);
+  }
   const tactics = mergeTactics(team.tactics, changes);
   const formationChanged =
     tactics.inPossession.formation !== team.tactics.inPossession.formation ||

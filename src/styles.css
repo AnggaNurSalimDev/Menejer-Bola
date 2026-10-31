@@ -774,3 +774,41 @@ body {
   font-weight: 700;
   color: #74c0fc;
 }
+
+/* Taktik 5 jalur (1 Nov): instruksi jalur per pemain di samping baris susunan. */
+.roster li:has(.lane-select) {
+  display: grid;
+  grid-template-columns: 1fr 9.5rem;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.lane-select {
+  background: #232a33;
+  color: #ced4da;
+  border: 1px solid #3b4552;
+  border-radius: 5px;
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0 4px;
+  min-width: 0;
+}
+
+.lane-select:disabled {
+  opacity: 0.55;
+}
+
+.roster-hint {
+  margin: 0 0 6px;
+  font-size: 0.75rem;
+  color: #868e96;
+}
+
+@media (max-width: 520px) {
+  .roster li:has(.lane-select) {
+    grid-template-columns: 1fr;
+  }
+  .lane-select {
+    padding: 4px;
+  }
+}

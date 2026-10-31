@@ -92,9 +92,16 @@ export function computeAnchor(player, ball, attacksRight, phase = 'neutral', men
     const shift =
       phase === 'attack' ? (mentality?.defendOnly ? 0 : Math.max(0, raw)) : mentality?.attackOnly ? 0 : raw;
     const attackWidth = mentality?.widthAttack ?? shape.width;
-    const width = phase === 'defend' ? shape.width * (mentality?.compact ?? 1) : phase === 'attack' ? attackWidth : shape.width;
+    const width =
+      phase === 'defend'
+        ? shape.width * (mentality?.compact ?? 1) * (mentality?.protectWidth ?? 1)
+        : phase === 'attack'
+          ? attackWidth
+          : shape.width;
     x = baseX + (b.x - PITCH.length / 2) * BLOCK_SHIFT + shape.push + shift;
     y = midY + (baseY - midY) * width;
+    // Fokus serangan (taktik 5 jalur): seluruh bentuk bergeser ke satu sisi saat menguasai bola.
+    if (phase === 'attack') y += mentality?.focusShift ?? 0;
     y += (b.y - y) * shape.lateralPull;
     x = clamp(x, retreatLimit, PITCH.length - FRONT_MARGIN);
     y = clamp(y, FIELD_MARGIN, PITCH.width - FIELD_MARGIN);
