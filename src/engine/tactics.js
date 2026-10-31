@@ -60,9 +60,9 @@ export const TRANSITION = Object.freeze({
 //   instruksi pemain (dengan bola): tetap di jalurnya / masuk half-space / melebar / naik ke kotak
 export const FOCUS_OPTIONS = Object.freeze({
   seimbang: Object.freeze({ shift: 0, squeeze: 1 }),
-  kiri: Object.freeze({ shift: -6, squeeze: 1 }), // meter di bingkai tim
+  kiri: Object.freeze({ shift: -3, squeeze: 1 }), // meter di bingkai tim
   tengah: Object.freeze({ shift: 0, squeeze: 0.85 }),
-  kanan: Object.freeze({ shift: 6, squeeze: 1 }),
+  kanan: Object.freeze({ shift: 3, squeeze: 1 }),
 });
 export const PROTECT_OPTIONS = Object.freeze({ seimbang: 1, tengah: 0.85, sayap: 1.15 });
 export const LANE_INSTRUCTIONS = Object.freeze(['tetap', 'halfSpace', 'melebar', 'kotak']);

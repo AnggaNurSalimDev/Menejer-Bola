@@ -41,6 +41,7 @@ const MIN_OUTFIELD_DEPTH = 6; // garis bek paling dalam tidak mundur melewati in
 // yang tetap dipertahankan (1 = tidak merapat sama sekali, 0 = menumpuk).
 const DEEPEST_LINE_DEPTH = 0.17; // kedalaman slot bek tengah di formasi
 const LINE_SPACING_KEPT = 0.6;
+const FOCUS_BACK_LINE_DEPTH = 0.24; // slot sedalam ini = garis belakang, tidak ikut fokus serangan
 
 // Kiper: maju sedikit saat bola jauh, tetap di depan gawang.
 const KEEPER_BASE_DEPTH = 2;
@@ -100,8 +101,10 @@ export function computeAnchor(player, ball, attacksRight, phase = 'neutral', men
           : shape.width;
     x = baseX + (b.x - PITCH.length / 2) * BLOCK_SHIFT + shape.push + shift;
     y = midY + (baseY - midY) * width;
-    // Fokus serangan (taktik 5 jalur): seluruh bentuk bergeser ke satu sisi saat menguasai bola.
-    if (phase === 'attack') y += mentality?.focusShift ?? 0;
+    // Fokus serangan (taktik 5 jalur): gelandang & penyerang bergeser ke satu sisi saat menguasai bola.
+    // Garis belakang tetap (uji 1 Nov: menggeser bek ikut membuat tim kebobolan jauh lebih banyak
+    // saat kehilangan bola — lawan menyerang sisi yang ditinggalkan).
+    if (phase === 'attack' && player.slot.depth > FOCUS_BACK_LINE_DEPTH) y += mentality?.focusShift ?? 0;
     y += (b.y - y) * shape.lateralPull;
     x = clamp(x, retreatLimit, PITCH.length - FRONT_MARGIN);
     y = clamp(y, FIELD_MARGIN, PITCH.width - FIELD_MARGIN);
