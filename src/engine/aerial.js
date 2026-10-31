@@ -278,3 +278,14 @@ export function validateAirBall(ball) {
   }
   return errors;
 }
+
+// Bola lambung ke belakang garis (attack.js OVER_TOP): mendarat di titik tuju (setinggi lutut), lalu
+// menggelinding. Meleset menurut stat Passing, sama seperti umpan silang tetapi tanpa "kelewatan".
+export function overTopVelocity(from, to, passer, rng, scale = 1) {
+  const ideal = loftVelocity(from, to, 0.4);
+  const angleError = rng.normal(0, blunder(passer, 'passAngle') * CROSS.errorScale * scale);
+  const lengthError = Math.max(0.7, 1 + rng.normal(0, blunder(passer, 'passSpeed') * CROSS.errorScale * scale));
+  const cos = Math.cos(angleError);
+  const sin = Math.sin(angleError);
+  return { vx: (ideal.vx * cos - ideal.vy * sin) * lengthError, vy: (ideal.vx * sin + ideal.vy * cos) * lengthError, vz: ideal.vz };
+}

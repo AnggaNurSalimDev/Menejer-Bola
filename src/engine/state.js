@@ -105,6 +105,7 @@ export function createInitialBall(kickOffTeamId) {
     z: 0,
     vz: 0,
     crossTeamId: null,
+    overTop: false, // bola lambung ke belakang garis bek (attack.js OVER_TOP); hanya bersama crossTeamId
     // Jenis tembakan yang sedang berjalan: 'foot' | 'long' | 'header' | null.
     shotKind: null,
     ownerId: null,
@@ -149,6 +150,7 @@ function createStats(teamIds) {
     offsides: perTeam(() => 0),
     clearances: perTeam(() => 0),
     crosses: perTeam(() => ({ attempted: 0, won: 0 })),
+    overTop: perTeam(() => ({ attempted: 0, won: 0 })),
     headers: perTeam(() => ({ shots: 0, goals: 0 })),
     longShots: perTeam(() => ({ shots: 0, goals: 0 })), // tembakan kaki dari luar kotak penalti
     aerialsWon: perTeam(() => 0),
@@ -411,6 +413,7 @@ export function validateMatchState(state, teams = []) {
   if ((ball.shotKind === null) !== (ball.shotTeamId === null)) errors.push('shotKind harus terisi tepat saat ada tembakan');
   if (ball.shotKind !== null && !['foot', 'long', 'header', 'freeKick', 'penalty'].includes(ball.shotKind)) errors.push(`shotKind tidak dikenal "${ball.shotKind}"`);
   if (ball.crossTeamId !== null && !teamIds.includes(ball.crossTeamId)) errors.push('crossTeamId tidak valid');
+  if (ball.overTop && ball.crossTeamId === null) errors.push('bola lambung ke belakang tanpa tim pengirim');
   if (ball.crossTeamId !== null && ball.passTargetId !== null) errors.push('umpan silang sekaligus operan tanah');
   if (ball.lastTouchTeamId !== null && !teamIds.includes(ball.lastTouchTeamId)) {
     errors.push('lastTouchTeamId tidak valid');
@@ -521,6 +524,8 @@ export function validateMatchState(state, teams = []) {
       if (!(state.stats.clearances[id] >= 0)) errors.push(`tim ${id}: sapuan tidak valid`);
       const crosses = state.stats.crosses[id];
       if (!(crosses.won >= 0 && crosses.won <= crosses.attempted)) errors.push(`tim ${id}: umpan silang dimenangkan > dicoba`);
+      const over = state.stats.overTop?.[id];
+      if (over && !(over.won >= 0 && over.won <= over.attempted)) errors.push(`tim ${id}: bola lambung ke belakang dimenangkan > dicoba`);
       const headers = state.stats.headers[id];
       if (!(headers.goals >= 0 && headers.goals <= headers.shots)) errors.push(`tim ${id}: gol sundulan > sundulan`);
       if (!(headers.goals <= state.stats.goals[id])) errors.push(`tim ${id}: gol sundulan > total gol`);

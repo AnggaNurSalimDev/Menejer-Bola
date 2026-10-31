@@ -48,7 +48,7 @@ import {
 import { rollBall, MAX_KICK_SPEED } from './ball.js';
 import { computeAnchor } from './shape.js';
 import { stepBody } from './movement.js';
-import { pickChaser, pickPresser, pickCover } from './roles.js';
+import { pickChaser, pickPresser, pickCover, reachTime } from './roles.js';
 import { evaluatePassOptions, dribbleTarget, shotLaneBlocker } from './passing.js';
 import { evaluateShot, shotVelocity, shotSpeedFor, goalAngle, SCREEN, rangeSpreadScale } from './shooting.js';
 import {
@@ -116,6 +116,7 @@ import {
   headerClearVelocity,
   headerKnockVelocity,
   inHeaderShotRange,
+  overTopVelocity,
 } from './aerial.js';
 import {
   offsideLine,
@@ -129,6 +130,7 @@ import {
   RUN_MAX_TICKS,
   RUN_COOLDOWN_TICKS,
   RUN_START_CHANCE,
+  overTopPoint,
 } from './attack.js';
 import { hash01 } from './scuffle.js';
 import {
@@ -162,6 +164,7 @@ const PRESSURED_MIN_TICKS = 4; // ditekan pun, pemain butuh sejenak untuk melepa
 const PRESSURED_FORCED_TICKS = 8;
 const SHOT_MIN_TICKS = 2; // butuh sentuhan persiapan sebelum menembak
 const RUN_SPOT_MIN_TICKS = 2; // butuh sentuhan persiapan sebelum mengirim umpan terobosan
+const OVER_TOP_CHANCE = 0.6; // per keputusan saat lambungan ke belakang garis tersedia
 const BREAKAWAY_SHOOT_DISTANCE = 14; // meter: lolos satu lawan satu, tembak dari sini
 const BIG_CHANCE_DISTANCE = 16; // meter: tembakan sedekat ini = peluang besar (uji Ketenangan)
 const BREAKAWAY_SPEED_SCALE = 0.9; // menggiring hampir dengan kecepatan penuh
@@ -190,6 +193,7 @@ function cloneStats(stats) {
     offsides: { ...stats.offsides },
     clearances: { ...stats.clearances },
     crosses: perTeam(stats.crosses),
+    overTop: perTeam(stats.overTop),
     headers: perTeam(stats.headers),
     longShots: perTeam(stats.longShots),
     aerialsWon: { ...stats.aerialsWon },
@@ -557,6 +561,15 @@ function decideHolder(holder, ball, players, rng, match) {
     directness: match.styles?.[holder.teamId]?.directness ?? 1,
   });
   const best = options[0] ?? null;
+  // Bola lambung ke belakang garis (31 Okt): untuk pelari yang sedang berlari, bila terobosan tanah
+  // tidak aman dan ruang di belakang garis lapang (hukuman garis bek tinggi).
+  if (runnerAvailable && holder.role !== 'GK' && !(best?.through && best.safe)) {
+    const runner = players.find((p) => p.teamId === holder.teamId && p.task === 'run');
+    const line = offsideLine(opponents, holder.attacksRight);
+    const defenderTime = (point) => Math.min(...opponents.map((o) => reachTime(o, point)));
+    const lob = runner ? overTopPoint(ball, runner, line, holder.attacksRight, defenderTime) : null;
+    if (lob && rng.chance(OVER_TOP_CHANCE)) return { type: 'overTop', aim: lob.point, runnerId: runner.id, context };
+  }
   // Tidak ada operan aman: umpan silang jadi jalan keluar sebelum dipaksa mengoper.
   if (cross && !best?.safe) return { type: 'cross', aim: cross.aim, context };
   if (!best) return null;
@@ -595,6 +608,7 @@ function releaseBall(ball, kicker, velocity, extra) {
     z: 0,
     vz: 0,
     crossTeamId: null,
+    overTop: false,
     shotKind: null,
     fromCorner: false,
     outFrom: null,
@@ -725,6 +739,7 @@ function gainControl(ball, controller, stats, rng, note, tempo = 1) {
     z: 0,
     vz: 0,
     crossTeamId: null,
+    overTop: false,
     shotKind: null,
   };
 }
@@ -794,6 +809,7 @@ function restartFromOut(ball, from, outPoint, teams, teamIds) {
     z: 0,
     vz: 0,
     crossTeamId: null,
+    overTop: false,
     shotKind: null,
   };
 }
@@ -959,6 +975,7 @@ function freeKickBallAt(ball, spot, teamId, teams) {
     z: 0,
     vz: 0,
     crossTeamId: null,
+    overTop: false,
     shotKind: null,
   };
 }
@@ -1804,6 +1821,12 @@ export function createSimulation(home, away, seed, options = {}) {
           const v = crossVelocity(ball, decision.aim, holder, rng, blunderScale(holder, decision.context));
           ball = releaseBall(ball, holder, { vx: v.vx, vy: v.vy }, { vz: v.vz, crossTeamId: holder.teamId });
           ballReleasedBy = holder.id;
+        } else if (decision?.type === 'overTop') {
+          if (holder.role === 'GK') throw new Error(`bola lambung ke belakang oleh kiper ${holder.id}`);
+          stats.overTop[holder.teamId].attempted += 1;
+          const v = overTopVelocity(ball, decision.aim, holder, rng, blunderScale(holder, decision.context));
+          ball = releaseBall(ball, holder, { vx: v.vx, vy: v.vy }, { vz: v.vz, crossTeamId: holder.teamId, overTop: true });
+          ballReleasedBy = holder.id;
         } else if (decision?.type === 'pass') {
           stats.passes[holder.teamId].attempted += 1;
           ball = releaseBall(ball, holder, passVelocity(ball, decision.option, holder, rng, blunderScale(holder, decision.context)), {
@@ -2123,7 +2146,7 @@ export function createSimulation(home, away, seed, options = {}) {
       const w = winner.player;
       const contact = clampToPitch(winner.point);
       stats.aerialsWon[w.teamId] += 1;
-      if (ball.crossTeamId === w.teamId) stats.crosses[w.teamId].won += 1;
+      if (ball.crossTeamId === w.teamId) stats[ball.overTop ? 'overTop' : 'crosses'][w.teamId].won += 1;
 
       if (w.role === 'GK' && insideOwnPenaltyArea(contact, w.attacksRight)) {
         if (rng.chance(keeperCatchChance(w))) {
@@ -2182,6 +2205,8 @@ export function createSimulation(home, away, seed, options = {}) {
         z: 0,
         vz: 0,
         crossTeamId: null,
+        overTop: false,
+    overTop: false,
         shotKind: null,
       };
       for (let i = 0; i < players.length; i += 1) {
@@ -2346,11 +2371,11 @@ export function createSimulation(home, away, seed, options = {}) {
           startReactions(touch.player.id);
         } else if (touch) {
           noteMissedOffside(touch.player);
-          if (ball.crossTeamId === touch.player.teamId) stats.crosses[touch.player.teamId].won += 1;
+          if (ball.crossTeamId === touch.player.teamId) stats[ball.overTop ? 'overTop' : 'crosses'][touch.player.teamId].won += 1;
           takeControl(touch.player);
         } else {
           const settled = flight.z === 0 && flight.vz === 0;
-          ball = { ...ball, ...flight, kickCooldown: cooldown, crossTeamId: settled ? null : ball.crossTeamId };
+          ball = { ...ball, ...flight, kickCooldown: cooldown, crossTeamId: settled ? null : ball.crossTeamId, overTop: settled ? false : ball.overTop };
         }
       } else {
         ball = { ...ball, ...flight, kickCooldown: cooldown };

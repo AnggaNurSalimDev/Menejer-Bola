@@ -212,3 +212,47 @@ export function throughBallPoint(origin, runner, line = null, attacksRight = tru
   }
   return null;
 }
+
+// ------------------------------------------------ bola lambung ke belakang garis (31 Okt)
+// Hukuman nyata garis bek tinggi: bola dilambungkan MELEWATI garis ke ruang di belakangnya, untuk pelari
+// yang sudah berlari. Bola di udara tidak bisa dipotong di tengah jalan — beda dengan terobosan tanah,
+// yang 59% dipotong tepat di garis bek. Hanya dicoba bila ruang di belakang garis cukup luas dan pelari
+// bisa tiba lebih dulu daripada pemain bertahan mana pun (termasuk kiper).
+export const OVER_TOP = Object.freeze({
+  minSpace: 22, // meter ruang di belakang garis offside (garis ke gawang) — garis normal ±29 m, tinggi ±34 m
+  minBehind: 8, // titik jatuh minimal sejauh ini di belakang garis
+  goalMargin: 12, // titik jatuh tidak lebih dekat dari ini ke garis gawang (kiper menyapu)
+  maxDistance: 45, // meter dari pengumpan
+  margin: 0.2, // detik: pelari harus lebih dulu sampai sebanyak ini
+  flightBase: 0.8, // sama dengan umpan silang (aerial.js CROSS)
+  flightPerMeter: 0.025,
+});
+
+// defenderTime(point) → detik tercepat pemain bertahan (termasuk kiper) mencapai titik.
+// Mengembalikan { point, flight } atau null.
+export function overTopPoint(origin, runner, line, attacksRight, defenderTime) {
+  if (!runner?.target || !Number.isFinite(line)) return null;
+  if (PITCH.length - line < OVER_TOP.minSpace) return null;
+  const dx = runner.target.x - runner.x;
+  const dy = runner.target.y - runner.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1) return null;
+  const ux = dx / len;
+  const uy = dy / len;
+  let best = null;
+  for (let along = 4; along <= 30; along += 1) {
+    const point = { x: runner.x + ux * along, y: runner.y + uy * along };
+    if (point.y < 2 || point.y > PITCH.width - 2) break;
+    const depth = forwardOf(point, attacksRight);
+    if (depth > PITCH.length - OVER_TOP.goalMargin) break;
+    if (depth < line + OVER_TOP.minBehind) continue;
+    const d = distance(origin, point);
+    if (d > OVER_TOP.maxDistance) break;
+    const flight = OVER_TOP.flightBase + OVER_TOP.flightPerMeter * d;
+    // Pelari sudah berlari: tidak perlu waktu reaksi. Ia tiba saat bola jatuh atau sesudahnya.
+    const arrive = Math.max(flight, travelTime(runner.profile, along));
+    const lead = defenderTime(point) - arrive;
+    if (lead >= OVER_TOP.margin && (!best || lead > best.lead)) best = { point, flight, lead };
+  }
+  return best ? { point: best.point, flight: best.flight } : null;
+}
