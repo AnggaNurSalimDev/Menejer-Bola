@@ -35,7 +35,8 @@ Proyek ini dibuat untuk senang-senang.
 - Pemain keluar lewat garis terdekat & ball boy (31 Okt): laga menunggu pemain yang diganti / dikartu merah keluar; bola keluar dibawa pemain terdekat atau dilempar ball boy.
 - Taktik empat kotak (31 Okt): dengan bola, tanpa bola, saat kehilangan bola (counter-press / mundur), saat merebut bola (serangan balik / bangun ulang); dua formasi, bentuk berganti mulus. Catatan: 3-2-5 dan garis tinggi masih terlalu kuat (lihat dokumen arah 8g).
 - Kalibrasi tembakan (31 Okt): tembakan makin meleset makin jauh dari gawang. Konversi 16–22 m 16% → 9%, 22–28 m 5% → 3%. Rata-rata gol 2,52. Catatan: 3-2-5 masih dominan — keunggulannya pindah ke dalam kotak (lihat dokumen arah 8h).
-- Berikutnya: penjagaan di kotak melawan 5 penyerang (3-2-5) & garis tinggi, lalu liga.
+- Studi keseimbangan taktik (31 Okt): bug — tim tidak berganti ke bentuk bertahan selama bola mati (penyerang 3-2-5 menghadang tendangan gawang lawan). Setelah diperbaiki 3-2-5 seimbang. Baru: **bola lambung ke belakang garis bek** untuk pelari. Garis tinggi masih terlalu kuat (lihat dokumen arah 8i).
+- Berikutnya: garis tinggi, lalu taktik 5 jalur (kiri / half-space / tengah), lalu liga.
 
 Tip: tambahkan `?seed=13` di alamat (misalnya `http://localhost:5173/?seed=13`) untuk memutar ulang pertandingan tertentu.
 
