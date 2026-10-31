@@ -1112,6 +1112,41 @@ export const RESTART_PAUSE = Object.freeze({
 
 // Posisi saat bola keluar: eksekutor di bola, penyerang menyerbu kotak saat pojok,
 // pemain lain ke posisi bentuk timnya. Map playerId → titik.
+// Peran & slot aktif mengikuti bentuk tim: ≥ 0,5 = bentuk dengan bola, < 0,5 = tanpa bola.
+export function applyActiveSlots(players, teams) {
+  return players.map((p) => {
+    if (p.role === 'GK' || !p.slotIn) return p;
+    const blend = teams[p.teamId]?.shapeBlend;
+    if (!(blend >= 0 && blend <= 1)) throw new RangeError(`applyActiveSlots: shapeBlend tim ${p.teamId} tidak valid`);
+    const inShape = blend >= 0.5;
+    const slot = inShape ? p.slotIn : p.slotOut;
+    const role = inShape ? p.roleIn : p.roleOut;
+    return slot === p.slot && role === p.role ? p : { ...p, slot, role };
+  });
+}
+
+// Bentuk tim saat bola mati (31 Okt, studi 3-2-5): dulu shapeBlend dibekukan selama jeda, jadi tim yang
+// baru kehilangan bola tetap berbaris dalam bentuk DENGAN BOLA saat lawan menendang tendangan gawang —
+// lima penyerang 3-2-5 berdiri di jalur tendangan kiper (operan kiper dipotong 22,8%, bawaan 6,9%;
+// ±1 gol per laga). Kini selama jeda bentuk bergeser menuju pemilik bola mati, seperti tim sungguhan
+// yang menata ulang posisi saat bola keluar.
+export function settleShapesAtStoppage(state) {
+  const poss = state.ball.restartTeamId ?? null;
+  if (poss === null || !state.teams[poss]) return state;
+  let changed = false;
+  const teams = { ...state.teams };
+  for (const [id, team] of Object.entries(state.teams)) {
+    if (typeof team.shapeBlend !== 'number') continue;
+    const next = blendStep(team.shapeBlend, id === poss ? 1 : 0, team.activeTactics ?? team.tactics);
+    if (next !== team.shapeBlend) {
+      teams[id] = { ...team, shapeBlend: next };
+      changed = true;
+    }
+  }
+  if (!changed) return state;
+  return { ...state, teams, players: applyActiveSlots(state.players, teams) };
+}
+
 export function restartTargets(players, ball, takerId, teams) {
   const restartTeamId = ball.restartTeamId;
   const ar = teams[restartTeamId].attacksRight;
@@ -1328,7 +1363,7 @@ export function createSimulation(home, away, seed, options = {}) {
   }
 
   function stepPause(prevRaw, tick, stats) {
-    const prev = substituteAtStoppage(prevRaw, tick);
+    const prev = settleShapesAtStoppage(substituteAtStoppage(prevRaw, tick));
     stats = { ...stats, subs: { ...prev.stats.subs } };
     const reason = prev.pauseReason;
     const incident = prev.incident;
@@ -2484,13 +2519,7 @@ export function createSimulation(home, away, seed, options = {}) {
       const target = nowPoss === null ? teams[id].shapeBlend : nowPoss === id ? 1 : 0;
       teams[id].shapeBlend = blendStep(teams[id].shapeBlend, target, teams[id].activeTactics);
     }
-    finalPlayers = finalPlayers.map((p) => {
-      if (p.role === 'GK' || !p.slotIn) return p;
-      const inShape = teams[p.teamId].shapeBlend >= 0.5;
-      const slot = inShape ? p.slotIn : p.slotOut;
-      const role = inShape ? p.roleIn : p.roleOut;
-      return slot === p.slot && role === p.role ? p : { ...p, slot, role };
-    });
+    finalPlayers = applyActiveSlots(finalPlayers, teams);
     state = {
       ...prev,
       tick,
