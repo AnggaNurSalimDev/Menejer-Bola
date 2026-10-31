@@ -317,6 +317,9 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - tetapi keseimbangan 200 laga TIDAK berubah: garis tinggi **+1,09** ✗ (lawan tetap ±7,7 tembakan). Percobaan 2 (lambungan lebih berani: 90%, tanpa selisih waktu) juga tidak berefek → dikembalikan. Bola lambung dipertahankan karena mekanismenya sendiri bekerja dan realistis
    - kalibrasi 200 laga dengan bola lambung: gol **2,44 ± 0,20** (batas bawah target), 0–0 6%, kejutan 13 vs 11 13%; tim 13 menang 72% (dulu 65%) — sedikit di atas rentang wajar 30–70%
    - yang belum diketahui: kenapa garis tinggi menekan tembakan lawan sebanyak itu. Yang terukur: lawan lebih sering kehilangan bola di sepertiga awalnya (rebutan di sepertiga lawan 9,9 → 13,4 per laga) dan lebih jarang memegang bola di sepertiga akhir (22% → 18%). Garis tinggi juga tidak menguras tenaga lebih (tenaga akhir sama)
+   - studi lanjutan (1 Nov, 30 laga): corong serangan lawan — penguasaan lawan mulai di sepertiga awalnya 36% → 47%, sampai sepertiga akhir 48% → 39%, **direbut di sepertiga awal 4,7 → 7,4 per laga** (lonjakan terbesar). Saat direbut: lawan memegang bola ±0,5 dtk, pemain kita sudah ±2 m saat bola diterima, 60% masih punya operan aman; kiper ikut direbut. Penyebab langsung: pemain yang ditekan butuh 0,4 dtk sebelum boleh melepas bola, dan blok yang 5 m lebih tinggi sudah menempel saat bola tiba
+   - percobaan 3: di sepertiga sendiri, pemain yang ditempel (≤ 3 m) melepas bola dengan sentuhan pertama — **memperburuk** (direbut 14,9 per laga, gol ±4 per laga: operan seketika banyak salah arah) → dikembalikan. Batas tiga percobaan tercapai
+   - kemungkinan arah berikutnya (BELUM diuji): pengoper menghindari penerima yang akan langsung ditempel di sepertiga sendiri (kini hanya jalur bola yang dinilai, bukan tekanan di penerima); kiper membuang jauh saat penyerang lawan dekat
 7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
 
 ## 7. Keputusan yang Masih Terbuka
