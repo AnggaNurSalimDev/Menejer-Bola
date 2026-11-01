@@ -1082,3 +1082,115 @@ body {
     gap: 4px;
   }
 }
+
+/* ---- Bagian yang bisa dilipat (1 Nov) ---- */
+details.fold {
+  display: block;
+  min-width: 0;
+}
+.fold > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  user-select: none;
+  min-height: 1.9rem;
+}
+.fold > summary::-webkit-details-marker {
+  display: none;
+}
+.fold > summary::before {
+  content: '';
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid #adb5bd;
+  border-bottom: 2px solid #adb5bd;
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+  flex: none;
+  margin-right: 2px;
+}
+.fold[open] > summary::before {
+  transform: rotate(45deg);
+}
+.fold > summary:focus-visible {
+  outline: 2px solid #4dabf7;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.fold__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #e9ecef;
+  font-size: 0.95rem;
+}
+.fold__summary {
+  font-size: 0.78rem;
+  color: #868e96;
+  flex-basis: 100%;
+  padding-left: 1.1rem;
+}
+@media (min-width: 721px) {
+  .fold__summary {
+    flex-basis: auto;
+    padding-left: 0;
+    margin-left: auto;
+    text-align: right;
+  }
+}
+.fold__body {
+  min-width: 0;
+}
+.strategy.phase,
+.phase {
+  display: block;
+}
+.strategy > .fold__body {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+.strategy__title {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.strategy__base > .fold__body,
+.strategy__setpieces > .fold__body {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+.phase > .fold__body {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+.strategy__setpieces {
+  display: block;
+}
+.fold--sub {
+  border-top: 1px solid #333b46;
+  padding-top: 4px;
+}
+.fold--sub > summary .fold__title {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #adb5bd;
+}
+.fold--sub > .fold__body {
+  display: grid;
+  gap: 8px;
+  padding: 4px 0 8px;
+}
+.fold--sub .orders {
+  border-top: 0;
+  padding-top: 0;
+  margin-top: 0;
+}
+.fold--sub .orders > .tac-label {
+  display: none;
+}
