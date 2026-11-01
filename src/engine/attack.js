@@ -73,6 +73,7 @@ const RUN_GOAL_MARGIN = 7; // jangan lari lebih dekat dari ini ke garis gawang
 const MAX_DISTANCE_BEHIND_LINE = 4; // lari dimulai dari "bahu" bek terakhir, bukan jauh di belakangnya
 const MIN_SPACE = 5; // meter: ruang minimal di titik tuju (jarak ke bek terdekat)
 const HOLDER_MIN_DEPTH = PITCH.length * 0.35; // pemegang bola sudah melewati area sendiri
+const DEEP_SPACE_RUN = 45; // meter ruang di belakang garis lawan: lari boleh dimulai dari mana saja
 
 export const RUN_MAX_TICKS = 30; // 3 detik: lari yang tidak dilayani berakhir
 export const RUN_COOLDOWN_TICKS = 60; // jeda sebelum pemain yang sama berlari lagi
@@ -123,9 +124,13 @@ function bestChannelFor(runner, channels) {
 // berlari, dengan ruang paling lapang di titik tujunya.
 export function pickRunner({ teammates, holder, defenders, ballPoint, attacksRight }) {
   if (!holder || holder.role === 'GK') return null;
-  if (forwardOf(holder, attacksRight) < HOLDER_MIN_DEPTH) return null;
-
   const line = offsideLine(defenders, attacksRight);
+  // Pemegang bola masih di area sendiri: biasanya belum waktunya lari ke belakang — KECUALI garis bek
+  // lawan sangat tinggi (1 Nov: garis bek di garis tengah menang 84% karena lawan yang terkurung tidak
+  // pernah memulai lari, jadi ruang ±60 m di belakang garis tidak pernah dihukum).
+  const spaceBehind = PITCH.length - line;
+  if (forwardOf(holder, attacksRight) < HOLDER_MIN_DEPTH && spaceBehind < DEEP_SPACE_RUN) return null;
+
   const channels = backLineChannels(defenders, line, attacksRight);
   let best = null;
   for (const p of teammates) {
@@ -222,7 +227,7 @@ export const OVER_TOP = Object.freeze({
   minSpace: 22, // meter ruang di belakang garis offside (garis ke gawang) — garis normal ±29 m, tinggi ±34 m
   minBehind: 8, // titik jatuh minimal sejauh ini di belakang garis
   goalMargin: 12, // titik jatuh tidak lebih dekat dari ini ke garis gawang (kiper menyapu)
-  maxDistance: 45, // meter dari pengumpan
+  maxDistance: 60, // meter dari pengumpan (1 Nov: 45 → 60, bola dari area sendiri melawan garis sangat tinggi)
   margin: 0.2, // detik: pelari harus lebih dulu sampai sebanyak ini
   flightBase: 0.8, // sama dengan umpan silang (aerial.js CROSS)
   flightPerMeter: 0.025,
