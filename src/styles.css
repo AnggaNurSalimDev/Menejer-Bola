@@ -812,3 +812,85 @@ body {
     padding: 4px;
   }
 }
+
+/* Gambar 5 jalur (1 Nov) */
+.lane-diagram {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 12px 0 16px;
+}
+.lane-fig {
+  margin: 0;
+}
+.lane-fig figcaption {
+  font-size: 0.85rem;
+  color: #ced4da;
+  margin-bottom: 4px;
+}
+.lane-fig svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 6px;
+}
+.lane-pitch {
+  fill: #1f3a2a;
+}
+.lane-band {
+  fill: rgba(255, 255, 255, 0.02);
+}
+.lane-band--alt {
+  fill: rgba(255, 255, 255, 0.07);
+}
+.lane-divider {
+  stroke: rgba(255, 255, 255, 0.35);
+  stroke-width: 0.25;
+  stroke-dasharray: 1.2 1.2;
+}
+.lane-line {
+  stroke: rgba(255, 255, 255, 0.45);
+  stroke-width: 0.3;
+}
+.lane-line--fill {
+  fill: none;
+}
+.lane-name {
+  font-size: 2.4px;
+  fill: rgba(255, 255, 255, 0.75);
+}
+.lane-arrow {
+  font-size: 2.4px;
+  fill: rgba(255, 255, 255, 0.6);
+}
+.lane-dot circle {
+  stroke: #0b0f14;
+  stroke-width: 0.4;
+}
+.lane-dot__ring {
+  stroke: #ffd43b !important;
+  stroke-width: 0.9 !important;
+}
+.lane-dot text {
+  font-size: 2.6px;
+  font-weight: 700;
+  fill: #fff;
+  paint-order: stroke;
+  stroke: rgba(0, 0, 0, 0.6);
+  stroke-width: 0.5px;
+}
+.lane-dot.is-hl circle {
+  stroke: #4dabf7;
+  stroke-width: 1;
+}
+.lane-legend {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.75rem;
+  color: #868e96;
+}
+@media (max-width: 720px) {
+  .lane-diagram {
+    grid-template-columns: 1fr;
+  }
+}

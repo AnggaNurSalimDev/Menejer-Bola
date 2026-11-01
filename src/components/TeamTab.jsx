@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import LaneDiagram from './LaneDiagram.jsx';
 import { SUBS, substitutionErrors, roleLine } from '../engine/substitution.js';
 import { gameClock } from '../engine/state.js';
 import { getPhilosophy } from '../engine/philosophy.js';
@@ -291,6 +292,8 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
       </div>
 
       {message && <p className={`team-msg team-msg--${message.tone}`}>{message.text}</p>}
+
+      <LaneDiagram players={onPitch} tactics={team.tactics} color={team.colors?.shirt ?? '#4dabf7'} highlightId={outId} />
 
       <div className="team-columns">
         <div className="team-col">
