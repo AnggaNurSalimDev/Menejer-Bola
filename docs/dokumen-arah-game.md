@@ -329,6 +329,16 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - fokus memindahkan permainan (10 laga, bola di separuh lawan per jalur kiri→kanan): seimbang 23/18/14/21/24%, fokus kiri 26/20/17/20/17%
    - uji keseimbangan (100 laga per pilihan; kontrol +0,59, ketidakpastian ±0,17): fokus tengah +0,57, lindungi sayap +0,58, bek sayap ke half-space +0,35, fokus kiri (geser 3 m) +0,13, lindungi tengah −0,05, sayap ke half-space −0,18, enam pemain ke kotak −0,97. **Tidak ada pilihan yang dominan**, tetapi beberapa pilihan lebih lemah melawan lawan bawaan (pilihan "jebakan"). Fokus kiri dua percobaan: geser 6 m semua pemain −0,02; tanpa garis belakang −0,42; geser 3 m +0,13 (dipakai)
    - batasan uji: lawan selalu taktik bawaan, jadi nilai situasional sebuah pilihan (mis. lindungi tengah melawan tim yang main di tengah) belum terukur
+8k. ⚠️ Layer posisi & tempel lawan (1 Nov; ide pengguna: "beberapa layer lapangan; di tiap layer menentukan arah gerak pemain — bukan kaku, tetapi bobot besar"):
+   - gambar 5 jalur di tab Tim: dua lapangan (dengan bola / tanpa bola), posisi dihitung dengan rumus jangkar engine (bola di tengah). **Seret bulatan** → titik patokan pribadi (`customIn` / `customOut`, slot di bingkai tim). Titik → slot dengan bagi-dua memakai computeAnchor sendiri (`slotForPoint`, kembali ≤ 0,6 m). Tanpa bola tim merapat ke bola, jadi titik di pinggir ditarik ke dalam. Prioritas: posisi diseret > instruksi jalur > formasi. Ganti formasi di satu layer menghapus titik layer itu. "Kembali ke formasi" per layer
+   - **tempel lawan** (`marking`, `MAN_MARK` di marking.js): penjaga orang lengket pada satu lawan (`team.manMarks`), radius 45 m, tarikan 0,9; tidak ikut penjagaan zona; bek yang menempel tidak menahan garis
+   - pemain masuk mewarisi semua instruksi pribadi (jalur, posisi, penjagaan)
+   - uji ekstrem (100 laga; kontrol +0,59): semua tempel lawan +0,56 ≈, penyerang ikut turun −0,38, semua parkir di depan kotak −0,79, semua di sayap kiri −1,15 — wajar. **Garis bek di garis tengah (tanpa bola) +2,20, menang 84%** ✗
+   - penyebab: lawan yang terkurung tidak pernah memulai lari (syarat pemegang bola ≥ 37 m dari gawangnya), jadi ruang ±60 m di belakang garis tidak pernah dihukum. Perbaikan 1: lari boleh dimulai dari area sendiri bila ruang di belakang garis lawan ≥ 45 m (`DEEP_SPACE_RUN`). Perbaikan 2: bola lambung ke belakang garis sampai 60 m (dulu 45). Percobaan 3 (tembak satu lawan satu dari 18 m, dulu 14) tidak berefek → dikembalikan
+   - hasil 200 laga: garis di garis tengah **+1,06** vs kontrol +0,34 (kelebihan ±1,6 → 0,72); garis tinggi +0,80 (kelebihan 0,57 → 0,46). Lawan kini lolos 1 lawan 1 ±6,7 kali per laga tetapi hanya 13% jadi gol (sering tersusul bek)
+   - kalibrasi 200 laga: gol **2,32 ± 0,20** (sedikit di bawah target 2,4), 0–0 8%, kejutan 13 vs 11 12%
+   - menunggu keputusan pengguna: batasi seberapa tinggi titik tanpa bola boleh diseret, atau biarkan
+   - DICATAT UNTUK NANTI (permintaan pengguna): layer **lintasan/rute** — panah gerak pemain untuk skema rinci (mis. lari diagonal saat bola di sisi lain)
 7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
 
 ## 7. Keputusan yang Masih Terbuka

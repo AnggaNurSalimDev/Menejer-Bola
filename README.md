@@ -37,7 +37,8 @@ Proyek ini dibuat untuk senang-senang.
 - Kalibrasi tembakan (31 Okt): tembakan makin meleset makin jauh dari gawang. Konversi 16–22 m 16% → 9%, 22–28 m 5% → 3%. Rata-rata gol 2,52. Catatan: 3-2-5 masih dominan — keunggulannya pindah ke dalam kotak (lihat dokumen arah 8h).
 - Studi keseimbangan taktik (31 Okt): bug — tim tidak berganti ke bentuk bertahan selama bola mati (penyerang 3-2-5 menghadang tendangan gawang lawan). Setelah diperbaiki 3-2-5 seimbang. Baru: **bola lambung ke belakang garis bek** untuk pelari. Garis tinggi masih terlalu kuat (lihat dokumen arah 8i).
 - Taktik 5 jalur (1 Nov): fokus serangan (kiri/tengah/kanan), lindungi (tengah/sayap), dan instruksi jalur per pemain di tab Tim (tetap / half-space / melebar / ke kotak). Tidak ada pilihan dominan; beberapa lebih lemah melawan lawan bawaan (lihat dokumen arah 8j).
-- Berikutnya: garis tinggi masih terlalu kuat (8i), bola panjang di cabang percobaan menunggu keputusan; lalu liga.
+- Layer posisi (1 Nov): seret pemain di gambar taktik (dengan & tanpa bola) dan pilihan tempel lawan per pemain. Catatan: garis bek yang diseret sangat tinggi masih terlalu kuat (lihat dokumen arah 8k).
+- Berikutnya: garis tinggi masih terlalu kuat (8i, 8k); layer lintasan lari dicatat untuk nanti, bola panjang di cabang percobaan menunggu keputusan; lalu liga.
 
 Tip: tambahkan `?seed=13` di alamat (misalnya `http://localhost:5173/?seed=13`) untuk memutar ulang pertandingan tertentu.
 
