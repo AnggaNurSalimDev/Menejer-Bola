@@ -778,7 +778,7 @@ body {
 /* Taktik 5 jalur (1 Nov): instruksi jalur per pemain di samping baris susunan. */
 .roster li:has(.lane-select) {
   display: grid;
-  grid-template-columns: 1fr 9.5rem;
+  grid-template-columns: 1fr 8.6rem 7.4rem;
   gap: 4px;
   align-items: stretch;
 }
@@ -892,5 +892,49 @@ body {
 @media (max-width: 720px) {
   .lane-diagram {
     grid-template-columns: 1fr;
+  }
+}
+
+.lane-fig figcaption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.lane-reset {
+  background: #232a33;
+  color: #ced4da;
+  border: 1px solid #3b4552;
+  border-radius: 5px;
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.lane-dot.is-draggable {
+  cursor: grab;
+}
+.lane-dot.is-dragging {
+  cursor: grabbing;
+  opacity: 0.85;
+}
+.lane-fig svg {
+  touch-action: none;
+}
+.lane-dot__hit {
+  fill: transparent;
+  stroke: none !important;
+}
+.lane-dot__man {
+  stroke: #ff6b6b !important;
+  stroke-width: 0.9 !important;
+  stroke-dasharray: 1.2 0.8;
+}
+@media (max-width: 720px) {
+  .roster li:has(.lane-select) {
+    grid-template-columns: 1fr 1fr;
+  }
+  .roster li:has(.lane-select) > button {
+    grid-column: 1 / -1;
   }
 }

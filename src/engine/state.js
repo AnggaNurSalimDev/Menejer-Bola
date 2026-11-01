@@ -187,7 +187,7 @@ function createStats(teamIds) {
 }
 
 export function emptyTeamRoles() {
-  return { chaserId: null, coverId: null, counterIds: [], runnerId: null, runTarget: null, runTicks: 0 };
+  return { chaserId: null, coverId: null, counterIds: [], runnerId: null, runTarget: null, runTicks: 0, manMarks: {} };
 }
 
 // Setelah gol dan di awal babak, permainan jeda: pemain kembali ke posisi kick-off.
@@ -461,6 +461,15 @@ export function validateMatchState(state, teams = []) {
     if (counters.length > TRANSITION.counterPressers) errors.push(`tim ${team.id}: ${counters.length} pemain counter-press`);
     if (counters.map((p) => p.id).sort().join() !== [...(team.counterIds ?? [])].sort().join()) errors.push(`tim ${team.id}: counterIds tidak cocok dengan tugas`);
     for (const e of validateTactics(team.tactics)) errors.push(`tim ${team.id}: taktik — ${e}`);
+    if (team.manMarks !== undefined) {
+      // Pasangan lama boleh menunjuk pemain yang sudah keluar (dibuang saat penjagaan dihitung ulang).
+      for (const [d, at] of Object.entries(team.manMarks)) {
+        const def = state.players.find((p) => p.id === d);
+        const target = state.players.find((p) => p.id === at);
+        if (def && def.teamId !== team.id) errors.push(`tim ${team.id}: penjaga orang ${d} bukan pemain tim ini`);
+        if (target && target.teamId === team.id) errors.push(`tim ${team.id}: ${d} menempel rekan sendiri (${at})`);
+      }
+    }
   }
   for (const p of state.players) {
     if (!Number.isInteger(p.runCooldown) || p.runCooldown < 0) errors.push(`pemain ${p.id}: runCooldown tidak valid`);

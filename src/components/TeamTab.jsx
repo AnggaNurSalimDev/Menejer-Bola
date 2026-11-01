@@ -17,6 +17,7 @@ import {
   FOCUS_OPTIONS,
   PROTECT_OPTIONS,
   LANE_INSTRUCTIONS,
+  MARKING_OPTIONS,
 } from '../engine/tactics.js';
 
 const WIDTH_LABEL = { sempit: 'Sempit', normal: 'Normal', lebar: 'Lebar' };
@@ -30,6 +31,7 @@ const CORNER_LABEL = { campur: 'Campur', tiangDekat: 'Tiang dekat', tiangJauh: '
 const FOCUS_LABEL = { seimbang: 'Seimbang', kiri: 'Kiri', tengah: 'Tengah', kanan: 'Kanan' };
 const PROTECT_LABEL = { seimbang: 'Seimbang', tengah: 'Tengah', sayap: 'Sayap' };
 const LANE_LABEL = { tetap: 'Tetap di jalur', halfSpace: 'Masuk half-space', melebar: 'Melebar ke sayap', kotak: 'Naik ke kotak' };
+const MARK_LABEL = { zona: 'Jaga zona', tempel: 'Tempel lawan' };
 const FREE_KICK_LABEL = { otomatis: 'Otomatis', tembak: 'Tembak langsung', lambung: 'Lambung ke kotak', pendek: 'Pendek' };
 
 // Satu baris pilihan (tombol bersegmen).
@@ -293,12 +295,20 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
 
       {message && <p className={`team-msg team-msg--${message.tone}`}>{message.text}</p>}
 
-      <LaneDiagram players={onPitch} tactics={team.tactics} color={team.colors?.shirt ?? '#4dabf7'} highlightId={outId} />
+      <LaneDiagram
+        players={onPitch}
+        tactics={team.tactics}
+        color={team.colors?.shirt ?? '#4dabf7'}
+        highlightId={outId}
+        locked={locked}
+        onSetTactics={setTactic}
+        nameOf={name}
+      />
 
       <div className="team-columns">
         <div className="team-col">
           <h3>Di lapangan ({onPitch.length})</h3>
-          <p className="roster-hint">Jalur dengan bola: kiri │ half-space │ tengah │ half-space │ kanan</p>
+          <p className="roster-hint">Kolom 1: jalur dengan bola · kolom 2: penjagaan tanpa bola</p>
           <ul className="roster">
             {onPitch.map((p) => (
               <li key={p.id}>
@@ -321,13 +331,34 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
                   <select
                     className="lane-select"
                     aria-label={`Jalur dengan bola ${p.shortName}`}
-                    value={team.tactics.playerLanes?.[p.id] ?? 'tetap'}
+                    value={team.tactics.customIn?.[p.id] ? 'diseret' : (team.tactics.playerLanes?.[p.id] ?? 'tetap')}
                     disabled={locked}
-                    onChange={(e) => setTactic({ playerLanes: { [p.id]: e.target.value } }, `${p.shortName}: ${LANE_LABEL[e.target.value]}`)}
+                    onChange={(e) => {
+                      if (e.target.value === 'diseret') return; // hanya penanda: posisi diubah lewat gambar
+                      setTactic({ playerLanes: { [p.id]: e.target.value === 'tetap' ? null : e.target.value }, customIn: { [p.id]: null } }, `${p.shortName}: ${LANE_LABEL[e.target.value]}`);
+                    }}
                   >
+                    {team.tactics.customIn?.[p.id] && <option value="diseret">Posisi diseret</option>}
                     {LANE_INSTRUCTIONS.map((v) => (
                       <option key={v} value={v}>
                         {LANE_LABEL[v]}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {p.role !== 'GK' && (
+                  <select
+                    className="lane-select lane-select--mark"
+                    aria-label={`Tanpa bola ${p.shortName}`}
+                    value={team.tactics.marking?.[p.id] ?? 'zona'}
+                    disabled={locked}
+                    onChange={(e) =>
+                      setTactic({ marking: { [p.id]: e.target.value === 'zona' ? null : e.target.value } }, `${p.shortName}: ${MARK_LABEL[e.target.value]}`)
+                    }
+                  >
+                    {MARKING_OPTIONS.map((v) => (
+                      <option key={v} value={v}>
+                        {MARK_LABEL[v]}
                       </option>
                     ))}
                   </select>

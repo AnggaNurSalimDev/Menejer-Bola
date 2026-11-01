@@ -112,3 +112,31 @@ export function computeAnchor(player, ball, attacksRight, phase = 'neutral', men
 
   return fromTeamFrame({ x, y }, attacksRight);
 }
+
+// Kebalikan computeAnchor (1 Nov, layer posisi): titik yang ditaruh pengguna di gambar taktik (meter,
+// bingkai tim, bola di tengah lapangan) → slot { depth, lane }. Dicari dengan bagi-dua memakai
+// computeAnchor sendiri, jadi selalu cocok dengan rumus engine. x hanya bergantung pada depth;
+// y pada lane (dan sedikit pada depth lewat fokus serangan), jadi depth dicari dulu.
+export function slotForPoint(point, phase, style, limits) {
+  if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) throw new TypeError('slotForPoint: titik tidak valid');
+  if (phase !== 'attack' && phase !== 'defend') throw new RangeError(`slotForPoint: fase tidak dikenal ${phase}`);
+  const { depthMin, depthMax, laneMin, laneMax } = limits;
+  const ball = { x: PITCH.length / 2, y: PITCH.width / 2 };
+  const at = (depth, lane) => computeAnchor({ id: '_', role: 'CM', slot: { depth, lane } }, ball, true, phase, style);
+  let lo = depthMin;
+  let hi = depthMax;
+  for (let i = 0; i < 30; i += 1) {
+    const mid = (lo + hi) / 2;
+    if (at(mid, 0.5).x < point.x) lo = mid;
+    else hi = mid;
+  }
+  const depth = (lo + hi) / 2;
+  lo = laneMin;
+  hi = laneMax;
+  for (let i = 0; i < 30; i += 1) {
+    const mid = (lo + hi) / 2;
+    if (at(depth, mid).y < point.y) lo = mid;
+    else hi = mid;
+  }
+  return { depth, lane: (lo + hi) / 2 };
+}

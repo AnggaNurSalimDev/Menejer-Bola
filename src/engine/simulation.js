@@ -140,7 +140,7 @@ import {
   pressAllowedAt,
   coachTactics,
   blendStep,
-  laneSlot,
+  effectiveSlot,
   reslotTeam,
   TRANSITION,
 } from './tactics.js';
@@ -1963,7 +1963,15 @@ export function createSimulation(home, away, seed, options = {}) {
           (p) => p.teamId === id && p.id !== teams[id].chaserId && p.id !== teams[id].coverId && !teams[id].counterIds.includes(p.id),
         );
         const attackers = prev.players.filter((p) => p.teamId === possessingTeamId && p.id !== ball.ownerId);
-        marksByTeam.set(id, assignMarks(defenders, attackers, teams[id].attacksRight));
+        // Tempel lawan (layer tanpa bola): pasangan lengket disimpan di team.manMarks.
+        const markingMap = teams[id].activeTactics?.marking ?? {};
+        const manMarkers = new Set(Object.keys(markingMap).filter((pid) => markingMap[pid] === 'tempel'));
+        const stickyOut = {};
+        marksByTeam.set(
+          id,
+          assignMarks(defenders, attackers, teams[id].attacksRight, { manMarkers, sticky: teams[id].manMarks ?? {}, ownerId: ball.ownerId, stickyOut }),
+        );
+        teams[id].manMarks = stickyOut;
       }
     }
 
@@ -2017,15 +2025,17 @@ export function createSimulation(home, away, seed, options = {}) {
           if (possessingTeamId !== null) phase = possessingTeamId === player.teamId ? 'attack' : 'defend';
           // Dua bentuk (31 Okt): jangkar tanpa bola & dengan bola, dicampur menurut shapeBlend tim.
           const style = styles[player.teamId];
-          const outA = computeAnchor({ ...player, slot: player.slotOut ?? player.slot }, ball, team.attacksRight, phase, style);
-          const laneOrder = player.role === 'GK' ? 'tetap' : (team.activeTactics?.playerLanes?.[player.id] ?? 'tetap');
-          const inA = computeAnchor({ ...player, slot: laneSlot(player.slotIn ?? player.slot, laneOrder) }, ball, team.attacksRight, phase, style);
+          // Slot efektif: posisi pribadi (layer taktik) > instruksi jalur > formasi.
+          const outSlot = player.role === 'GK' ? (player.slotOut ?? player.slot) : effectiveSlot(player, team.activeTactics, 'out');
+          const inSlot = player.role === 'GK' ? (player.slotIn ?? player.slot) : effectiveSlot(player, team.activeTactics, 'in');
+          const outA = computeAnchor({ ...player, slot: outSlot }, ball, team.attacksRight, phase, style);
+          const inA = computeAnchor({ ...player, slot: inSlot }, ball, team.attacksRight, phase, style);
           const b = team.shapeBlend ?? 0;
           target = boxRuns.get(player.id) ?? { x: outA.x + (inA.x - outA.x) * b, y: outA.y + (inA.y - outA.y) * b };
           if (phase === 'defend') {
             const mark = marksByTeam.get(player.teamId)?.get(player.id);
             const holdLine =
-              BACK_LINE_ROLES.includes(player.role) && mark && !insideOwnPenaltyArea(mark.point, team.attacksRight);
+              BACK_LINE_ROLES.includes(player.role) && mark && !mark.man && !insideOwnPenaltyArea(mark.point, team.attacksRight);
             target = blendTowardMark(target, mark, { lateralOnly: holdLine });
           }
           if (freeKickTeamId !== null && player.teamId !== freeKickTeamId && player.role !== 'GK') {

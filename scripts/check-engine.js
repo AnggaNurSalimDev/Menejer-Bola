@@ -42,7 +42,9 @@ import { lingerTicks, freeKickSettleTargets, AFTER_INCIDENT } from '../src/engin
 import { pickCover } from '../src/engine/roles.js';
 import { parryVelocity } from '../src/engine/keeper.js';
 import { boxRunSpots } from '../src/engine/simulation.js';
-import { reshape, outfieldSlots, tacticsErrors, defaultTactics, teamStyle, TRANSITION, coachTactics, pressAllowedAt, LINE_OPTIONS, laneSlot, LANES } from '../src/engine/tactics.js';
+import { reshape, outfieldSlots, tacticsErrors, defaultTactics, teamStyle, TRANSITION, coachTactics, pressAllowedAt, LINE_OPTIONS, laneSlot, LANES, effectiveSlot, clampCustomSlot, CUSTOM_SLOT } from '../src/engine/tactics.js';
+import { slotForPoint } from '../src/engine/shape.js';
+import { assignMarks } from '../src/engine/marking.js';
 import { substitutionErrors, SUBS } from '../src/engine/substitution.js';
 import { repairShape, applySendOffs, emergencyKeeper } from '../src/engine/sendoff.js';
 import { scuffleTargets, assignScuffleStyles, protestTarget } from '../src/engine/scuffle.js';
@@ -630,6 +632,61 @@ console.log('Taktik 5 jalur (1 Nov)');
   for (let i = 0; i < 20 && s.teams.home.subsUsed === 0; i += 1) s = sim.step();
   const lanes = s.teams.home.tactics.playerLanes;
   check('pemain masuk mewarisi instruksi jalur pemain yang diganti', lanes[benchIn.id] === 'halfSpace' && lanes[wing.id] === undefined ? [] : [JSON.stringify(lanes)]);
+}
+
+console.log('Layer posisi & tempel lawan (1 Nov)');
+{
+  // Titik di gambar → slot → titik lagi: harus kembali dekat titik semula (selama bisa dicapai rumus).
+  const style = teamStyle(defaultTactics('4-4-2'));
+  const errs = [];
+  for (const [phase, pt] of [['attack', { x: 70, y: 20 }], ['attack', { x: 55, y: 60 }], ['defend', { x: 40, y: 22 }], ['defend', { x: 33, y: 45 }]]) {
+    const slot = clampCustomSlot(slotForPoint(pt, phase, style, CUSTOM_SLOT));
+    const back = computeAnchor({ id: 't', role: 'CM', slot }, { x: PITCH.length / 2, y: PITCH.width / 2 }, true, phase, style);
+    if (Math.hypot(back.x - pt.x, back.y - pt.y) > 0.6) errs.push(`${phase} ${JSON.stringify(pt)} → ${back.x.toFixed(1)},${back.y.toFixed(1)}`);
+  }
+  check('titik yang diseret kembali ke tempatnya lewat rumus engine (≤ 0,6 m)', errs);
+  // Tanpa bola tim merapat ke bola: titik di pinggir yang tak terjangkau ditarik ke titik terjangkau terdekat.
+  const wide = computeAnchor({ id: 't', role: 'CM', slot: clampCustomSlot(slotForPoint({ x: 40, y: 2 }, 'defend', style, CUSTOM_SLOT)) }, { x: PITCH.length / 2, y: PITCH.width / 2 }, true, 'defend', style);
+  const edge = computeAnchor({ id: 't', role: 'CM', slot: { depth: 0.3, lane: CUSTOM_SLOT.laneMin } }, { x: PITCH.length / 2, y: PITCH.width / 2 }, true, 'defend', style);
+  check('titik tak terjangkau ditarik ke tepi yang terjangkau', Math.abs(wide.y - edge.y) < 0.6 ? [] : [`${wide.y} vs ${edge.y}`]);
+  check('posisi di luar batas ditolak', tacticsErrors({ customIn: { a: { depth: 0.9, lane: 0.5 } } }).length > 0 && tacticsErrors({ customOut: { a: { depth: 0.3, lane: 0.5 } } }).length === 0 ? [] : ['salah']);
+  const p0 = { id: 'p', slotIn: { depth: 0.33, lane: 0.2 }, slotOut: { depth: 0.3, lane: 0.2 }, slot: { depth: 0.3, lane: 0.2 } };
+  const t0 = { ...defaultTactics('4-4-2'), playerLanes: { p: 'melebar' }, customIn: { p: { depth: 0.4, lane: 0.6 } } };
+  check('prioritas: posisi diseret > instruksi jalur > formasi', effectiveSlot(p0, t0, 'in').lane === 0.6 && effectiveSlot(p0, { ...t0, customIn: {} }, 'in').lane === LANES.wide && effectiveSlot(p0, t0, 'out').lane === 0.2 ? [] : ['salah']);
+  // Simulasi: seret, hapus dengan null, ganti formasi menghapus posisi layer itu.
+  const teams = createDemoTeams(2026, {});
+  const sim = createSimulation(teams.home, teams.away, 9, { aiTeams: ['away'] });
+  let s = sim.getState();
+  const mates = s.players.filter((q) => q.teamId === 'home' && q.role !== 'GK');
+  const [a, b, c] = mates;
+  s = sim.setTactics('home', { customIn: { [a.id]: { depth: 0.45, lane: 0.3 } }, customOut: { [b.id]: { depth: 0.2, lane: 0.7 } }, marking: { [c.id]: 'tempel' } });
+  check('posisi & penjagaan pribadi tersimpan', s.teams.home.tactics.customIn[a.id] && s.teams.home.tactics.customOut[b.id] && s.teams.home.activeTactics.marking[c.id] === 'tempel' ? [] : ['hilang']);
+  s = sim.setTactics('home', { customIn: { [a.id]: null } });
+  check('null menghapus posisi pribadi', s.teams.home.tactics.customIn[a.id] === undefined && s.teams.home.tactics.customOut[b.id] ? [] : ['salah']);
+  s = sim.setTactics('home', { customIn: { [a.id]: { depth: 0.45, lane: 0.3 } } });
+  s = sim.setTactics('home', { outOfPossession: { formation: '5-4-1' } });
+  check('ganti formasi tanpa bola menghapus posisi tanpa bola saja', Object.keys(s.teams.home.tactics.customOut).length === 0 && s.teams.home.tactics.customIn[a.id] ? [] : ['salah']);
+  s = sim.setTactics('home', { outOfPossession: { formation: '4-4-2' } });
+  // Tempel lawan: pasangan lengket selama laga berjalan.
+  const pairs = new Map();
+  let switches = 0;
+  const errs2 = [];
+  for (let i = 0; i < 2000; i += 1) {
+    s = sim.step();
+    const now = s.teams.home.manMarks?.[c.id];
+    if (now && pairs.has(c.id) && pairs.get(c.id) !== now) switches += 1;
+    if (now) pairs.set(c.id, now);
+    if (i % 80 === 0) errs2.push(...validateMatchState(s));
+  }
+  check('tempel lawan: penjaga punya lawan yang dijaga', pairs.has(c.id) ? [] : ['tidak pernah menempel']);
+  check('tempel lawan lengket (jarang ganti lawan dalam 200 dtk)', switches <= 6 ? [] : [`ganti ${switches} kali`]);
+  check('state valid dengan posisi pribadi & tempel lawan', errs2.slice(0, 5));
+  // assignMarks langsung: penjaga orang mengabaikan lawan dekat yang lain & mengikuti lawan lengketnya.
+  const def = { id: 'd', role: 'CB', x: 30, y: 30 };
+  const near = { id: 'n', x: 31, y: 31 };
+  const far = { id: 'f', x: 50, y: 50 };
+  const mk = assignMarks([def], [near, far], true, { manMarkers: new Set(['d']), sticky: { d: 'f' } });
+  check('penjaga orang tetap pada lawan lengketnya walau ada lawan lebih dekat', mk.get('d')?.attackerId === 'f' && mk.get('d').man ? [] : [JSON.stringify(mk.get('d'))]);
 }
 
 console.log('Skema bola mati (8d)');

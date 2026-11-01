@@ -86,6 +86,45 @@ export function laneSlot(slot, instruction = 'tetap') {
   }
 }
 
+// Layer posisi (1 Nov, ide pengguna): pemain diseret di gambar taktik → titik patokan pribadi per
+// pemain, satu untuk DENGAN BOLA (customIn) dan satu untuk TANPA BOLA (customOut). Disimpan sebagai slot
+// di bingkai tim ({ depth, lane }, lane 0 = kiri) sehingga engine memakainya persis seperti slot formasi:
+// tetap bergeser mengikuti bola, menjaga lawan, berlari — titik ini bobot besar, bukan rel kaku.
+// Prioritas slot dengan bola: posisi pribadi > instruksi jalur > formasi.
+export const CUSTOM_SLOT = Object.freeze({ depthMin: 0.17, depthMax: 0.55, laneMin: 0.03, laneMax: 0.97 });
+export const MARKING_OPTIONS = Object.freeze(['zona', 'tempel']);
+const PLAYER_MAPS = Object.freeze(['playerLanes', 'customIn', 'customOut', 'marking']);
+
+export function validCustomSlot(slot) {
+  return (
+    slot !== null &&
+    typeof slot === 'object' &&
+    Number.isFinite(slot.depth) &&
+    Number.isFinite(slot.lane) &&
+    slot.depth >= CUSTOM_SLOT.depthMin - 1e-9 &&
+    slot.depth <= CUSTOM_SLOT.depthMax + 1e-9 &&
+    slot.lane >= CUSTOM_SLOT.laneMin - 1e-9 &&
+    slot.lane <= CUSTOM_SLOT.laneMax + 1e-9
+  );
+}
+
+export function clampCustomSlot(slot) {
+  if (!slot || !Number.isFinite(slot.depth) || !Number.isFinite(slot.lane)) throw new TypeError('clampCustomSlot: slot tidak valid');
+  return {
+    depth: Math.min(CUSTOM_SLOT.depthMax, Math.max(CUSTOM_SLOT.depthMin, slot.depth)),
+    lane: Math.min(CUSTOM_SLOT.laneMax, Math.max(CUSTOM_SLOT.laneMin, slot.lane)),
+  };
+}
+
+// Slot efektif satu pemain lapangan di satu fase ('in' | 'out').
+export function effectiveSlot(player, tactics, phase) {
+  if (phase !== 'in' && phase !== 'out') throw new RangeError(`effectiveSlot: fase tidak dikenal ${phase}`);
+  if (phase === 'out') return tactics?.customOut?.[player.id] ?? player.slotOut ?? player.slot;
+  const custom = tactics?.customIn?.[player.id];
+  if (custom) return custom;
+  return laneSlot(player.slotIn ?? player.slot, tactics?.playerLanes?.[player.id] ?? 'tetap');
+}
+
 export const MAX_CROSS_CHANCE = 0.95;
 // Skema bola mati (29 Okt):
 //   sepak pojok      : campur / tiangDekat / tiangJauh / pendek
@@ -98,6 +137,9 @@ export function defaultTactics(formation) {
     inPossession: { formation, width: 'normal', tempo: 'normal', cross: 'normal', focus: 'seimbang' },
     outOfPossession: { formation, line: 'normal', press: 'tinggi', protect: 'seimbang' },
     playerLanes: {}, // id pemain → instruksi jalur dengan bola (tanpa entri = 'tetap')
+    customIn: {}, // id pemain → { depth, lane } titik patokan pribadi dengan bola
+    customOut: {}, // id pemain → { depth, lane } titik patokan pribadi tanpa bola
+    marking: {}, // id pemain → 'zona' | 'tempel' (tanpa entri = 'zona')
     onLoss: 'seimbang',
     onWin: 'seimbang',
     corner: 'campur',
@@ -248,13 +290,20 @@ export function tacticsErrors(changes) {
   if (changes.corner !== undefined && !CORNER_SCHEMES.includes(changes.corner)) errors.push(`skema pojok tidak dikenal: ${changes.corner}`);
   if (changes.freeKick !== undefined && !FREE_KICK_SCHEMES.includes(changes.freeKick))
     errors.push(`skema tendangan bebas tidak dikenal: ${changes.freeKick}`);
-  if (changes.playerLanes !== undefined) {
-    if (typeof changes.playerLanes !== 'object' || changes.playerLanes === null) errors.push('playerLanes harus objek');
-    else
-      for (const [id, v] of Object.entries(changes.playerLanes))
-        if (!LANE_INSTRUCTIONS.includes(v)) errors.push(`instruksi jalur ${id} tidak dikenal: ${v}`);
-  }
-  const known = new Set(['inPossession', 'outOfPossession', 'onLoss', 'onWin', 'corner', 'freeKick', 'playerLanes']);
+  // Peta per pemain: nilai null = hapus entri (kembali ke bawaan).
+  const checkMap = (key, ok, what) => {
+    if (changes[key] === undefined) return;
+    if (typeof changes[key] !== 'object' || changes[key] === null) {
+      errors.push(`${key} harus objek`);
+      return;
+    }
+    for (const [id, v] of Object.entries(changes[key])) if (v !== null && !ok(v)) errors.push(`${what} ${id} tidak valid: ${JSON.stringify(v)}`);
+  };
+  checkMap('playerLanes', (v) => LANE_INSTRUCTIONS.includes(v), 'instruksi jalur');
+  checkMap('customIn', validCustomSlot, 'posisi dengan bola');
+  checkMap('customOut', validCustomSlot, 'posisi tanpa bola');
+  checkMap('marking', (v) => MARKING_OPTIONS.includes(v), 'penjagaan');
+  const known = new Set(['inPossession', 'outOfPossession', 'onLoss', 'onWin', 'corner', 'freeKick', ...PLAYER_MAPS]);
   for (const k of Object.keys(changes)) if (!known.has(k)) errors.push(`pengaturan taktik tidak dikenal: ${k}`);
   return errors;
 }
@@ -265,16 +314,30 @@ export function mergeTactics(tactics, changes) {
     ...changes,
     inPossession: { ...tactics.inPossession, ...(changes.inPossession ?? {}) },
     outOfPossession: { ...tactics.outOfPossession, ...(changes.outOfPossession ?? {}) },
-    playerLanes: { ...(tactics.playerLanes ?? {}), ...(changes.playerLanes ?? {}) },
+    ...Object.fromEntries(PLAYER_MAPS.map((k) => [k, mergeMap(tactics[k], changes[k])])),
   };
 }
 
-// Pemain masuk mewarisi instruksi jalur pemain yang ia gantikan.
+function mergeMap(base = {}, change) {
+  if (change === undefined) return { ...base };
+  const out = { ...base };
+  for (const [id, v] of Object.entries(change)) {
+    if (v === null) delete out[id];
+    else out[id] = v;
+  }
+  return out;
+}
+
+// Pemain masuk mewarisi semua instruksi pribadi pemain yang ia gantikan (jalur, posisi, penjagaan).
 export function transferLaneInstruction(tactics, outId, inId) {
-  const lanes = { ...(tactics.playerLanes ?? {}) };
-  if (lanes[outId] !== undefined) lanes[inId] = lanes[outId];
-  delete lanes[outId];
-  return { ...tactics, playerLanes: lanes };
+  const next = { ...tactics };
+  for (const k of PLAYER_MAPS) {
+    const map = { ...(tactics[k] ?? {}) };
+    if (map[outId] !== undefined) map[inId] = map[outId];
+    delete map[outId];
+    next[k] = map;
+  }
+  return next;
 }
 
 // Terapkan perubahan taktik ke state (murni). changes boleh sebagian, mis. { outOfPossession: { line: 'tinggi' } }.
@@ -283,12 +346,18 @@ export function applyTactics(state, teamId, changes) {
   if (!team) throw new Error(`applyTactics: tim ${teamId} tidak ada`);
   const errors = tacticsErrors(changes);
   if (errors.length > 0) throw new RangeError(`applyTactics: ${errors.join('; ')}`);
-  for (const id of Object.keys(changes.playerLanes ?? {})) {
-    const p = state.players.find((q) => q.id === id);
-    if (!p || p.teamId !== teamId) throw new RangeError(`applyTactics: ${id} tidak sedang bermain untuk tim ${teamId}`);
-    if (p.role === 'GK') throw new RangeError(`applyTactics: kiper ${id} tidak diberi instruksi jalur`);
+  for (const k of PLAYER_MAPS) {
+    for (const [id, v] of Object.entries(changes[k] ?? {})) {
+      if (v === null) continue; // menghapus selalu boleh
+      const p = state.players.find((q) => q.id === id);
+      if (!p || p.teamId !== teamId) throw new RangeError(`applyTactics: ${id} tidak sedang bermain untuk tim ${teamId}`);
+      if (p.role === 'GK') throw new RangeError(`applyTactics: kiper ${id} tidak diberi instruksi pribadi`);
+    }
   }
-  const tactics = mergeTactics(team.tactics, changes);
+  let tactics = mergeTactics(team.tactics, changes);
+  // Ganti formasi di satu layer → posisi pribadi layer itu dihapus (titiknya milik formasi lama).
+  if (tactics.inPossession.formation !== team.tactics.inPossession.formation && changes.customIn === undefined) tactics = { ...tactics, customIn: {} };
+  if (tactics.outOfPossession.formation !== team.tactics.outOfPossession.formation && changes.customOut === undefined) tactics = { ...tactics, customOut: {} };
   const formationChanged =
     tactics.inPossession.formation !== team.tactics.inPossession.formation ||
     tactics.outOfPossession.formation !== team.tactics.outOfPossession.formation;
