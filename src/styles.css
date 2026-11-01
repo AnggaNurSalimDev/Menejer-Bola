@@ -938,3 +938,147 @@ body {
     grid-column: 1 / -1;
   }
 }
+
+/* ---- Racik strategi: satu kotak (1 Nov, masukan pengguna: "melelahkan karena tersebar") ---- */
+.strategy {
+  margin-top: 12px;
+  background: #1d232b;
+  border: 1px solid #333b46;
+  border-radius: 10px;
+  padding: 14px;
+  display: grid;
+  gap: 14px;
+}
+.strategy__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.strategy__head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #e9ecef;
+}
+.strategy__note {
+  font-size: 0.78rem;
+  color: #69db7c;
+}
+.strategy h4 {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+  color: #e9ecef;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.step {
+  display: inline-grid;
+  place-items: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 50%;
+  background: #1f4fbf;
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+.strategy__base {
+  background: #232a33;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.strategy__hint {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  color: #868e96;
+}
+.strategy__phases {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.phase {
+  background: #232a33;
+  border-radius: 8px;
+  padding: 10px 12px 12px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-width: 0;
+  border-top: 3px solid #495057;
+}
+.phase--out {
+  border-top-color: #ff8787;
+}
+.phase--in {
+  border-top-color: #74c0fc;
+}
+.phase .tac-row {
+  grid-template-columns: 7.2rem 1fr;
+}
+.phase .lane-fig figcaption {
+  font-size: 0.75rem;
+  color: #868e96;
+}
+.strategy__setpieces {
+  background: #232a33;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+}
+.strategy__setpieces h4 {
+  margin-bottom: 0;
+}
+.strategy .lane-legend {
+  margin: 0;
+}
+.orders {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+  border-top: 1px solid #333b46;
+  padding-top: 8px;
+}
+.orders__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13.5rem, 1fr));
+  gap: 4px 10px;
+}
+.orders__list li {
+  display: grid;
+  grid-template-columns: 1.6rem 1fr 8.6rem;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+}
+.orders__num {
+  font-weight: 700;
+  color: #adb5bd;
+  font-variant-numeric: tabular-nums;
+}
+.orders__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.orders .lane-select {
+  padding: 3px 4px;
+}
+@media (max-width: 860px) {
+  .strategy__phases {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 520px) {
+  .strategy {
+    padding: 10px;
+  }
+  .phase .tac-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}

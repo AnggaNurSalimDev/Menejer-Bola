@@ -28,7 +28,7 @@ function positions(players, tactics, phase) {
   });
 }
 
-function Pitch({ title, phase, players, tactics, color, highlightId, locked, onSet, onReset, showLaneNames }) {
+export function LayerPitch({ title, phase, players, tactics, color, highlightId, locked, onSet, onReset, showLaneNames }) {
   const svgRef = useRef(null);
   const [drag, setDrag] = useState(null); // { id, x, y }
   const items = positions(players, tactics, phase);
@@ -107,7 +107,7 @@ function Pitch({ title, phase, players, tactics, color, highlightId, locked, onS
             .join(' ');
           return (
             <g key={p.id} transform={`translate(${cx} ${cy})`} className={cls} onPointerDown={(e) => start(e, p)}>
-              <circle r="3.4" className="lane-dot__hit" />
+              <circle r="5" className="lane-dot__hit" />
               <circle r="2.6" fill={color} className={man ? 'lane-dot__man' : marked ? 'lane-dot__ring' : undefined} />
               <text y="1.05" textAnchor="middle">
                 {p.number}
@@ -126,7 +126,7 @@ export default function LaneDiagram({ players, tactics, color, highlightId, lock
   const clear = (key) => Object.fromEntries(ids.map((id) => [id, null]));
   return (
     <div className="lane-diagram">
-      <Pitch
+      <LayerPitch
         title="Dengan bola"
         phase="attack"
         players={players}
@@ -138,7 +138,7 @@ export default function LaneDiagram({ players, tactics, color, highlightId, lock
         onSet={(changes, id) => onSetTactics(changes, `${nameOf(id)}: posisi dengan bola diubah`)}
         onReset={() => onSetTactics({ customIn: clear('customIn'), playerLanes: clear('playerLanes') }, 'Dengan bola: kembali ke formasi')}
       />
-      <Pitch
+      <LayerPitch
         title="Tanpa bola"
         phase="defend"
         players={players}

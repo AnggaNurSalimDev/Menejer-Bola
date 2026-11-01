@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import LaneDiagram from './LaneDiagram.jsx';
+import { LayerPitch } from './LaneDiagram.jsx';
 import { SUBS, substitutionErrors, roleLine } from '../engine/substitution.js';
 import { gameClock } from '../engine/state.js';
 import { getPhilosophy } from '../engine/philosophy.js';
@@ -48,6 +48,38 @@ function Choice({ label, value, options, labels, onPick, disabled, hint }) {
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+// Daftar perintah per pemain di dalam kolom fase (satu pilihan per pemain lapangan).
+function PlayerOrders({ title, players, value, options, labels, onPick, disabled, isAvailable = () => true }) {
+  return (
+    <div className="orders">
+      <span className="tac-label">{title}</span>
+      <ul className="orders__list">
+        {players.map((p) => (
+          <li key={p.id}>
+            <span className="orders__num">{p.number}</span>
+            <span className="orders__name">{p.shortName}</span>
+            <select
+              className="lane-select"
+              aria-label={`${title} ${p.shortName}`}
+              value={value(p)}
+              disabled={disabled}
+              onChange={(e) => onPick(p, e.target.value)}
+            >
+              {options
+                .filter((v) => isAvailable(p, v))
+                .map((v) => (
+                  <option key={v} value={v}>
+                    {labels[v] ?? v}
+                  </option>
+                ))}
+            </select>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -139,6 +171,11 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
   }
 
   const locked = state.period === 'fulltime';
+  const shirt = team.colors?.shirt ?? '#4dabf7';
+  const outfield = onPitch.filter((p) => p.role !== 'GK').sort((a, b) => a.number - b.number);
+  const clearMap = () => Object.fromEntries(outfield.map((p) => [p.id, null]));
+  const baseFormation =
+    team.tactics.inPossession.formation === team.tactics.outOfPossession.formation ? team.tactics.inPossession.formation : null;
   const minute = state.period === 'halftime' ? 'Jeda' : state.period === 'fulltime' ? 'Selesai' : `${gameClock(state).minute}'`;
 
   return (
@@ -155,11 +192,123 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
         <p className="team-tab__live">● Pertandingan tetap berjalan</p>
       </header>
 
-      <div className="tactics">
-        <h3>Taktik · berlaku seketika</h3>
-        <div className="tac-boxes">
-          <fieldset className="tac-box">
-            <legend>Dengan bola</legend>
+      <div className="strategy">
+        <div className="strategy__head">
+          <h3>Racik strategi</h3>
+          <span className="strategy__note">berlaku seketika</span>
+        </div>
+
+        <section className="strategy__base" aria-label="Formasi dasar">
+          <h4>
+            <span className="step">1</span> Formasi dasar
+          </h4>
+          <div className="tac-options" role="group" aria-label="Formasi dasar">
+            {Object.keys(FORMATIONS).map((f) => (
+              <button
+                key={f}
+                type="button"
+                className={baseFormation === f ? 'is-active' : undefined}
+                disabled={locked}
+                onClick={() => setTactic({ inPossession: { formation: f }, outOfPossession: { formation: f } }, `Formasi dasar ${f}`)}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+          <p className="strategy__hint">
+            {baseFormation
+              ? 'Dipakai saat dengan bola dan tanpa bola. Ubah per fase di kolom bawah bila perlu.'
+              : `Berbeda per fase: ${team.tactics.outOfPossession.formation} tanpa bola, ${team.tactics.inPossession.formation} dengan bola.`}
+          </p>
+        </section>
+
+        <div className="strategy__phases">
+          <section className="phase phase--out" aria-label="Tanpa bola">
+            <h4>
+              <span className="step">2</span> Tanpa bola
+            </h4>
+            <LayerPitch
+              title="Seret pemain untuk mengatur posisi bertahan"
+              showLaneNames
+              phase="defend"
+              players={onPitch}
+              tactics={team.tactics}
+              color={shirt}
+              highlightId={outId}
+              locked={locked}
+              onSet={(changes, id) => setTactic(changes, `${name(id)}: posisi tanpa bola diubah`)}
+              onReset={() => setTactic({ customOut: clearMap() }, 'Tanpa bola: kembali ke formasi')}
+            />
+            <Choice
+              label="Formasi"
+              value={team.tactics.outOfPossession.formation}
+              options={Object.keys(FORMATIONS)}
+              onPick={(v) => setTactic({ outOfPossession: { formation: v } }, `Tanpa bola: ${v}`)}
+              disabled={locked}
+            />
+            <Choice
+              label="Garis bek"
+              value={team.tactics.outOfPossession.line}
+              options={Object.keys(LINE_OPTIONS)}
+              labels={LINE_LABEL}
+              onPick={(v) => setTactic({ outOfPossession: { line: v } }, `Garis bek ${LINE_LABEL[v]}`)}
+              disabled={locked}
+              hint="Rendah: rapat & menutup tembakan. Tinggi: merebut di depan, ruang di belakang terbuka"
+            />
+            <Choice
+              label="Tekanan"
+              value={team.tactics.outOfPossession.press}
+              options={Object.keys(PRESS_OPTIONS)}
+              labels={PRESS_LABEL}
+              onPick={(v) => setTactic({ outOfPossession: { press: v } }, `Tekanan ${PRESS_LABEL[v]}`)}
+              disabled={locked}
+              hint="Tinggi: menekan di mana saja (menguras tenaga). Rendah: hanya dekat gawang sendiri"
+            />
+            <Choice
+              label="Lindungi"
+              value={team.tactics.outOfPossession.protect ?? 'seimbang'}
+              options={Object.keys(PROTECT_OPTIONS)}
+              labels={PROTECT_LABEL}
+              onPick={(v) => setTactic({ outOfPossession: { protect: v } }, `Lindungi ${PROTECT_LABEL[v]}`)}
+              disabled={locked}
+              hint="Tengah: blok sempit, lawan dipaksa ke sayap. Sayap: blok lebar, tengah lebih renggang"
+            />
+            <Choice
+              label="Saat kehilangan bola"
+              value={team.tactics.onLoss}
+              options={ON_LOSS}
+              labels={LOSS_LABEL}
+              onPick={(v) => setTactic({ onLoss: v }, `Kehilangan bola: ${LOSS_LABEL[v]}`)}
+              disabled={locked}
+              hint="Counter-press: 2 pemain tambahan menekan ±5 dtk (menguras tenaga). Mundur: langsung ke bentuk bertahan"
+            />
+            <PlayerOrders
+              title="Penjagaan per pemain"
+              players={outfield}
+              value={(p) => team.tactics.marking?.[p.id] ?? 'zona'}
+              options={MARKING_OPTIONS}
+              labels={MARK_LABEL}
+              disabled={locked}
+              onPick={(p, v) => setTactic({ marking: { [p.id]: v === 'zona' ? null : v } }, `${p.shortName}: ${MARK_LABEL[v]}`)}
+            />
+          </section>
+
+          <section className="phase phase--in" aria-label="Dengan bola">
+            <h4>
+              <span className="step">3</span> Dengan bola
+            </h4>
+            <LayerPitch
+              title="Seret pemain untuk mengatur posisi menyerang"
+              phase="attack"
+              players={onPitch}
+              tactics={team.tactics}
+              color={shirt}
+              highlightId={outId}
+              locked={locked}
+              showLaneNames
+              onSet={(changes, id) => setTactic(changes, `${name(id)}: posisi dengan bola diubah`)}
+              onReset={() => setTactic({ customIn: clearMap(), playerLanes: clearMap() }, 'Dengan bola: kembali ke formasi')}
+            />
             <Choice
               label="Formasi"
               value={team.tactics.inPossession.formation}
@@ -200,62 +349,10 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
               labels={FOCUS_LABEL}
               onPick={(v) => setTactic({ inPossession: { focus: v } }, `Fokus serangan ${FOCUS_LABEL[v]}`)}
               disabled={locked}
-              hint="Kiri/kanan: seluruh bentuk bergeser ke sisi itu (dilihat dari arah serang tim). Tengah: merapat ke tengah"
-            />
-          </fieldset>
-          <fieldset className="tac-box">
-            <legend>Tanpa bola</legend>
-            <Choice
-              label="Formasi"
-              value={team.tactics.outOfPossession.formation}
-              options={Object.keys(FORMATIONS)}
-              onPick={(v) => setTactic({ outOfPossession: { formation: v } }, `Tanpa bola: ${v}`)}
-              disabled={locked}
+              hint="Kiri/kanan: gelandang & penyerang bergeser ke sisi itu (dilihat dari arah serang tim). Tengah: merapat ke tengah"
             />
             <Choice
-              label="Garis bek"
-              value={team.tactics.outOfPossession.line}
-              options={Object.keys(LINE_OPTIONS)}
-              labels={LINE_LABEL}
-              onPick={(v) => setTactic({ outOfPossession: { line: v } }, `Garis bek ${LINE_LABEL[v]}`)}
-              disabled={locked}
-              hint="Rendah: rapat & menutup tembakan. Tinggi: merebut di depan, ruang di belakang terbuka"
-            />
-            <Choice
-              label="Tekanan"
-              value={team.tactics.outOfPossession.press}
-              options={Object.keys(PRESS_OPTIONS)}
-              labels={PRESS_LABEL}
-              onPick={(v) => setTactic({ outOfPossession: { press: v } }, `Tekanan ${PRESS_LABEL[v]}`)}
-              disabled={locked}
-              hint="Tinggi: menekan di mana saja (menguras tenaga). Rendah: hanya dekat gawang sendiri"
-            />
-            <Choice
-              label="Lindungi"
-              value={team.tactics.outOfPossession.protect ?? 'seimbang'}
-              options={Object.keys(PROTECT_OPTIONS)}
-              labels={PROTECT_LABEL}
-              onPick={(v) => setTactic({ outOfPossession: { protect: v } }, `Lindungi ${PROTECT_LABEL[v]}`)}
-              disabled={locked}
-              hint="Tengah: blok sempit, lawan dipaksa ke sayap. Sayap: blok lebar, tengah lebih renggang"
-            />
-          </fieldset>
-          <fieldset className="tac-box">
-            <legend>Saat kehilangan bola</legend>
-            <Choice
-              label="Reaksi"
-              value={team.tactics.onLoss}
-              options={ON_LOSS}
-              labels={LOSS_LABEL}
-              onPick={(v) => setTactic({ onLoss: v }, `Kehilangan bola: ${LOSS_LABEL[v]}`)}
-              disabled={locked}
-              hint="Counter-press: 2 pemain tambahan menekan ±5 dtk (menguras tenaga). Mundur: langsung ke bentuk bertahan"
-            />
-          </fieldset>
-          <fieldset className="tac-box">
-            <legend>Saat merebut bola</legend>
-            <Choice
-              label="Reaksi"
+              label="Saat merebut bola"
               value={team.tactics.onWin}
               options={ON_WIN}
               labels={WIN_LABEL}
@@ -263,52 +360,60 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
               disabled={locked}
               hint="Serangan balik: langsung ke depan ±5 dtk. Bangun ulang: aman & sabar"
             />
-          </fieldset>
+            <PlayerOrders
+              title="Jalur per pemain"
+              players={outfield}
+              value={(p) => (team.tactics.customIn?.[p.id] ? 'diseret' : (team.tactics.playerLanes?.[p.id] ?? 'tetap'))}
+              options={team.tactics.customIn && Object.keys(team.tactics.customIn).length ? ['diseret', ...LANE_INSTRUCTIONS] : LANE_INSTRUCTIONS}
+              labels={{ ...LANE_LABEL, diseret: 'Posisi diseret' }}
+              isAvailable={(p, v) => v !== 'diseret' || Boolean(team.tactics.customIn?.[p.id])}
+              disabled={locked}
+              onPick={(p, v) => {
+                if (v === 'diseret') return; // hanya penanda: posisi diubah lewat gambar
+                setTactic({ playerLanes: { [p.id]: v === 'tetap' ? null : v }, customIn: { [p.id]: null } }, `${p.shortName}: ${LANE_LABEL[v]}`);
+              }}
+            />
+          </section>
         </div>
-        <h3 className="tac-sub">Skema bola mati</h3>
-        <Choice
-          label="Sepak pojok"
-          value={team.tactics.corner}
-          options={CORNER_SCHEMES}
-          labels={CORNER_LABEL}
-          onPick={(v) => setTactic({ corner: v }, `Sepak pojok: ${CORNER_LABEL[v]}`)}
-          disabled={locked}
-          hint="Campur: ke penyundul terbaik. Pendek: dimainkan ke rekan yang mendekat"
-        />
-        <Choice
-          label="Tendangan bebas"
-          value={team.tactics.freeKick}
-          options={FREE_KICK_SCHEMES}
-          labels={FREE_KICK_LABEL}
-          onPick={(v) => setTactic({ freeKick: v }, `Tendangan bebas: ${FREE_KICK_LABEL[v]}`)}
-          disabled={locked}
-          hint="Otomatis: tembak bila ≤ 30 m (70%), kalau tidak dilambungkan"
-        />
-        <p className="tac-note">
-          Pojok laga ini: {state.stats.corners[teamId].taken} · tembakan dari pojok {state.stats.corners[teamId].shots} · gol{' '}
-          {state.stats.corners[teamId].goals}
-        </p>
-        <p className="tac-note">
-          Filosofi: <strong>{getPhilosophy(team.philosophy).label}</strong> — identitas tim dari latihan, tidak bisa diubah di tengah laga.
+
+        <section className="strategy__setpieces" aria-label="Bola mati">
+          <h4>Bola mati</h4>
+          <Choice
+            label="Sepak pojok"
+            value={team.tactics.corner}
+            options={CORNER_SCHEMES}
+            labels={CORNER_LABEL}
+            onPick={(v) => setTactic({ corner: v }, `Sepak pojok: ${CORNER_LABEL[v]}`)}
+            disabled={locked}
+            hint="Campur: ke penyundul terbaik. Pendek: dimainkan ke rekan yang mendekat"
+          />
+          <Choice
+            label="Tendangan bebas"
+            value={team.tactics.freeKick}
+            options={FREE_KICK_SCHEMES}
+            labels={FREE_KICK_LABEL}
+            onPick={(v) => setTactic({ freeKick: v }, `Tendangan bebas: ${FREE_KICK_LABEL[v]}`)}
+            disabled={locked}
+            hint="Otomatis: tembak bila ≤ 30 m (70%), kalau tidak dilambungkan"
+          />
+          <p className="tac-note">
+            Pojok laga ini: {state.stats.corners[teamId].taken} · tembakan dari pojok {state.stats.corners[teamId].shots} · gol{' '}
+            {state.stats.corners[teamId].goals} · Filosofi: <strong>{getPhilosophy(team.philosophy).label}</strong> (identitas tim, tidak bisa diubah
+            di tengah laga)
+          </p>
+        </section>
+        <p className="lane-legend">
+          Bulatan bisa diseret: itu titik patokan pemain, bukan rel kaku — pemain tetap bergeser mengikuti bola dan menjaga lawan. Cincin kuning =
+          posisi/jalur pribadi · cincin merah putus-putus = tempel lawan · lapangan selalu digambar menyerang ke kanan (jalur kiri di atas). Tanpa
+          bola tim merapat ke arah bola, jadi titik di pinggir ditarik ke dalam.
         </p>
       </div>
 
       {message && <p className={`team-msg team-msg--${message.tone}`}>{message.text}</p>}
 
-      <LaneDiagram
-        players={onPitch}
-        tactics={team.tactics}
-        color={team.colors?.shirt ?? '#4dabf7'}
-        highlightId={outId}
-        locked={locked}
-        onSetTactics={setTactic}
-        nameOf={name}
-      />
-
       <div className="team-columns">
         <div className="team-col">
           <h3>Di lapangan ({onPitch.length})</h3>
-          <p className="roster-hint">Kolom 1: jalur dengan bola · kolom 2: penjagaan tanpa bola</p>
           <ul className="roster">
             {onPitch.map((p) => (
               <li key={p.id}>
@@ -327,42 +432,6 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
                   <span className="roster-role">{p.role}</span>
                   <EnergyBar value={p.condition.energy} />
                 </button>
-                {p.role !== 'GK' && (
-                  <select
-                    className="lane-select"
-                    aria-label={`Jalur dengan bola ${p.shortName}`}
-                    value={team.tactics.customIn?.[p.id] ? 'diseret' : (team.tactics.playerLanes?.[p.id] ?? 'tetap')}
-                    disabled={locked}
-                    onChange={(e) => {
-                      if (e.target.value === 'diseret') return; // hanya penanda: posisi diubah lewat gambar
-                      setTactic({ playerLanes: { [p.id]: e.target.value === 'tetap' ? null : e.target.value }, customIn: { [p.id]: null } }, `${p.shortName}: ${LANE_LABEL[e.target.value]}`);
-                    }}
-                  >
-                    {team.tactics.customIn?.[p.id] && <option value="diseret">Posisi diseret</option>}
-                    {LANE_INSTRUCTIONS.map((v) => (
-                      <option key={v} value={v}>
-                        {LANE_LABEL[v]}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                {p.role !== 'GK' && (
-                  <select
-                    className="lane-select lane-select--mark"
-                    aria-label={`Tanpa bola ${p.shortName}`}
-                    value={team.tactics.marking?.[p.id] ?? 'zona'}
-                    disabled={locked}
-                    onChange={(e) =>
-                      setTactic({ marking: { [p.id]: e.target.value === 'zona' ? null : e.target.value } }, `${p.shortName}: ${MARK_LABEL[e.target.value]}`)
-                    }
-                  >
-                    {MARKING_OPTIONS.map((v) => (
-                      <option key={v} value={v}>
-                        {MARK_LABEL[v]}
-                      </option>
-                    ))}
-                  </select>
-                )}
               </li>
             ))}
           </ul>
