@@ -1971,7 +1971,11 @@ export function createSimulation(home, away, seed, options = {}) {
           id,
           assignMarks(defenders, attackers, teams[id].attacksRight, { manMarkers, sticky: teams[id].manMarks ?? {}, ownerId: ball.ownerId, stickyOut }),
         );
-        teams[id].manMarks = stickyOut;
+        // Penjaga yang tick ini sedang mengejar/menekan bola tidak dihitung ulang: ingatannya disimpan
+        // (2 Nov: dulu terhapus, lalu ia memilih lawan terdekat yang baru setelah selesai mengejar).
+        const kept = {};
+        for (const [d, at] of Object.entries(teams[id].manMarks ?? {})) if (manMarkers.has(d)) kept[d] = at;
+        teams[id].manMarks = { ...kept, ...stickyOut };
       }
     }
 

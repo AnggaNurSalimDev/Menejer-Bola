@@ -254,8 +254,9 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
   ].filter(Boolean).join(' · ');
   const narrow = isNarrowScreen();
   const summaryAll = `${op.formation === ip.formation ? op.formation : `${op.formation} / ${ip.formation}`} · garis ${LINE_LABEL[op.line]} · fokus ${FOCUS_LABEL[ip.focus ?? 'seimbang']}${tempelCount + laneCount + dragOut ? ` · ${tempelCount + laneCount + dragOut} instruksi pribadi` : ''}`;
-  const baseFormation =
-    team.tactics.inPossession.formation === team.tactics.outOfPossession.formation ? team.tactics.inPossession.formation : null;
+  // Formasi dasar disimpan sendiri (2 Nov); "sama di dua fase" bila kedua fase memakainya.
+  const baseFormation = team.tactics.baseFormation ?? team.tactics.outOfPossession.formation;
+  const phasesMatchBase = team.tactics.inPossession.formation === baseFormation && team.tactics.outOfPossession.formation === baseFormation;
   const minute = state.period === 'halftime' ? 'Jeda' : state.period === 'fulltime' ? 'Selesai' : `${gameClock(state).minute}'`;
 
   return (
@@ -292,7 +293,7 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
               <span className="step">1</span> Formasi dasar
             </>
           }
-          summary={baseFormation ?? `${team.tactics.outOfPossession.formation} / ${team.tactics.inPossession.formation}`}
+          summary={phasesMatchBase ? baseFormation : `${baseFormation} (tanpa bola ${team.tactics.outOfPossession.formation}, dengan bola ${team.tactics.inPossession.formation})`}
           defaultOpen
         >
           <div className="tac-options" role="group" aria-label="Formasi dasar">
@@ -302,15 +303,15 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
                 type="button"
                 className={baseFormation === f ? 'is-active' : undefined}
                 disabled={locked}
-                onClick={() => setTactic({ inPossession: { formation: f }, outOfPossession: { formation: f } }, `Formasi dasar ${f}`)}
+                onClick={() => setTactic({ baseFormation: f, inPossession: { formation: f }, outOfPossession: { formation: f } }, `Formasi dasar ${f}`)}
               >
                 {f}
               </button>
             ))}
           </div>
           <p className="strategy__hint">
-            {baseFormation
-              ? 'Dipakai saat dengan bola dan tanpa bola. Ubah per fase di kolom bawah bila perlu.'
+            {phasesMatchBase
+              ? 'Dipakai saat dengan bola dan tanpa bola. Ubah per fase di kolom bawah bila perlu; nyalakan "Bayangan" di gambar untuk melihat perpindahan pemain.'
               : `Berbeda per fase: ${team.tactics.outOfPossession.formation} tanpa bola, ${team.tactics.inPossession.formation} dengan bola.`}
           </p>
         </Fold>

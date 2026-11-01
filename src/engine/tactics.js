@@ -134,6 +134,7 @@ export const FREE_KICK_SCHEMES = Object.freeze(['otomatis', 'tembak', 'lambung',
 
 export function defaultTactics(formation) {
   return {
+    baseFormation: formation, // layer 1 (2 Nov): formasi dasar, acuan bayangan di gambar taktik
     inPossession: { formation, width: 'normal', tempo: 'normal', cross: 'normal', focus: 'seimbang' },
     outOfPossession: { formation, line: 'normal', press: 'tinggi', protect: 'seimbang' },
     playerLanes: {}, // id pemain → instruksi jalur dengan bola (tanpa entri = 'tetap')
@@ -207,30 +208,82 @@ export function outfieldSlots(formation, count) {
 }
 
 // Pindahkan pemain lapangan satu tim ke formasi baru. Mengembalikan Map id → { slot, role }.
-// Penugasan rakus pada biaya (beda lini × 10 + beda jalur): pemain tetap di lini & sisi yang mirip.
+// 2 Nov: penugasan OPTIMAL (algoritma Hungaria) yang meminimalkan jumlah kuadrat jarak lari (meter, sesuai
+// rentangan lapangan saat bermain). Dulu rakus (pasangan termurah dulu): 4-4-2 → 3-2-5 mengirim bek
+// tengah menjadi penyerang (lari ±45 m) alih-alih menggeser berantai bek → gelandang → penyerang.
+// Kuadrat jarak membuat satu lari jauh lebih mahal daripada beberapa geseran pendek.
+const RESHAPE_DEPTH_METERS = PITCH.length * 1.4; // = rentangan lini saat bermain (shape.js LINE_STRETCH)
+
 export function reshape(teamPlayers, formation) {
-  const outfield = teamPlayers.filter((p) => p.role !== 'GK');
+  const outfield = teamPlayers.filter((p) => p.role !== 'GK').sort((a, b) => a.id.localeCompare(b.id));
   const slots = outfieldSlots(formation, outfield.length);
-  const pairs = [];
-  for (const p of outfield) {
-    for (let i = 0; i < slots.length; i += 1) {
-      const s = slots[i];
-      const cost = Math.abs(lineOfDepth(p.slot.depth) - lineOfDepth(s.depth)) * 10 + Math.abs(p.slot.lane - s.lane);
-      pairs.push({ p, i, cost });
-    }
-  }
-  pairs.sort((a, b) => a.cost - b.cost || a.p.id.localeCompare(b.p.id) || a.i - b.i);
-  const usedPlayers = new Set();
-  const usedSlots = new Set();
+  if (slots.length !== outfield.length) throw new Error('reshape: jumlah slot tidak sama dengan jumlah pemain');
+  const cost = outfield.map((p) =>
+    slots.map((s) => {
+      const dx = (p.slot.depth - s.depth) * RESHAPE_DEPTH_METERS;
+      const dy = (p.slot.lane - s.lane) * PITCH.width;
+      return dx * dx + dy * dy;
+    }),
+  );
+  const assignment = minCostAssignment(cost);
   const result = new Map();
-  for (const { p, i } of pairs) {
-    if (usedPlayers.has(p.id) || usedSlots.has(i)) continue;
-    usedPlayers.add(p.id);
-    usedSlots.add(i);
-    result.set(p.id, { slot: { depth: slots[i].depth, lane: slots[i].lane }, role: slots[i].role });
-  }
-  if (result.size !== outfield.length) throw new Error('reshape: ada pemain tanpa slot');
+  outfield.forEach((p, i) => {
+    const s = slots[assignment[i]];
+    result.set(p.id, { slot: { depth: s.depth, lane: s.lane }, role: s.role });
+  });
+  if (result.size !== outfield.length || new Set(assignment).size !== outfield.length) throw new Error('reshape: ada pemain tanpa slot');
   return result;
+}
+
+// Penugasan biaya minimum untuk matriks n×n (algoritma Hungaria, O(n³)). Mengembalikan
+// assignment[baris] = kolom. Deterministik untuk masukan yang sama.
+export function minCostAssignment(cost) {
+  const n = cost.length;
+  if (n === 0) return [];
+  if (!cost.every((row) => row.length === n && row.every(Number.isFinite))) throw new RangeError('minCostAssignment: matriks harus persegi & berhingga');
+  const u = new Array(n + 1).fill(0);
+  const v = new Array(n + 1).fill(0);
+  const p = new Array(n + 1).fill(0); // p[kolom] = baris (1-based)
+  const way = new Array(n + 1).fill(0);
+  for (let i = 1; i <= n; i += 1) {
+    p[0] = i;
+    let j0 = 0;
+    const minv = new Array(n + 1).fill(Infinity);
+    const used = new Array(n + 1).fill(false);
+    do {
+      used[j0] = true;
+      const i0 = p[j0];
+      let delta = Infinity;
+      let j1 = 0;
+      for (let j = 1; j <= n; j += 1) {
+        if (used[j]) continue;
+        const cur = cost[i0 - 1][j - 1] - u[i0] - v[j];
+        if (cur < minv[j]) {
+          minv[j] = cur;
+          way[j] = j0;
+        }
+        if (minv[j] < delta) {
+          delta = minv[j];
+          j1 = j;
+        }
+      }
+      for (let j = 0; j <= n; j += 1) {
+        if (used[j]) {
+          u[p[j]] += delta;
+          v[j] -= delta;
+        } else minv[j] -= delta;
+      }
+      j0 = j1;
+    } while (p[j0] !== 0);
+    do {
+      const j1 = way[j0];
+      p[j0] = p[j1];
+      j0 = j1;
+    } while (j0);
+  }
+  const assignment = new Array(n);
+  for (let j = 1; j <= n; j += 1) assignment[p[j] - 1] = j - 1;
+  return assignment;
 }
 
 // Susun ulang KEDUA slot (dengan & tanpa bola) satu tim dari taktiknya. Dipakai setelah ubah
@@ -299,11 +352,12 @@ export function tacticsErrors(changes) {
     }
     for (const [id, v] of Object.entries(changes[key])) if (v !== null && !ok(v)) errors.push(`${what} ${id} tidak valid: ${JSON.stringify(v)}`);
   };
+  if (changes.baseFormation !== undefined && !FORMATIONS[changes.baseFormation]) errors.push(`formasi dasar tidak dikenal: ${changes.baseFormation}`);
   checkMap('playerLanes', (v) => LANE_INSTRUCTIONS.includes(v), 'instruksi jalur');
   checkMap('customIn', validCustomSlot, 'posisi dengan bola');
   checkMap('customOut', validCustomSlot, 'posisi tanpa bola');
   checkMap('marking', (v) => MARKING_OPTIONS.includes(v), 'penjagaan');
-  const known = new Set(['inPossession', 'outOfPossession', 'onLoss', 'onWin', 'corner', 'freeKick', ...PLAYER_MAPS]);
+  const known = new Set(['baseFormation', 'inPossession', 'outOfPossession', 'onLoss', 'onWin', 'corner', 'freeKick', ...PLAYER_MAPS]);
   for (const k of Object.keys(changes)) if (!known.has(k)) errors.push(`pengaturan taktik tidak dikenal: ${k}`);
   return errors;
 }
@@ -385,4 +439,22 @@ export function isDefensiveShape(tactics) {
 export function validateTactics(tactics) {
   if (!tactics || !tactics.inPossession || !tactics.outOfPossession) return ['taktik tidak lengkap'];
   return tacticsErrors(tactics);
+}
+
+// Posisi formasi dasar per pemain (2 Nov, bayangan di gambar taktik): pemain lapangan dipasangkan ke
+// slot formasi dasar dengan aturan yang sama seperti ganti formasi (reshape), mulai dari slot tanpa bola.
+// Mengembalikan Map id → slot. Kiper memakai slotnya sendiri.
+export function baseSlots(players, tactics) {
+  const formation = tactics?.baseFormation ?? tactics?.outOfPossession?.formation;
+  if (!FORMATIONS[formation]) throw new RangeError(`baseSlots: formasi dasar tidak dikenal ${formation}`);
+  const result = new Map();
+  for (const p of players) if (p.role === 'GK') result.set(p.id, p.slot);
+  const outfield = players.filter((p) => p.role !== 'GK');
+  if (outfield.length === 0) return result;
+  const moves = reshape(
+    players.map((p) => ({ ...p, slot: p.slotOut ?? p.slot, role: p.role === 'GK' ? 'GK' : (p.roleOut ?? p.role) })),
+    formation,
+  );
+  for (const [id, m] of moves) result.set(id, m.slot);
+  return result;
 }

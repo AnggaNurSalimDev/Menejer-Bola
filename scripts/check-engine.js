@@ -42,7 +42,7 @@ import { lingerTicks, freeKickSettleTargets, AFTER_INCIDENT } from '../src/engin
 import { pickCover } from '../src/engine/roles.js';
 import { parryVelocity } from '../src/engine/keeper.js';
 import { boxRunSpots } from '../src/engine/simulation.js';
-import { reshape, outfieldSlots, tacticsErrors, defaultTactics, teamStyle, TRANSITION, coachTactics, pressAllowedAt, LINE_OPTIONS, laneSlot, LANES, effectiveSlot, clampCustomSlot, CUSTOM_SLOT } from '../src/engine/tactics.js';
+import { reshape, outfieldSlots, tacticsErrors, defaultTactics, teamStyle, TRANSITION, coachTactics, pressAllowedAt, LINE_OPTIONS, laneSlot, LANES, effectiveSlot, clampCustomSlot, CUSTOM_SLOT, minCostAssignment, baseSlots } from '../src/engine/tactics.js';
 import { slotForPoint } from '../src/engine/shape.js';
 import { assignMarks } from '../src/engine/marking.js';
 import { substitutionErrors, SUBS } from '../src/engine/substitution.js';
@@ -687,6 +687,32 @@ console.log('Layer posisi & tempel lawan (1 Nov)');
   const far = { id: 'f', x: 50, y: 50 };
   const mk = assignMarks([def], [near, far], true, { manMarkers: new Set(['d']), sticky: { d: 'f' } });
   check('penjaga orang tetap pada lawan lengketnya walau ada lawan lebih dekat', mk.get('d')?.attackerId === 'f' && mk.get('d').man ? [] : [JSON.stringify(mk.get('d'))]);
+}
+
+console.log('Ganti formasi: perpindahan pemain (2 Nov)');
+{
+  const m = minCostAssignment([[4, 1, 3], [2, 0, 5], [3, 2, 2]]);
+  check('penugasan optimal pada matriks kecil (biaya 5)', [4, 1, 3][m[0]] + [2, 0, 5][m[1]] + [3, 2, 2][m[2]] === 5 ? [] : [JSON.stringify(m)]);
+  const teams = createDemoTeams(2026, {});
+  const errs = [];
+  for (const [from, to] of [['4-4-2', '3-2-5'], ['4-3-3', '5-4-1'], ['4-2-3-1', '3-4-3'], ['3-5-2', '4-4-2']]) {
+    const sim = createSimulation(teams.home, teams.away, 3, { aiTeams: ['away'] });
+    let s = sim.setTactics('home', { baseFormation: from, inPossession: { formation: from }, outOfPossession: { formation: from } });
+    const before = new Map(s.players.filter((q) => q.teamId === 'home').map((q) => [q.id, q.slotIn]));
+    s = sim.setTactics('home', { inPossession: { formation: to } });
+    let worst = 0;
+    for (const q of s.players.filter((x) => x.teamId === 'home' && x.role !== 'GK')) {
+      const a = before.get(q.id);
+      worst = Math.max(worst, Math.hypot((a.depth - q.slotIn.depth) * 147, (a.lane - q.slotIn.lane) * 68));
+    }
+    if (worst > 36) errs.push(`${from} → ${to}: lari terjauh ${worst.toFixed(0)} m`);
+  }
+  check('ganti formasi: tidak ada pemain yang lari > 36 m (bergeser berantai)', errs);
+  const sim2 = createSimulation(teams.home, teams.away, 3, { aiTeams: ['away'] });
+  const s2 = sim2.setTactics('home', { baseFormation: '4-3-3' });
+  const bs = baseSlots(s2.players.filter((q) => q.teamId === 'home'), s2.teams.home.tactics);
+  check('posisi formasi dasar: satu slot per pemain', bs.size === 11 ? [] : [`${bs.size}`]);
+  check('formasi dasar tidak dikenal ditolak', tacticsErrors({ baseFormation: '1-1-8' }).length > 0 ? [] : ['diterima']);
 }
 
 console.log('Skema bola mati (8d)');

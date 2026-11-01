@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { PITCH } from '../engine/pitch.js';
 import { computeAnchor, slotForPoint } from '../engine/shape.js';
-import { teamStyle, effectiveSlot, clampCustomSlot, CUSTOM_SLOT } from '../engine/tactics.js';
+import { teamStyle, effectiveSlot, clampCustomSlot, CUSTOM_SLOT, baseSlots } from '../engine/tactics.js';
 
 // Gambar & layer taktik (1 Nov, ide pengguna): lapangan dilihat dari arah serang tim (selalu ke kanan),
 // jalur kiri di atas. Posisi dihitung dengan rumus jangkar engine (bola di tengah lapangan).
@@ -14,6 +14,40 @@ const H = PITCH.width;
 const BAND = H / 5;
 const CENTER_BALL = Object.freeze({ x: PITCH.length / 2, y: PITCH.width / 2 });
 const BOX_W = 40.32;
+
+// Bayangan (2 Nov, masukan pengguna: "bingung pemain mana pindah ke mana"): posisi formasi dasar dan
+// posisi fase lainnya, digambar tipis di bawah bulatan, dengan garis ke posisi di layer ini.
+const GHOST_KEY = 'menejer-bola:bayangan';
+
+function readGhosts() {
+  try {
+    const raw = window.localStorage.getItem(GHOST_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveGhost(key, on) {
+  try {
+    const all = readGhosts();
+    all[key] = on;
+    window.localStorage.setItem(GHOST_KEY, JSON.stringify(all));
+  } catch {
+    // penyimpanan tidak tersedia: abaikan
+  }
+}
+
+// Bentuk fase yang sedang dibuka, supaya formasi yang sama tanpa seretan tepat menumpuk (tanpa garis).
+function basePositions(players, tactics, phase) {
+  const slots = baseSlots(players, tactics);
+  const style = teamStyle(tactics);
+  return players.map((p) => {
+    const a = computeAnchor({ ...p, slot: slots.get(p.id) ?? p.slot }, CENTER_BALL, true, phase, style);
+    return { p, x: a.x, y: a.y };
+  });
+}
 
 function positions(players, tactics, phase) {
   const style = teamStyle(tactics);
@@ -31,7 +65,20 @@ function positions(players, tactics, phase) {
 export function LayerPitch({ title, phase, players, tactics, color, highlightId, locked, onSet, onReset, showLaneNames }) {
   const svgRef = useRef(null);
   const [drag, setDrag] = useState(null); // { id, x, y }
+  const [ghostOn, setGhostOn] = useState(() => readGhosts());
   const items = positions(players, tactics, phase);
+  const otherPhase = phase === 'attack' ? 'defend' : 'attack';
+  const ghostDefs = [
+    { key: `${phase}:dasar`, label: 'Formasi dasar', cls: 'ghost--base', items: () => basePositions(players, tactics, phase) },
+    { key: `${phase}:lain`, label: otherPhase === 'attack' ? 'Dengan bola' : 'Tanpa bola', cls: `ghost--${otherPhase}`, items: () => positions(players, tactics, otherPhase) },
+  ];
+  const ghosts = ghostDefs.filter((g) => ghostOn[g.key]).map((g) => ({ ...g, list: g.items() }));
+  const here = new Map(items.map((it) => [it.p.id, it]));
+  function toggleGhost(key) {
+    const next = !ghostOn[key];
+    setGhostOn({ ...ghostOn, [key]: next });
+    saveGhost(key, next);
+  }
   const anyCustom = phase === 'attack'
     ? Object.keys(tactics.customIn ?? {}).length + Object.keys(tactics.playerLanes ?? {}).length > 0
     : Object.keys(tactics.customOut ?? {}).length > 0;
@@ -77,6 +124,16 @@ export function LayerPitch({ title, phase, players, tactics, color, highlightId,
           </button>
         )}
       </figcaption>
+      <div className="ghost-toggles" role="group" aria-label="Bayangan posisi">
+        <span>Bayangan:</span>
+        {ghostDefs.map((g) => (
+          <label key={g.key} className={`ghost-toggle ${g.cls}`}>
+            <input type="checkbox" checked={Boolean(ghostOn[g.key])} onChange={() => toggleGhost(g.key)} />
+            <span className="ghost-swatch" aria-hidden="true" />
+            {g.label}
+          </label>
+        ))}
+      </div>
       <svg ref={svgRef} viewBox={`-1 -1 ${W + 2} ${H + 2}`} role="img" aria-label={title} onPointerMove={move} onPointerUp={end} onPointerCancel={() => setDrag(null)}>
         <rect x="0" y="0" width={W} height={H} className="lane-pitch" />
         {[0, 1, 2, 3, 4].map((i) => (
@@ -98,6 +155,23 @@ export function LayerPitch({ title, phase, players, tactics, color, highlightId,
         <text x={W - 2} y={H - 1.5} className="lane-arrow" textAnchor="end">
           arah serang →
         </text>
+        {ghosts.map((g) =>
+          g.list.map(({ p, x, y }) => {
+            const cur = here.get(p.id);
+            const tx = drag?.id === p.id ? drag.x : cur?.x;
+            const ty = drag?.id === p.id ? drag.y : cur?.y;
+            const far = cur && Math.hypot(tx - x, ty - y) > 1;
+            return (
+              <g key={`${g.key}-${p.id}`} className={`ghost ${g.cls}`} pointerEvents="none">
+                {far && <line x1={x} y1={y} x2={tx} y2={ty} className="ghost__line" />}
+                <circle cx={x} cy={y} r="2.3" className="ghost__dot" />
+                <text x={x} y={y + 0.95} textAnchor="middle" className="ghost__num">
+                  {p.number}
+                </text>
+              </g>
+            );
+          }),
+        )}
         {items.map(({ p, x, y, marked, man }) => {
           const dragging = drag?.id === p.id;
           const cx = dragging ? drag.x : x;
