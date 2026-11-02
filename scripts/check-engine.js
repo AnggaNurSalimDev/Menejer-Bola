@@ -42,7 +42,7 @@ import { lingerTicks, freeKickSettleTargets, AFTER_INCIDENT } from '../src/engin
 import { pickCover } from '../src/engine/roles.js';
 import { parryVelocity } from '../src/engine/keeper.js';
 import { boxRunSpots } from '../src/engine/simulation.js';
-import { reshape, outfieldSlots, tacticsErrors, defaultTactics, teamStyle, TRANSITION, coachTactics, pressAllowedAt, LINE_OPTIONS, laneSlot, LANES, effectiveSlot, clampCustomSlot, CUSTOM_SLOT, minCostAssignment, baseSlots } from '../src/engine/tactics.js';
+import { reshape, outfieldSlots, tacticsErrors, defaultTactics, teamStyle, TRANSITION, coachTactics, pressAllowedAt, LINE_OPTIONS, laneSlot, LANES, effectiveSlot, clampCustomSlot, CUSTOM_SLOT, minCostAssignment, baseSlots, ZONES, zoneWeights, zonedSlot, zoneCenter, mirrorZone } from '../src/engine/tactics.js';
 import { slotForPoint } from '../src/engine/shape.js';
 import { assignMarks } from '../src/engine/marking.js';
 import { substitutionErrors, SUBS } from '../src/engine/substitution.js';
@@ -713,6 +713,61 @@ console.log('Ganti formasi: perpindahan pemain (2 Nov)');
   const bs = baseSlots(s2.players.filter((q) => q.teamId === 'home'), s2.teams.home.tactics);
   check('posisi formasi dasar: satu slot per pemain', bs.size === 11 ? [] : [`${bs.size}`]);
   check('formasi dasar tidak dikenal ditolak', tacticsErrors({ baseFormation: '1-1-8' }).length > 0 ? [] : ['diterima']);
+}
+
+console.log('Detail 8 zona (2 Nov)');
+{
+  const errs = [];
+  for (const z of ZONES) {
+    const w = zoneWeights(zoneCenter(z));
+    const sum = Object.values(w).reduce((a, b) => a + b, 0);
+    if (Math.abs(sum - 1) > 1e-9) errs.push(`${z}: jumlah bobot ${sum}`);
+    if (w[z] < 0.999) errs.push(`${z}: bobot zona sendiri di tengahnya ${w[z].toFixed(3)}`);
+  }
+  const mid = zoneWeights({ x: PITCH.length / 2, y: PITCH.width / 2 });
+  if (Object.values(mid).some((v) => Math.abs(v - 0.25) > 1e-9)) errs.push('tengah lapangan tidak 25% tiap zona');
+  check('bobot zona: tepat di tengah zona = zona itu, di titik tengah lapangan = rata', errs);
+  // Bobot berubah halus (tidak melompat) saat bola melewati garis tengah.
+  let maxJump = 0;
+  let prev = zoneWeights({ x: 30, y: 20 }).lawanKiri;
+  for (let x = 30.5; x <= 75; x += 0.5) {
+    const w = zoneWeights({ x, y: 20 }).lawanKiri;
+    maxJump = Math.max(maxJump, Math.abs(w - prev));
+    prev = w;
+  }
+  check('peralihan antarzona halus (bobot naik ≤ 6% per ½ m)', maxJump <= 0.06 ? [] : [maxJump.toFixed(3)]);
+  const p = { id: 'p', role: 'CM', slot: { depth: 0.3, lane: 0.4 }, slotIn: { depth: 0.3, lane: 0.4 }, slotOut: { depth: 0.3, lane: 0.4 } };
+  const t = { ...defaultTactics('4-4-2'), zoneIn: { lawanKiri: { p: { depth: 0.5, lane: 0.2 } } } };
+  const at = zonedSlot(p, t, 'in', zoneWeights(zoneCenter('lawanKiri')));
+  const other = zonedSlot(p, t, 'in', zoneWeights(zoneCenter('sendiriKanan')));
+  const half = zonedSlot(p, t, 'in', zoneWeights({ x: PITCH.length / 2, y: PITCH.width / 2 }));
+  check('slot zona dipakai di zonanya, slot layer biasa di zona kosong, campuran di antaranya', Math.abs(at.depth - 0.5) < 1e-9 && other.depth === 0.3 && Math.abs(half.depth - (0.25 * 0.5 + 0.75 * 0.3)) < 1e-9 ? [] : [JSON.stringify({ at, other, half })]);
+  check('zona tidak dikenal & slot di luar batas ditolak', tacticsErrors({ zoneIn: { tengah: {} } }).length > 0 && tacticsErrors({ zoneOut: { lawanKiri: { a: { depth: 2, lane: 0.5 } } } }).length > 0 && tacticsErrors({ zoneOut: { lawanKiri: { a: { depth: 0.3, lane: 0.5 } } } }).length === 0 ? [] : ['salah']);
+  const teams = createDemoTeams(2026, {});
+  const sim = createSimulation(teams.home, teams.away, 11, { aiTeams: ['away'] });
+  let s = sim.getState();
+  const mine = s.players.filter((q) => q.teamId === 'home' && q.role !== 'GK');
+  const lb = mine.find((q) => q.role === 'LB');
+  const rb = mine.find((q) => q.role === 'RB');
+  const cm = mine.find((q) => q.role === 'CM');
+  s = sim.setTactics('home', { zoneIn: { lawanKiri: { [lb.id]: { depth: 0.4, lane: 0.1 }, [cm.id]: { depth: 0.35, lane: 0.3 } } }, zoneOut: { sendiriKanan: { [rb.id]: { depth: 0.2, lane: 0.9 } } } });
+  check('detail zona tersimpan per zona & layer', s.teams.home.tactics.zoneIn.lawanKiri[lb.id] && s.teams.home.tactics.zoneOut.sendiriKanan[rb.id] ? [] : ['hilang']);
+  const m = mirrorZone(s.players.filter((q) => q.teamId === 'home'), s.teams.home.tactics, 'in', 'lawanKiri');
+  check('cermin: zona lawan-kiri → lawan-kanan, bek kiri dipetakan ke bek kanan', m.zone === 'lawanKanan' && m.map[rb.id] && Math.abs(m.map[rb.id].lane - 0.9) < 1e-9 && !m.map[lb.id] ? [] : [JSON.stringify(m)]);
+  s = sim.setTactics('home', { zoneIn: { lawanKiri: { [cm.id]: null } } });
+  check('null menghapus satu pemain dari zona', !s.teams.home.tactics.zoneIn.lawanKiri[cm.id] && s.teams.home.tactics.zoneIn.lawanKiri[lb.id] ? [] : ['salah']);
+  s = sim.setTactics('home', { zoneIn: { lawanKiri: null } });
+  check('null pada zona mengosongkan zona itu', !s.teams.home.tactics.zoneIn.lawanKiri ? [] : ['masih ada']);
+  s = sim.setTactics('home', { zoneIn: { lawanKiri: { [lb.id]: { depth: 0.4, lane: 0.1 } } } });
+  s = sim.setTactics('home', { outOfPossession: { formation: '5-4-1' } });
+  check('ganti formasi tanpa bola menghapus detail zona tanpa bola saja', Object.keys(s.teams.home.tactics.zoneOut).length === 0 && s.teams.home.tactics.zoneIn.lawanKiri ? [] : ['salah']);
+  s = sim.setTactics('home', { outOfPossession: { formation: '4-4-2' }, zoneOut: { lawanKanan: { [cm.id]: { depth: 0.3, lane: 0.7 } } } });
+  const errs2 = [];
+  for (let i = 0; i < 1500; i += 1) {
+    s = sim.step();
+    if (i % 75 === 0) errs2.push(...validateMatchState(s));
+  }
+  check('state valid dengan detail zona', errs2.slice(0, 5));
 }
 
 console.log('Skema bola mati (8d)');

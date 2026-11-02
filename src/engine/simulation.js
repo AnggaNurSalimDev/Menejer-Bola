@@ -140,7 +140,9 @@ import {
   pressAllowedAt,
   coachTactics,
   blendStep,
-  effectiveSlot,
+  zonedSlot,
+  zoneWeights,
+  toTeamFrame,
   reslotTeam,
   TRANSITION,
 } from './tactics.js';
@@ -2030,8 +2032,10 @@ export function createSimulation(home, away, seed, options = {}) {
           // Dua bentuk (31 Okt): jangkar tanpa bola & dengan bola, dicampur menurut shapeBlend tim.
           const style = styles[player.teamId];
           // Slot efektif: posisi pribadi (layer taktik) > instruksi jalur > formasi.
-          const outSlot = player.role === 'GK' ? (player.slotOut ?? player.slot) : effectiveSlot(player, team.activeTactics, 'out');
-          const inSlot = player.role === 'GK' ? (player.slotIn ?? player.slot) : effectiveSlot(player, team.activeTactics, 'in');
+          // + detail 8 zona: campuran halus menurut posisi bola (bingkai tim ini).
+          const weights = zoneWeights(toTeamFrame(ball, team.attacksRight));
+          const outSlot = player.role === 'GK' ? (player.slotOut ?? player.slot) : zonedSlot(player, team.activeTactics, 'out', weights);
+          const inSlot = player.role === 'GK' ? (player.slotIn ?? player.slot) : zonedSlot(player, team.activeTactics, 'in', weights);
           const outA = computeAnchor({ ...player, slot: outSlot }, ball, team.attacksRight, phase, style);
           const inA = computeAnchor({ ...player, slot: inSlot }, ball, team.attacksRight, phase, style);
           const b = team.shapeBlend ?? 0;

@@ -117,11 +117,13 @@ export function computeAnchor(player, ball, attacksRight, phase = 'neutral', men
 // bingkai tim, bola di tengah lapangan) → slot { depth, lane }. Dicari dengan bagi-dua memakai
 // computeAnchor sendiri, jadi selalu cocok dengan rumus engine. x hanya bergantung pada depth;
 // y pada lane (dan sedikit pada depth lewat fokus serangan), jadi depth dicari dulu.
-export function slotForPoint(point, phase, style, limits) {
+// ball (opsional, bingkai tim): posisi bola contoh — bola di tengah lapangan bila tidak diberikan
+// (detail zona memakai bola di tengah zona, 2 Nov).
+export function slotForPoint(point, phase, style, limits, ball = { x: PITCH.length / 2, y: PITCH.width / 2 }) {
   if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) throw new TypeError('slotForPoint: titik tidak valid');
   if (phase !== 'attack' && phase !== 'defend') throw new RangeError(`slotForPoint: fase tidak dikenal ${phase}`);
+  if (!ball || !Number.isFinite(ball.x) || !Number.isFinite(ball.y)) throw new TypeError('slotForPoint: bola contoh tidak valid');
   const { depthMin, depthMax, laneMin, laneMax } = limits;
-  const ball = { x: PITCH.length / 2, y: PITCH.width / 2 };
   const at = (depth, lane) => computeAnchor({ id: '_', role: 'CM', slot: { depth, lane } }, ball, true, phase, style);
   let lo = depthMin;
   let hi = depthMax;

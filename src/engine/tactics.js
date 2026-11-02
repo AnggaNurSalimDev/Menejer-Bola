@@ -95,6 +95,63 @@ export const CUSTOM_SLOT = Object.freeze({ depthMin: 0.17, depthMax: 0.55, laneM
 export const MARKING_OPTIONS = Object.freeze(['zona', 'tempel']);
 const PLAYER_MAPS = Object.freeze(['playerLanes', 'customIn', 'customOut', 'marking']);
 
+// Detail 8 zona (2 Nov, layer 3 — ide pengguna): bola di salah satu dari 4 zona (bingkai tim:
+// separuh sendiri/lawan × sisi kiri/kanan) × 2 layer (dengan / tanpa bola). Per zona pengguna menyeret
+// POSISI pemain (peran tetap). Zona yang tidak diatur memakai posisi layer biasa. Saat laga, posisi
+// dicampur halus menurut posisi bola (pita peralihan di garis tengah & di tengah lebar lapangan),
+// jadi pemain tidak melompat saat bola melewati batas zona.
+export const ZONES = Object.freeze(['sendiriKiri', 'sendiriKanan', 'lawanKiri', 'lawanKanan']);
+export const ZONE_BLEND = Object.freeze({ xBand: 16, yBand: 12 }); // meter lebar pita peralihan
+const ZONE_MAPS = Object.freeze(['zoneIn', 'zoneOut']);
+
+// Titik tengah zona (bingkai tim, menyerang ke kanan; jalur kiri = y kecil) — bola contoh di gambar.
+export function zoneCenter(zone) {
+  if (!ZONES.includes(zone)) throw new RangeError(`zoneCenter: zona tidak dikenal ${zone}`);
+  return { x: zone.startsWith('lawan') ? PITCH.length * 0.75 : PITCH.length * 0.25, y: zone.endsWith('Kiri') ? PITCH.width * 0.25 : PITCH.width * 0.75 };
+}
+
+const smooth = (t) => {
+  const c = Math.min(1, Math.max(0, t));
+  return c * c * (3 - 2 * c);
+};
+
+// Bobot tiap zona untuk bola di bingkai tim. Jumlah bobot selalu 1.
+export function zoneWeights(ball) {
+  if (!ball || !Number.isFinite(ball.x) || !Number.isFinite(ball.y)) throw new TypeError('zoneWeights: bola tidak valid');
+  const lawan = smooth((ball.x - (PITCH.length - ZONE_BLEND.xBand) / 2) / ZONE_BLEND.xBand);
+  const kanan = smooth((ball.y - (PITCH.width - ZONE_BLEND.yBand) / 2) / ZONE_BLEND.yBand);
+  return {
+    sendiriKiri: (1 - lawan) * (1 - kanan),
+    sendiriKanan: (1 - lawan) * kanan,
+    lawanKiri: lawan * (1 - kanan),
+    lawanKanan: lawan * kanan,
+  };
+}
+
+export function toTeamFrame(point, attacksRight) {
+  return attacksRight ? { x: point.x, y: point.y } : { x: PITCH.length - point.x, y: PITCH.width - point.y };
+}
+
+// Slot efektif dengan detail zona: campuran slot zona (bila diatur) atau slot layer biasa, menurut bobot.
+// weights = zoneWeights(bola di bingkai tim), atau null bila tidak ada detail zona yang dipakai.
+export function zonedSlot(player, tactics, phase, weights) {
+  const base = effectiveSlot(player, tactics, phase);
+  const map = phase === 'in' ? tactics?.zoneIn : tactics?.zoneOut;
+  if (!weights || !map) return base;
+  let depth = 0;
+  let lane = 0;
+  let any = false;
+  for (const z of ZONES) {
+    const w = weights[z];
+    if (!(w > 0)) continue;
+    const s = map[z]?.[player.id];
+    if (s) any = true;
+    depth += w * (s ?? base).depth;
+    lane += w * (s ?? base).lane;
+  }
+  return any ? { depth, lane } : base;
+}
+
 export function validCustomSlot(slot) {
   return (
     slot !== null &&
@@ -141,6 +198,8 @@ export function defaultTactics(formation) {
     customIn: {}, // id pemain → { depth, lane } titik patokan pribadi dengan bola
     customOut: {}, // id pemain → { depth, lane } titik patokan pribadi tanpa bola
     marking: {}, // id pemain → 'zona' | 'tempel' (tanpa entri = 'zona')
+    zoneIn: {}, // zona → { id pemain → slot } detail zona dengan bola
+    zoneOut: {}, // zona → { id pemain → slot } detail zona tanpa bola
     onLoss: 'seimbang',
     onWin: 'seimbang',
     corner: 'campur',
@@ -357,7 +416,19 @@ export function tacticsErrors(changes) {
   checkMap('customIn', validCustomSlot, 'posisi dengan bola');
   checkMap('customOut', validCustomSlot, 'posisi tanpa bola');
   checkMap('marking', (v) => MARKING_OPTIONS.includes(v), 'penjagaan');
-  const known = new Set(['baseFormation', 'inPossession', 'outOfPossession', 'onLoss', 'onWin', 'corner', 'freeKick', ...PLAYER_MAPS]);
+  for (const key of ZONE_MAPS) {
+    if (changes[key] === undefined) continue;
+    if (typeof changes[key] !== 'object' || changes[key] === null) {
+      errors.push(`${key} harus objek`);
+      continue;
+    }
+    for (const [zone, m] of Object.entries(changes[key])) {
+      if (!ZONES.includes(zone)) errors.push(`${key}: zona tidak dikenal ${zone}`);
+      else if (m !== null && (typeof m !== 'object' || Array.isArray(m))) errors.push(`${key}.${zone} harus objek`);
+      else if (m) for (const [id, v] of Object.entries(m)) if (v !== null && !validCustomSlot(v)) errors.push(`${key}.${zone} ${id} tidak valid`);
+    }
+  }
+  const known = new Set(['baseFormation', 'inPossession', 'outOfPossession', 'onLoss', 'onWin', 'corner', 'freeKick', ...PLAYER_MAPS, ...ZONE_MAPS]);
   for (const k of Object.keys(changes)) if (!known.has(k)) errors.push(`pengaturan taktik tidak dikenal: ${k}`);
   return errors;
 }
@@ -369,7 +440,24 @@ export function mergeTactics(tactics, changes) {
     inPossession: { ...tactics.inPossession, ...(changes.inPossession ?? {}) },
     outOfPossession: { ...tactics.outOfPossession, ...(changes.outOfPossession ?? {}) },
     ...Object.fromEntries(PLAYER_MAPS.map((k) => [k, mergeMap(tactics[k], changes[k])])),
+    ...Object.fromEntries(ZONE_MAPS.map((k) => [k, mergeZones(tactics[k], changes[k])])),
   };
+}
+
+// { zona: { id: slot | null } | null }: null untuk zona = kosongkan zona itu.
+function mergeZones(base = {}, change) {
+  const out = Object.fromEntries(Object.entries(base).map(([z, m]) => [z, { ...m }]));
+  if (change === undefined) return out;
+  for (const [zone, m] of Object.entries(change)) {
+    if (m === null) {
+      delete out[zone];
+      continue;
+    }
+    const merged = mergeMap(out[zone], m);
+    if (Object.keys(merged).length === 0) delete out[zone];
+    else out[zone] = merged;
+  }
+  return out;
 }
 
 function mergeMap(base = {}, change) {
@@ -391,6 +479,16 @@ export function transferLaneInstruction(tactics, outId, inId) {
     delete map[outId];
     next[k] = map;
   }
+  for (const k of ZONE_MAPS) {
+    const zones = {};
+    for (const [z, m] of Object.entries(tactics[k] ?? {})) {
+      const copy = { ...m };
+      if (copy[outId] !== undefined) copy[inId] = copy[outId];
+      delete copy[outId];
+      zones[z] = copy;
+    }
+    next[k] = zones;
+  }
   return next;
 }
 
@@ -400,18 +498,20 @@ export function applyTactics(state, teamId, changes) {
   if (!team) throw new Error(`applyTactics: tim ${teamId} tidak ada`);
   const errors = tacticsErrors(changes);
   if (errors.length > 0) throw new RangeError(`applyTactics: ${errors.join('; ')}`);
-  for (const k of PLAYER_MAPS) {
-    for (const [id, v] of Object.entries(changes[k] ?? {})) {
-      if (v === null) continue; // menghapus selalu boleh
-      const p = state.players.find((q) => q.id === id);
-      if (!p || p.teamId !== teamId) throw new RangeError(`applyTactics: ${id} tidak sedang bermain untuk tim ${teamId}`);
-      if (p.role === 'GK') throw new RangeError(`applyTactics: kiper ${id} tidak diberi instruksi pribadi`);
-    }
-  }
+  const checkPlayer = (id) => {
+    const p = state.players.find((q) => q.id === id);
+    if (!p || p.teamId !== teamId) throw new RangeError(`applyTactics: ${id} tidak sedang bermain untuk tim ${teamId}`);
+    if (p.role === 'GK') throw new RangeError(`applyTactics: kiper ${id} tidak diberi instruksi pribadi`);
+  };
+  for (const k of PLAYER_MAPS) for (const [id, v] of Object.entries(changes[k] ?? {})) if (v !== null) checkPlayer(id);
+  for (const k of ZONE_MAPS)
+    for (const m of Object.values(changes[k] ?? {})) for (const [id, v] of Object.entries(m ?? {})) if (v !== null) checkPlayer(id);
   let tactics = mergeTactics(team.tactics, changes);
   // Ganti formasi di satu layer → posisi pribadi layer itu dihapus (titiknya milik formasi lama).
-  if (tactics.inPossession.formation !== team.tactics.inPossession.formation && changes.customIn === undefined) tactics = { ...tactics, customIn: {} };
-  if (tactics.outOfPossession.formation !== team.tactics.outOfPossession.formation && changes.customOut === undefined) tactics = { ...tactics, customOut: {} };
+  if (tactics.inPossession.formation !== team.tactics.inPossession.formation && changes.customIn === undefined)
+    tactics = { ...tactics, customIn: {}, zoneIn: changes.zoneIn === undefined ? {} : tactics.zoneIn };
+  if (tactics.outOfPossession.formation !== team.tactics.outOfPossession.formation && changes.customOut === undefined)
+    tactics = { ...tactics, customOut: {}, zoneOut: changes.zoneOut === undefined ? {} : tactics.zoneOut };
   const formationChanged =
     tactics.inPossession.formation !== team.tactics.inPossession.formation ||
     tactics.outOfPossession.formation !== team.tactics.outOfPossession.formation;
@@ -457,4 +557,31 @@ export function baseSlots(players, tactics) {
   );
   for (const [id, m] of moves) result.set(id, m.slot);
   return result;
+}
+
+// Cermin detail zona (2 Nov): salin skema satu zona ke zona di sisi lain (kiri ↔ kanan, separuh yang sama).
+// Bukan sekadar membalik posisi: tiap pemain dipetakan ke "pasangannya" di sisi lain (bek kiri ↔ bek
+// kanan, gelandang tengah tetap dirinya) — pasangan dicari dengan penugasan optimal pada slot layer
+// biasa yang dicerminkan. Mengembalikan { zone: targetZone, map: { id → slot } }.
+export function mirrorZone(players, tactics, phase, zone) {
+  if (!ZONES.includes(zone)) throw new RangeError(`mirrorZone: zona tidak dikenal ${zone}`);
+  if (phase !== 'in' && phase !== 'out') throw new RangeError(`mirrorZone: fase tidak dikenal ${phase}`);
+  const target = zone.endsWith('Kiri') ? zone.replace('Kiri', 'Kanan') : zone.replace('Kanan', 'Kiri');
+  const source = (phase === 'in' ? tactics.zoneIn : tactics.zoneOut)?.[zone] ?? {};
+  const outfield = players.filter((p) => p.role !== 'GK').sort((a, b) => a.id.localeCompare(b.id));
+  const slots = outfield.map((p) => effectiveSlot(p, tactics, phase));
+  const cost = outfield.map((_, i) =>
+    outfield.map((__, j) => {
+      const dx = (slots[i].depth - slots[j].depth) * RESHAPE_DEPTH_METERS;
+      const dy = (1 - slots[i].lane - slots[j].lane) * PITCH.width;
+      return dx * dx + dy * dy;
+    }),
+  );
+  const pair = minCostAssignment(cost);
+  const map = {};
+  outfield.forEach((p, i) => {
+    const s = source[p.id];
+    if (s) map[outfield[pair[i]].id] = clampCustomSlot({ depth: s.depth, lane: 1 - s.lane });
+  });
+  return { zone: target, map };
 }
