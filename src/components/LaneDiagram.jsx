@@ -97,6 +97,7 @@ export function LayerPitch({ title, phase, players, tactics, color, highlightId,
 
   function start(evt, p) {
     if (locked || p.role === 'GK') return;
+    evt.preventDefault(); // cegah seleksi teks / seret bawaan browser
     evt.currentTarget.setPointerCapture?.(evt.pointerId);
     const q = toPitch(evt);
     if (q) setDrag({ id: p.id, ...q });

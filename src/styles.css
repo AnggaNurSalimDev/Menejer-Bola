@@ -1243,3 +1243,83 @@ details.fold {
   opacity: 0.7;
 }
 .ghost-toggle .ghost-swatch { color: inherit; }
+
+/* ---- Detail zona (2 Nov) ---- */
+.strategy__zones {
+  background: #232a33;
+  border-radius: 8px;
+  padding: 10px 12px;
+  border-top: 3px solid #ffd43b;
+  display: block;
+}
+.strategy__zones > .fold__body {
+  margin-top: 8px;
+}
+.zone-board {
+  display: grid;
+  gap: 8px;
+}
+.zone-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+}
+.zone-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: #ffd43b;
+  color: #1b2027;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.zone-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+.zone-actions .lane-reset:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.zone-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 6px;
+  touch-action: none;
+  max-width: 900px;
+  margin: 0 auto;
+}
+.zone-cell {
+  cursor: pointer;
+}
+.zone-shade {
+  fill: rgba(5, 8, 12, 0.55);
+  transition: fill 0.15s ease;
+}
+.zone-shade--on {
+  fill: rgba(255, 212, 59, 0.07);
+  stroke: #ffd43b;
+  stroke-width: 0.5;
+}
+.zone-label {
+  font-size: 2.6px;
+  fill: rgba(255, 255, 255, 0.8);
+  font-weight: 600;
+}
+.zone-ball circle {
+  fill: #fff;
+  stroke: #111;
+  stroke-width: 0.4;
+}
+.zone-svg,
+.lane-fig svg {
+  -webkit-user-select: none;
+  user-select: none;
+}

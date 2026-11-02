@@ -839,6 +839,11 @@ export const PENALTY = Object.freeze({
   slotSpacing: 2.2,
   staggerDepth: 3,
   arcClearance: 9.65, // meter dari titik penalti
+  restDefenders: 2, // bek tim penendang yang berjaga dekat garis tengah
+  outlets: 1, // penyerang tim bertahan yang menunggu di depan
+  restDistance: 50, // meter dari gawang yang diserang
+  outletDistance: 40, // meter dari gawang sendiri (tim bertahan)
+  jitter: 2.4, // meter, geseran tetap per pemain
   postInsetMin: 0.45, // bidikan: sekian meter di dalam tiang (di luar jangkauan kiper yang diam)
   postInsetMax: 1.1,
   placementScale: 0.45, // bola diam di titik penalti jauh lebih mudah diarahkan daripada tembakan biasa
@@ -883,35 +888,67 @@ export function penaltyTargets(players, kickerTeamId, teams) {
   const toward = attacksRight ? 1 : -1; // arah ke gawang yang diserang
   const taker = pickPenaltyTaker(players, kickerTeamId);
   const targets = new Map();
-  // Satu baris di tepi luar kotak, kiri-kanan busur penalti: tempat terdekat ke tengah dipakai dulu.
+  // 2 Nov (masukan pengguna: pemain berbaris kaku dua kolom): susunan lebih alami.
+  //  - beberapa pemain berjaga jauh: 2 bek tim penendang di dekat garis tengah (jaga serangan balik),
+  //    1 penyerang tim bertahan di depan (tujuan sapuan)
+  //  - sisanya menyebar di tepi kotak: di depan (≥ 18 m dari garis gawang, di luar busur) dan di sisi
+  //    kotak (di luar kotak, tetap di belakang titik penalti), dalam beberapa baris dengan geseran kecil
+  //    tetap per pemain supaya tidak lurus seperti penggaris.
+  const nonKeepers = players.filter((p) => p.id !== taker.id && p.role !== 'GK');
+  const deepOf = (p) => p.slotOut?.depth ?? p.slot?.depth ?? 0.3;
+  const stayBack = [
+    ...nonKeepers.filter((p) => p.teamId === kickerTeamId).sort((a, b) => deepOf(a) - deepOf(b) || a.id.localeCompare(b.id)).slice(0, PENALTY.restDefenders),
+    ...nonKeepers.filter((p) => p.teamId !== kickerTeamId).sort((a, b) => deepOf(b) - deepOf(a) || a.id.localeCompare(b.id)).slice(0, PENALTY.outlets),
+  ];
+  stayBack.forEach((p, i) => {
+    const fromGoal = p.teamId === kickerTeamId ? PENALTY.restDistance : PENALTY.outletDistance;
+    const y = PITCH.width / 2 + (i % 2 === 0 ? -1 : 1) * (8 + 6 * hash01(`${p.id}:jaga`));
+    targets.set(p.id, { x: goalLineX - toward * fromGoal, y });
+  });
   const slots = [];
   const dx = PENALTY.outsideDepth - PITCH.penaltySpotDistance;
   const minLat = Math.sqrt(Math.max(0, PENALTY.arcClearance ** 2 - dx ** 2));
-  for (let k = 0; k < 14; k += 1) {
-    for (const side of [-1, 1]) {
-      const y = PITCH.width / 2 + side * (minLat + k * PENALTY.slotSpacing);
-      if (y < 1 || y > PITCH.width - 1) continue;
-      // Berselang-seling di dua kedalaman supaya jersey & nama tidak saling menumpuk.
-      const depth = PENALTY.outsideDepth + (k % 2) * PENALTY.staggerDepth;
-      slots.push({ x: goalLineX - toward * depth, y });
+  const boxHalf = 20.16;
+  // Depan kotak: 3 baris, makin jauh makin renggang.
+  [0, 1, 2].forEach((row) => {
+    const depth = PENALTY.outsideDepth + row * PENALTY.staggerDepth;
+    for (let k = 0; k < 8; k += 1) {
+      for (const side of [-1, 1]) {
+        const lat = minLat * (row === 0 ? 1 : 0.6) + (k + (row % 2) * 0.5) * PENALTY.slotSpacing * (1 + row * 0.25);
+        if (lat > boxHalf + 4) continue;
+        slots.push({ x: goalLineX - toward * depth, y: PITCH.width / 2 + side * lat, rank: row * 10 + k });
+      }
     }
+  });
+  // Sisi kotak: di luar kotak, di belakang titik penalti.
+  for (const depth of [PITCH.penaltySpotDistance + 1.5, PITCH.penaltySpotDistance + 4.5]) {
+    for (const side of [-1, 1]) slots.push({ x: goalLineX - toward * depth, y: PITCH.width / 2 + side * (boxHalf + 1.8), rank: 12 });
   }
-  const needed = players.filter((p) => p.id !== taker.id && p.role !== 'GK').length;
-  if (slots.length < needed) throw new Error(`penaltyTargets: tempat di tepi kotak kurang (${slots.length} < ${needed})`);
-  slots.length = needed; // hanya tempat terdekat ke tengah
+  const others = nonKeepers.filter((p) => !stayBack.includes(p)).sort((a, b) => distance(a, spot) - distance(b, spot) || a.id.localeCompare(b.id));
+  slots.sort((a, b) => a.rank - b.rank || a.y - b.y);
+  if (slots.length < others.length) throw new Error(`penaltyTargets: tempat di tepi kotak kurang (${slots.length} < ${others.length})`);
+  const pool = slots.slice(0, Math.min(slots.length, others.length + 6)); // sedikit pilihan lebih, bukan baris rapat
   const used = new Set();
-  const others = players
-    .filter((p) => p.id !== taker.id && p.role !== 'GK')
-    .sort((a, b) => distance(a, spot) - distance(b, spot) || a.id.localeCompare(b.id));
   for (const p of others) {
     let best = -1;
-    for (let i = 0; i < slots.length; i += 1) {
+    for (let i = 0; i < pool.length; i += 1) {
       if (used.has(i)) continue;
-      if (best < 0 || distance(p, slots[i]) < distance(p, slots[best])) best = i;
+      if (best < 0 || distance(p, pool[i]) < distance(p, pool[best])) best = i;
     }
     if (best < 0) throw new Error('penaltyTargets: tempat di luar kotak habis');
     used.add(best);
-    targets.set(p.id, slots[best]);
+    // Geseran kecil tetap per pemain (bukan acak tiap tick), tetap di luar kotak & busur.
+    const jx = (hash01(`${p.id}:px`) - 0.5) * PENALTY.jitter;
+    const jy = (hash01(`${p.id}:py`) - 0.5) * PENALTY.jitter;
+    const spotP = pool[best];
+    let target = { x: spotP.x - toward * Math.abs(jx), y: Math.min(PITCH.width - 1, Math.max(1, spotP.y + jy)) };
+    // Guard: geseran tidak boleh membawa pemain masuk busur penalti.
+    const fromSpot = distance(target, spot);
+    if (fromSpot < PENALTY.arcClearance) {
+      const k = PENALTY.arcClearance / Math.max(fromSpot, 1e-6);
+      target = { x: spot.x + (target.x - spot.x) * k, y: spot.y + (target.y - spot.y) * k };
+    }
+    targets.set(p.id, target);
   }
   for (const p of players) {
     if (p.id === taker.id) targets.set(p.id, { x: spot.x - toward * PENALTY.takerGap, y: spot.y });
@@ -1470,6 +1507,16 @@ export function createSimulation(home, away, seed, options = {}) {
         if (wall.has(p.id)) return near(p, wall.get(p.id), FOUL_STOP.wallSettle);
         if (p.teamId !== prev.ball.restartTeamId && p.role !== 'GK') return distance(p, prev.ball) >= FREE_KICK.distance - 0.3;
         return true;
+      });
+    } else if (reason === 'penalty') {
+      // Pemain yang berjaga jauh (garis tengah / depan) tidak perlu sampai: cukup sudah keluar kotak.
+      const ar = prev.teams[prev.ball.restartTeamId].attacksRight;
+      const goalX = ar ? PITCH.length : 0;
+      const outsideBox = (p) => Math.abs(goalX - p.x) >= PITCH.penaltyAreaDepth + 1 || Math.abs(p.y - PITCH.width / 2) >= 21;
+      settled = players.every((p) => {
+        const t = targets.get(p.id);
+        if (Math.abs(goalX - t.x) > 30) return outsideBox(p);
+        return near(p, t, SETTLE_DISTANCE);
       });
     } else {
       settled = players.every((p) => near(p, targets.get(p.id), SETTLE_DISTANCE));

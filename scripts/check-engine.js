@@ -366,13 +366,18 @@ console.log('Penalti');
       } else if (p.role === 'GK' && p.teamId !== kicker) {
         if (depthFromGoal > 0.5 || Math.abs(t.y - PITCH.width / 2) > 0.1) e.push('kiper tidak di garis gawang');
       } else if (p.role !== 'GK') {
-        if (depthFromGoal <= PITCH.penaltyAreaDepth) e.push(`${p.id} di dalam kotak saat penalti`);
+        if (depthFromGoal <= PITCH.penaltyAreaDepth && Math.abs(t.y - PITCH.width / 2) <= 20.16) e.push(`${p.id} di dalam kotak saat penalti`);
         if (Math.hypot(t.x - spot.x, t.y - spot.y) < 9.15) e.push(`${p.id} di dalam busur penalti`);
         if (depthFromGoal < PITCH.penaltySpotDistance) e.push(`${p.id} di depan bola`);
       }
     }
   }
   check('penalti: penendang di titik, kiper di garis, pemain lain di luar kotak, busur, dan di belakang bola', e);
+  // Susunan alami (2 Nov): tidak satu garis lurus, dan ada pemain yang berjaga jauh.
+  const t2 = penaltyTargets(st.players, 'home', st.teams);
+  const xs = new Set(st.players.filter((p) => p.role !== 'GK').map((p) => Math.round(t2.get(p.id).x)));
+  const far = st.players.filter((p) => p.role !== 'GK' && Math.abs((st.teams.home.attacksRight ? PITCH.length : 0) - t2.get(p.id).x) > 30).length;
+  check('penalti: pemain tersebar di ≥ 4 kedalaman berbeda & 3 pemain berjaga jauh', xs.size >= 4 && far === 3 ? [] : [`kedalaman ${xs.size}, jauh ${far}`]);
 }
 
 console.log('Jeda setelah pelanggaran: protes & pertikaian (tahap 7b-2)');

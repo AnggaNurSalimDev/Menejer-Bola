@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { LayerPitch } from './LaneDiagram.jsx';
+import ZoneBoard from './ZoneBoard.jsx';
 import { SUBS, substitutionErrors, roleLine } from '../engine/substitution.js';
 import { gameClock } from '../engine/state.js';
 import { getPhilosophy } from '../engine/philosophy.js';
@@ -253,6 +254,11 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
     laneCount ? `${laneCount} instruksi pribadi` : null,
   ].filter(Boolean).join(' · ');
   const narrow = isNarrowScreen();
+  const zonesSet = (k) => Object.values(team.tactics[k] ?? {}).filter((m) => Object.keys(m).length > 0).length;
+  const zoneSummary =
+    zonesSet('zoneIn') + zonesSet('zoneOut') > 0
+      ? `${zonesSet('zoneOut')} zona tanpa bola · ${zonesSet('zoneIn')} zona dengan bola diatur`
+      : 'belum diatur — memakai posisi layer biasa';
   const summaryAll = `${op.formation === ip.formation ? op.formation : `${op.formation} / ${ip.formation}`} · garis ${LINE_LABEL[op.line]} · fokus ${FOCUS_LABEL[ip.focus ?? 'seimbang']}${tempelCount + laneCount + dragOut ? ` · ${tempelCount + laneCount + dragOut} instruksi pribadi` : ''}`;
   // Formasi dasar disimpan sendiri (2 Nov); "sama di dua fase" bila kedua fase memakainya.
   const baseFormation = team.tactics.baseFormation ?? team.tactics.outOfPossession.formation;
@@ -495,6 +501,20 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
             </Fold>
           </Fold>
         </div>
+
+        <Fold
+          id="zones"
+          className="strategy__zones"
+          title={
+            <>
+              <span className="step">4</span> Detail zona
+            </>
+          }
+          summary={zoneSummary}
+          defaultOpen={!narrow}
+        >
+          <ZoneBoard players={onPitch} tactics={team.tactics} color={shirt} locked={locked} onSetTactics={setTactic} nameOf={name} />
+        </Fold>
 
         <Fold id="setpieces" className="strategy__setpieces" title="Bola mati" summary={`pojok ${CORNER_LABEL[team.tactics.corner]} · tendangan bebas ${FREE_KICK_LABEL[team.tactics.freeKick]}`} defaultOpen={!narrow}>
           <Choice
