@@ -41,7 +41,7 @@ export const BLUNDER = Object.freeze({
   markingTightness: { worst: 0.7, best: 1.08, stat: 'posisi' },
 
   // Duel udara: simpangan arah sundulan ke gawang (radian).
-  headerSpread: { worst: 0.2, best: 0.08, stat: 'duelUdara' },
+  headerSpread: { worst: 0.16, best: 0.06, stat: 'duelUdara' }, // 2 Nov: 0,2/0,08 → 0,16/0,06 (sundulan terlalu meleset)
 
   // Kiper — Refleks: jangkauan di kotak sendiri (meter); Tangkapan: geseran peluang tangkap.
   keeperReach: { worst: 1.6, best: 2.0, stat: 'refleks' },

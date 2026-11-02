@@ -55,7 +55,9 @@ export const HEADER = Object.freeze({
   clearSpeedMax: 16,
   clearLift: 4, // m/s naik: sundulan sapuan sedikit melambung
   knockSpeed: 6, // sundulan biasa (bukan ke gawang): bola jatuh pelan
-  postInset: 0.7,
+  // 2 Nov (ronde realisme): 0,7 → 1,2 m dari tiang. Konversi sundulan dulu 2–4% (nyata ±10%):
+  // bidikan terlalu mepet tiang membuat banyak sundulan melenceng ke luar.
+  postInset: 1.2,
 });
 
 export function isAirborne(ball) {

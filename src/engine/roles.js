@@ -127,7 +127,10 @@ export function outnumberedAt(holder, defenders, attackers) {
 export function pickCover(teamPlayers, holder, attacksRight, { range, chaserId, previousId, attackers }) {
   const ownGoal = { x: attacksRight ? 0 : PITCH.length, y: PITCH.width / 2 };
   const toGoal = distance(holder, ownGoal);
-  const inDanger = toGoal <= COVER.danger;
+  // Zona bahaya: ≤ danger m dari gawang ATAU sudah sedalam kotak penalti (sampai sisi dekat garis
+  // gawang — 2 Nov, percobaan 3: skrip "giring ke garis gawang lalu umpan silang" tidak dihadang).
+  const depth = Math.abs(holder.x - ownGoal.x);
+  const inDanger = toGoal <= COVER.danger || depth <= PITCH.penaltyAreaDepth;
   if (!inDanger) {
     if (!(range > 0) || toGoal > range) return null;
     if (outnumberedAt(holder, teamPlayers, attackers)) return null;
