@@ -40,7 +40,9 @@ Proyek ini dibuat untuk senang-senang.
 - Layer posisi (1 Nov): seret pemain di gambar taktik (dengan & tanpa bola) dan pilihan tempel lawan per pemain. Catatan: garis bek yang diseret sangat tinggi masih terlalu kuat (lihat dokumen arah 8k).
 - Detail 8 zona (2 Nov): atur posisi pemain per zona bola (sendiri/lawan × kiri/kanan) untuk dengan & tanpa bola, campuran halus antarzona, tombol cermin. Penalti tidak lagi berbaris kaku.
 - Umpan pindah sisi (2 Nov): bola lambung diagonal ke rekan bebas di sisi jauh, ±6 per laga — skema menumpuk di satu sisi kini bisa dimanfaatkan.
-- Berikutnya: rata-rata gol sedikit di bawah target (2,35); garis tinggi masih terlalu kuat; Strategi detil paling akhir, bola panjang di cabang percobaan menunggu keputusan; lalu liga.
+- Strategi detil (2 Nov): skema per zona — syarat utama (pemegang bola + pemain di posisi) lalu langkah bertahap (oper, lari, giring, umpan silang, tembak) yang memaksa keputusan; hasil tetap fisika. Penanda skema aktif & statistik per skema.
+- Ronde realisme (2 Nov): pertahanan kotak saat umpan silang, bek kedua di zona bahaya, sundulan lebih realistis, umpan silang awal. Gol 2,60 per laga. Catatan: skema giring & umpan silang dari garis gawang masih terlalu kuat (dokumen arah 8o).
+- Berikutnya: lawan AI bervariasi → beres-beres (garis tinggi, skema terlalu kuat, bola panjang) → liga, bola panjang di cabang percobaan menunggu keputusan; lalu liga.
 
 Tip: tambahkan `?seed=13` di alamat (misalnya `http://localhost:5173/?seed=13`) untuk memutar ulang pertandingan tertentu.
 
