@@ -339,6 +339,10 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - kalibrasi 200 laga: gol **2,32 ± 0,20** (sedikit di bawah target 2,4), 0–0 8%, kejutan 13 vs 11 12%
    - menunggu keputusan pengguna: batasi seberapa tinggi titik tanpa bola boleh diseret, atau biarkan
    - DICATAT UNTUK NANTI (permintaan pengguna): layer **lintasan/rute** — panah gerak pemain untuk skema rinci (mis. lari diagonal saat bola di sisi lain)
+8l. 📝 RENCANA (2 Nov, keputusan pengguna — dikerjakan PALING AKHIR setelah semua yang lain selesai):
+   - **Layer 3 — detail 8 zona**: lapangan dibagi 4 zona bola (sendiri kiri/kanan, lawan kiri/kanan) × 2 layer (dengan bola / tanpa bola). Per zona: seret POSISI (bukan formasi baru — peran pemain tetap). Zona kosong memakai posisi layer biasa; pergantian antarzona dicampur halus menurut posisi bola; tombol "salin ke sisi lain (cermin)"; bayangan posisi layer biasa. Alasan pengguna: shape rusak karena jarak kembali ke posisi terlalu jauh (2 layer saja tidak cukup), menyiapkan serangan balik / rest-defence, skema menumpuk di satu sisi lalu memanfaatkan sisi jauh (contoh PSG). Kemungkinan perlu mekanisme **umpan pindah sisi** (lambung diagonal) — ukur dulu
+   - **Layer 4 — "Strategi detil"** (nama dari pengguna), ada di tiap 8 zona: skrip yang MEMAKSA keputusan (oper ke siapa, lari ke mana, tembak), tetapi HASIL tetap fisika + kualitas pemain (operan bisa dipotong/meleset). Model syarat pengguna: SYARAT AWAL = pemain yang terlibat berada di posisi yang ditentukan (toleransi radius ±4 m, hanya pemain di skrip) + bola di pemain yang ditentukan; tiap langkah dipicu aksi sebelumnya — lari dimulai saat operan DILEPAS, operan berikutnya saat bola DITERIMA; batal bila syarat awal tak tercapai dalam beberapa detik atau bola hilang → pemain kembali memutuskan sendiri. Syarat "jalur terbuka" hanya opsional nanti. Catatan: lawan AI tidak belajar — skrip kuat bisa berulang; mungkin perlu lawan "membaca" pola berulang
+   - lintasan/rute lari (8k) masuk ke Strategi detil
 7. Baru setelah itu: layer manager (skuad, taktik, lalu liga).
 
 ## 7. Keputusan yang Masih Terbuka
