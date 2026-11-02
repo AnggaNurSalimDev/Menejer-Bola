@@ -32,7 +32,7 @@ export const SCRIPT = Object.freeze({
   cooldownTicks: 80, // jeda sebelum skrip yang sama boleh mulai lagi
   maxScripts: 16,
   maxSteps: 6,
-  maxActions: 4,
+  maxActions: 6, // 1 aksi pemegang bola + sampai 5 pelari (2 Nov: pengguna ingin menaikkan pemain lain)
   minHeldTicks: 2, // pemegang bola butuh sentuhan sebelum menjalankan perintah
 });
 

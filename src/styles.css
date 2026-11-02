@@ -1572,3 +1572,8 @@ details.fold {
   opacity: 0.75;
   margin: 0.15rem 0 0.5rem;
 }
+
+.script-hint--inline {
+  display: block;
+  margin: 0.4rem 0 0.15rem;
+}

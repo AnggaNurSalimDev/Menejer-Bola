@@ -228,8 +228,11 @@ export default function ScriptEditor({ draft, players, onChange, onSave, onCance
             </div>
           ))}
           {step.actions.length < SCRIPT.maxActions && (
+            <span className="script-hint script-hint--inline">Pemain mana pun boleh diberi lari, tidak harus penerima — mulai bersamaan dengan aksi lain di langkah ini.</span>
+          )}
+          {step.actions.length < SCRIPT.maxActions && (
             <button type="button" className="link-btn" disabled={locked} onClick={() => setStep(i, { actions: [...step.actions, { type: 'lari', playerId: '' }] })}>
-              + aksi
+              + Pemain lain lari
             </button>
           )}
         </fieldset>
