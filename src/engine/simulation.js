@@ -360,8 +360,8 @@ function clearVelocity(holder, ball, rng, scale) {
 // Pemegang bola di sayap dekat garis gawang lawan, dengan rekan di kotak penalti,
 // bisa melambungkan bola ke kepala rekan itu. Sepak pojok selalu dilambungkan
 // kalau ada rekan di kotak.
-const CROSS_ZONE_DEPTH = 30; // m dari garis gawang lawan
-const CROSS_ZONE_MIN_WIDE = 10; // m dari garis tengah memanjang
+const CROSS_ZONE_DEPTH = 35; // m dari garis gawang lawan (2 Nov: 30 → 35, umpan silang awal; umpan silang dulu ±9 per tim, nyata ±15–20)
+const CROSS_ZONE_MIN_WIDE = 8; // m dari garis tengah memanjang (2 Nov: 10 → 8)
 const CORNER_RADIUS = 3; // m dari titik pojok
 const CORNER_HOLD_TICKS = 5; // persiapan pojok terjadi di jeda bola keluar
 const BALL_PICKUP_RADIUS = 5; // meter: pemain sedekat ini memungut sendiri bola yang keluar
