@@ -1565,3 +1565,10 @@ details.fold {
   color: #ffd43b;
   white-space: nowrap;
 }
+
+/* Strategi detil: keterangan zona awal (2 Nov) */
+.script-hint {
+  font-size: 0.78rem;
+  opacity: 0.75;
+  margin: 0.15rem 0 0.5rem;
+}

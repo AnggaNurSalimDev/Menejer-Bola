@@ -67,7 +67,7 @@ export function carriersBySteps(script) {
 
 const HOLDER_TYPES = new Set(['oper', 'giring', 'umpanSilang', 'tembak']);
 
-export default function ScriptEditor({ draft, players, onChange, onSave, onCancel, onPick, picking, locked, zoneWarning }) {
+export default function ScriptEditor({ draft, players, onChange, onSave, onCancel, onPick, picking, locked, zoneWarning, zones = [], onZone }) {
   const [showErrors, setShowErrors] = useState(false);
   const outfield = players.filter((p) => p.role !== 'GK').sort((a, b) => a.number - b.number);
   const errors = scriptErrors([draft]);
@@ -97,10 +97,26 @@ export default function ScriptEditor({ draft, players, onChange, onSave, onCance
         />
       </div>
 
+      {zones.length > 0 && onZone && (
+        <div className="script-row">
+          <label className="tac-label" htmlFor={`zn-${draft.id}`}>
+            Zona awal
+          </label>
+          <select id={`zn-${draft.id}`} value={draft.zone} disabled={locked} onChange={(e) => onZone(e.target.value)}>
+            {zones.map((z) => (
+              <option key={z.id} value={z.id}>
+                {z.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {zones.length > 0 && onZone && <p className="script-hint">Tempat bola saat skema dimulai. Bentuk formasi di papan mengikuti zona ini; operan, giring, umpan silang dan lari boleh berakhir di luar zona.</p>}
+
       {zoneWarning && <p className="script-warn">⚠️ {zoneWarning}</p>}
       <fieldset className="script-box">
         <legend>Syarat utama</legend>
-        <p className="tac-note">Skema mulai saat bola dipegang pemain di bawah ini dan bola berada di zona yang dipilih di atas lapangan.</p>
+        <p className="tac-note">Skema mulai saat bola dipegang pemain di bawah ini dan bola berada di zona awal.</p>
         <div className="script-row">
           <span className="tac-label">Bola di</span>
           <PlayerSelect players={outfield} value={draft.holderId} disabled={locked} onChange={(v) => set({ holderId: v })} placeholder="pilih pemegang bola" />

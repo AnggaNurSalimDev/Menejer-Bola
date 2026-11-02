@@ -102,10 +102,18 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
     remember({ phase: v });
   }
   function pickZone(v) {
+    // Saat mengedit skema papan TERKUNCI di zona skema (2 Nov, masukan pengguna: klik zona lain untuk
+    // menaruh titik di luar zona membuat skema ikut pindah & bentuk formasi berubah, jadi arah operan
+    // tidak sesuai). Titik di luar zona dipilih lewat "Pilih titik"; zona skema diganti dari editor.
+    if (draft) return;
     if (picking) setPicking(null);
-    // Skema yang sedang diedit ikut pindah ke zona yang dipilih (2 Nov: dulu tombol zona terkunci
-    // diam-diam saat mengedit — pengguna mengira papan rusak).
-    if (draft) setDraft({ ...draft, zone: v });
+    setZone(v);
+    remember({ zone: v });
+  }
+  function moveDraftZone(v) {
+    if (!draft || !ZONES.includes(v)) return;
+    if (picking) setPicking(null);
+    setDraft({ ...draft, zone: v });
     setZone(v);
     remember({ zone: v });
   }
@@ -203,7 +211,7 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
           {ZONES.map((z) => {
             const n = zoneCount(tactics, key, z);
             return (
-              <button key={z} type="button" className={z === zone ? 'is-active' : undefined} title={draft ? 'Skema yang sedang diedit ikut pindah ke zona ini' : undefined} onClick={() => pickZone(z)}>
+              <button key={z} type="button" className={z === zone ? 'is-active' : undefined} disabled={Boolean(draft) && z !== zone} title={draft ? 'Papan terkunci di zona skema selama mengedit — ganti zona skema dari editor di bawah' : undefined} onClick={() => pickZone(z)}>
                 {ZONE_LABEL[z]}
                 {n > 0 && <span className="zone-count">{n}</span>}
               </button>
@@ -237,7 +245,7 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
             </>
           ) : (
             <>
-              Sedang mengedit skema "{draft.name}" untuk zona {ZONE_LABEL[zone].toLowerCase()} — pilih zona lain untuk memindahkannya. Editor ada di bawah
+              Mengedit skema "{draft.name}" — papan terkunci di zona {ZONE_LABEL[zone].toLowerCase()} supaya bentuk formasi tetap. Titik boleh di mana saja di lapangan (pakai "Pilih titik"). Editor ada di bawah
               lapangan.
             </>
           )}
@@ -375,6 +383,8 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
               }}
               onSave={saveDraft}
               zoneWarning={holderZoneWarning()}
+              zones={ZONES.map((z) => ({ id: z, label: ZONE_LABEL[z] }))}
+              onZone={moveDraftZone}
             />
           )}
         </section>
