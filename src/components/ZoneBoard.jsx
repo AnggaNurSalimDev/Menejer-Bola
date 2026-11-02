@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ScriptEditor, { ScriptOverlay, blankScript, ACTION_LABEL } from './ScriptEditor.jsx';
 import { PITCH } from '../engine/pitch.js';
 import { computeAnchor, slotForPoint } from '../engine/shape.js';
@@ -59,6 +59,15 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
   const [viewId, setViewId] = useState(null); // skema yang garisnya ditampilkan
   const [picking, setPicking] = useState(null); // { step, action, cb } — menunggu klik titik
   const svgRef = useRef(null);
+  // Esc membatalkan mode memilih titik (2 Nov: pengguna mengira papan "tidak bisa diklik").
+  useEffect(() => {
+    if (!picking) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setPicking(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [picking]);
 
   if (!tactics || !Array.isArray(players) || players.length === 0) return null;
   const layer = phase === 'attack' ? 'in' : 'out';
@@ -162,10 +171,10 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
     <div className="zone-board">
       <div className="zone-bar">
         <div className="tac-options" role="group" aria-label="Layer zona">
-          <button type="button" className={phase === 'defend' ? 'is-active' : undefined} onClick={() => pickPhase('defend')}>
+          <button type="button" className={phase === 'defend' ? 'is-active' : undefined} disabled={Boolean(draft)} title={draft ? 'Simpan atau batalkan skema dulu' : undefined} onClick={() => pickPhase('defend')}>
             Tanpa bola
           </button>
-          <button type="button" className={phase === 'attack' ? 'is-active' : undefined} onClick={() => pickPhase('attack')}>
+          <button type="button" className={phase === 'attack' ? 'is-active' : undefined} disabled={Boolean(draft)} title={draft ? 'Simpan atau batalkan skema dulu' : undefined} onClick={() => pickPhase('attack')}>
             Dengan bola
           </button>
         </div>
@@ -173,7 +182,7 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
           {ZONES.map((z) => {
             const n = zoneCount(tactics, key, z);
             return (
-              <button key={z} type="button" className={z === zone ? 'is-active' : undefined} onClick={() => pickZone(z)}>
+              <button key={z} type="button" className={z === zone ? 'is-active' : undefined} disabled={Boolean(draft || picking)} title={draft ? 'Simpan atau batalkan skema dulu' : undefined} onClick={() => pickZone(z)}>
                 {ZONE_LABEL[z]}
                 {n > 0 && <span className="zone-count">{n}</span>}
               </button>
@@ -196,6 +205,20 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
           </button>
         </span>
       </div>
+      {(draft || picking) && (
+        <p className="zone-notice" role="status">
+          {picking ? (
+            <>
+              Klik lapangan untuk memilih titik.{' '}
+              <button type="button" className="link-btn" onClick={() => setPicking(null)}>
+                Batal (Esc)
+              </button>
+            </>
+          ) : (
+            <>Sedang mengedit skema "{draft.name}" — zona & fase dikunci sampai skema disimpan atau dibatalkan (editor di bawah lapangan).</>
+          )}
+        </p>
+      )}
       <svg
         ref={svgRef}
         className="zone-svg"

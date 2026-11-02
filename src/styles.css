@@ -1539,3 +1539,16 @@ details.fold {
   font-size: 0.72rem;
   color: #868e96;
 }
+.zone-notice {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: #3b2f07;
+  color: #ffd43b;
+  font-size: 0.8rem;
+}
+.zone-picker button:disabled,
+.zone-bar .tac-options button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
