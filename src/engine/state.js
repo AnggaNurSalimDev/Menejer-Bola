@@ -3,6 +3,7 @@
 
 import { validateSentOff, SENDOFF } from './sendoff.js';
 import { defaultTactics, validateTactics, TRANSITION } from './tactics.js';
+import { validateScriptRun } from './scripts.js';
 import { benchEntry, validateSubstitutions } from './substitution.js';
 import { PITCH, isInsidePitch } from './pitch.js';
 import { getFormation } from './formations.js';
@@ -85,7 +86,7 @@ function placeTeam(team, attacksRight) {
   });
 }
 
-export const TASKS = Object.freeze(['shape', 'hold', 'chase', 'receive', 'press', 'run', 'cover', 'counter']);
+export const TASKS = Object.freeze(['shape', 'hold', 'chase', 'receive', 'press', 'run', 'cover', 'counter', 'skema']);
 
 // Bola punya empat keadaan:
 //   dikuasai     : ownerId terisi, bola menempel di kaki pemegangnya
@@ -153,6 +154,7 @@ function createStats(teamIds) {
     crosses: perTeam(() => ({ attempted: 0, won: 0 })),
     overTop: perTeam(() => ({ attempted: 0, won: 0 })),
     switches: perTeam(() => ({ attempted: 0, won: 0 })),
+    scripts: perTeam(() => ({ started: 0, completed: 0, aborted: 0, shots: 0 })),
     headers: perTeam(() => ({ shots: 0, goals: 0 })),
     longShots: perTeam(() => ({ shots: 0, goals: 0 })), // tembakan kaki dari luar kotak penalti
     aerialsWon: perTeam(() => 0),
@@ -189,7 +191,7 @@ function createStats(teamIds) {
 }
 
 export function emptyTeamRoles() {
-  return { chaserId: null, coverId: null, counterIds: [], runnerId: null, runTarget: null, runTicks: 0, manMarks: {} };
+  return { chaserId: null, coverId: null, counterIds: [], runnerId: null, runTarget: null, runTicks: 0, manMarks: {}, script: null, scriptCooldowns: {} };
 }
 
 // Setelah gol dan di awal babak, permainan jeda: pemain kembali ke posisi kick-off.
@@ -461,6 +463,11 @@ export function validateMatchState(state, teams = []) {
   for (const team of Object.values(state.teams)) {
     if (!(team.shapeBlend >= 0 && team.shapeBlend <= 1)) errors.push(`tim ${team.id}: shapeBlend di luar 0–1`);
     for (const e of validateTactics(team.activeTactics)) errors.push(`tim ${team.id}: taktik aktif — ${e}`);
+    // Strategi detil: pemain bertugas 'skema' harus punya titik lari di skrip yang sedang berjalan.
+    for (const p of state.players.filter((q) => q.teamId === team.id && q.task === 'skema')) {
+      if (!team.script?.runs?.[p.id]) errors.push(`tim ${team.id}: ${p.id} bertugas skema tanpa skrip berjalan`);
+    }
+    for (const e of validateScriptRun(team.script, state.players.filter((q) => q.teamId === team.id))) errors.push(`tim ${team.id}: ${e}`);
     const counters = state.players.filter((p) => p.teamId === team.id && p.task === 'counter');
     if (counters.length > TRANSITION.counterPressers) errors.push(`tim ${team.id}: ${counters.length} pemain counter-press`);
     if (counters.map((p) => p.id).sort().join() !== [...(team.counterIds ?? [])].sort().join()) errors.push(`tim ${team.id}: counterIds tidak cocok dengan tugas`);

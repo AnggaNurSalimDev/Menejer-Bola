@@ -25,6 +25,7 @@
 
 import { FORMATIONS, getFormation } from './formations.js';
 import { PITCH, distance } from './pitch.js';
+import { scriptErrors, scriptPlayerIds, renameInScripts } from './scripts.js';
 
 export const TEMPO_OPTIONS = Object.freeze({ lambat: 1.25, normal: 1, cepat: 0.8 });
 export const CROSS_OPTIONS = Object.freeze({ jarang: 0.5, normal: 1, sering: 1.5 });
@@ -200,6 +201,7 @@ export function defaultTactics(formation) {
     marking: {}, // id pemain → 'zona' | 'tempel' (tanpa entri = 'zona')
     zoneIn: {}, // zona → { id pemain → slot } detail zona dengan bola
     zoneOut: {}, // zona → { id pemain → slot } detail zona tanpa bola
+    scripts: [], // Strategi detil (scripts.js)
     onLoss: 'seimbang',
     onWin: 'seimbang',
     corner: 'campur',
@@ -416,6 +418,7 @@ export function tacticsErrors(changes) {
   checkMap('customIn', validCustomSlot, 'posisi dengan bola');
   checkMap('customOut', validCustomSlot, 'posisi tanpa bola');
   checkMap('marking', (v) => MARKING_OPTIONS.includes(v), 'penjagaan');
+  if (changes.scripts !== undefined) for (const e of scriptErrors(changes.scripts)) errors.push(`strategi detil: ${e}`);
   for (const key of ZONE_MAPS) {
     if (changes[key] === undefined) continue;
     if (typeof changes[key] !== 'object' || changes[key] === null) {
@@ -428,7 +431,7 @@ export function tacticsErrors(changes) {
       else if (m) for (const [id, v] of Object.entries(m)) if (v !== null && !validCustomSlot(v)) errors.push(`${key}.${zone} ${id} tidak valid`);
     }
   }
-  const known = new Set(['baseFormation', 'inPossession', 'outOfPossession', 'onLoss', 'onWin', 'corner', 'freeKick', ...PLAYER_MAPS, ...ZONE_MAPS]);
+  const known = new Set(['baseFormation', 'inPossession', 'outOfPossession', 'onLoss', 'onWin', 'corner', 'freeKick', ...PLAYER_MAPS, ...ZONE_MAPS, 'scripts']);
   for (const k of Object.keys(changes)) if (!known.has(k)) errors.push(`pengaturan taktik tidak dikenal: ${k}`);
   return errors;
 }
@@ -441,6 +444,7 @@ export function mergeTactics(tactics, changes) {
     outOfPossession: { ...tactics.outOfPossession, ...(changes.outOfPossession ?? {}) },
     ...Object.fromEntries(PLAYER_MAPS.map((k) => [k, mergeMap(tactics[k], changes[k])])),
     ...Object.fromEntries(ZONE_MAPS.map((k) => [k, mergeZones(tactics[k], changes[k])])),
+    scripts: changes.scripts !== undefined ? changes.scripts.map((x) => ({ ...x })) : (tactics.scripts ?? []),
   };
 }
 
@@ -489,6 +493,7 @@ export function transferLaneInstruction(tactics, outId, inId) {
     }
     next[k] = zones;
   }
+  next.scripts = renameInScripts(tactics.scripts ?? [], outId, inId);
   return next;
 }
 
@@ -506,6 +511,7 @@ export function applyTactics(state, teamId, changes) {
   for (const k of PLAYER_MAPS) for (const [id, v] of Object.entries(changes[k] ?? {})) if (v !== null) checkPlayer(id);
   for (const k of ZONE_MAPS)
     for (const m of Object.values(changes[k] ?? {})) for (const [id, v] of Object.entries(m ?? {})) if (v !== null) checkPlayer(id);
+  for (const sc of changes.scripts ?? []) for (const id of scriptPlayerIds(sc)) checkPlayer(id);
   let tactics = mergeTactics(team.tactics, changes);
   // Ganti formasi di satu layer → posisi pribadi layer itu dihapus (titiknya milik formasi lama).
   if (tactics.inPossession.formation !== team.tactics.inPossession.formation && changes.customIn === undefined)

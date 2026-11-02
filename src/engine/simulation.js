@@ -103,6 +103,7 @@ import {
 import {
   GRAVITY,
   CROSS_BLOCK,
+  CROSS,
   crossBlockVelocity,
   AERIAL,
   isAirborne,
@@ -135,6 +136,7 @@ import {
   SWITCH,
 } from './attack.js';
 import { hash01 } from './scuffle.js';
+import { SCRIPT, tryStartScript, advanceScript } from './scripts.js';
 import {
   applyTactics,
   MAX_CROSS_CHANCE,
@@ -200,6 +202,7 @@ function cloneStats(stats) {
     crosses: perTeam(stats.crosses),
     overTop: perTeam(stats.overTop),
     switches: perTeam(stats.switches),
+    scripts: perTeam(stats.scripts),
     headers: perTeam(stats.headers),
     longShots: perTeam(stats.longShots),
     aerialsWon: { ...stats.aerialsWon },
@@ -503,6 +506,31 @@ function decideHolder(holder, ball, players, rng, match) {
         if (target) return { type: 'cross', aim: target.aim, context, freeKick: true };
       }
     }
+  }
+
+  // Strategi detil: perintah skrip untuk pemegang bola ini (keputusan dipaksa, hasil tetap fisika).
+  const order = match.scriptOrders?.[holder.teamId];
+  if (order && ball.setPieceKind === null) {
+    if (ball.heldTicks < SCRIPT.minHeldTicks) return null;
+    if (order.type === 'oper') {
+      const options = evaluatePassOptions({
+        holder,
+        origin: ball,
+        teammates: players.filter((p) => p.teamId === holder.teamId),
+        opponents,
+        attacksRight: holder.attacksRight,
+        previousOwnerId: null,
+        directness: 1,
+      });
+      const opt = options.find((o) => o.receiver.id === order.to);
+      return opt ? { type: 'pass', option: opt, context, script: 'oper' } : { type: 'scriptAbort', context };
+    }
+    if (order.type === 'tembak') {
+      const shot = evaluateShot({ origin: ball, opponents, attacksRight: holder.attacksRight, pressured, shotSpeed: shotSpeedFor(holder), screeners: players.filter((p) => p.id !== holder.id) });
+      return shot ? { type: 'shoot', shot, context, script: 'tembak' } : { type: 'scriptAbort', context };
+    }
+    if (order.type === 'umpanSilang') return { type: 'scriptCross', aim: order.pitchPoint, context, script: 'umpanSilang' };
+    if (order.type === 'giring') return distance(holder, order.pitchPoint) <= SCRIPT.arriveRadius ? { type: 'scriptDone', context, script: 'giring' } : null;
   }
 
   if (canPanicClear(holder, ball, match) && rng.chance(panicChance(holder))) return { type: 'clear', context };
@@ -1706,6 +1734,56 @@ export function createSimulation(home, away, seed, options = {}) {
       teamIds.map((id) => [id, { corner: teams[id].activeTactics.corner, freeKick: teams[id].activeTactics.freeKick }]),
     );
     match.crossScale = Object.fromEntries(teamIds.map((id) => [id, styles[id].crossScale]));
+
+    // Strategi detil (2 Nov): mulai / majukan / batalkan skrip tiap tim. Perintah untuk pemegang bola
+    // masuk ke match.scriptOrders dan dijalankan di keputusan pemegang bola (fisika tetap berlaku).
+    match.scriptOrders = {};
+    {
+      const holderNow = ball.ownerId !== null ? byId.get(ball.ownerId) : null;
+      const inPoss = holderNow?.teamId ?? ball.passTeamId ?? ball.crossTeamId ?? ball.shotTeamId ?? ball.restartTeamId ?? null;
+      for (const id of teamIds) {
+        const team = teams[id];
+        const scripts = team.activeTactics?.scripts ?? [];
+        const endScript = (outcome) => {
+          if (!team.script) return;
+          stats.scripts[id][outcome] += 1;
+          team.scriptCooldowns = { ...(team.scriptCooldowns ?? {}), [team.script.id]: tick + SCRIPT.cooldownTicks };
+          team.script = null;
+        };
+        if (team.script) {
+          const lost = inPoss !== id || ball.restartKind !== null;
+          if (lost) {
+            endScript(team.script.step >= (scripts.find((x) => x.id === team.script.id)?.steps.length ?? 0) && !team.script.order ? 'completed' : 'aborted');
+            continue;
+          }
+          let run = team.script;
+          if (run.lastPass && !run.lastPass.received && ball.ownerId === run.lastPass.to) run = { ...run, lastPass: { ...run.lastPass, received: true } };
+          const script = scripts.find((x) => x.id === run.id);
+          const res = advanceScript(script, run, { tick, byId, attacksRight: team.attacksRight });
+          if (res.ended) {
+            team.script = run;
+            endScript('aborted');
+            continue;
+          }
+          team.script = res.run;
+          if (res.finished && Object.keys(res.run.runs).every((pid) => !byId.get(pid) || distance(byId.get(pid), res.run.runs[pid]) <= SCRIPT.arriveRadius || tick - res.run.stepTick > 20)) {
+            endScript('completed');
+            continue;
+          }
+        } else if (scripts.length > 0 && holderNow && holderNow.teamId === id && ball.restartKind === null && ball.setPieceKind === null) {
+          const weights = zoneWeights(toTeamFrame(ball, team.attacksRight));
+          const zone = Object.entries(weights).sort((x, y) => y[1] - x[1])[0][0];
+          const anchorOf = (pl) => computeAnchor({ ...pl, slot: zonedSlot(pl, team.activeTactics, 'in', weights) }, ball, team.attacksRight, 'attack', styles[id]);
+          const started = tryStartScript(scripts, { tick, ownerId: holderNow.id, zone, anchorOf, byId, cooldowns: team.scriptCooldowns });
+          if (started) {
+            stats.scripts[id].started += 1;
+            const res = advanceScript(scripts.find((x) => x.id === started.id), started, { tick, byId, attacksRight: team.attacksRight });
+            team.script = res.ended ? null : res.run;
+          }
+        }
+        if (team.script?.order) match.scriptOrders[id] = team.script.order;
+      }
+    }
     const tempoOf = (player) => philosophies[player.teamId].tempo * styles[player.teamId].tempo;
     const events = [];
     const note = (playerId, event) => events.push([playerId, event]);
@@ -1901,6 +1979,11 @@ export function createSimulation(home, away, seed, options = {}) {
           const v = overTopVelocity(ball, decision.aim, holder, rng, blunderScale(holder, decision.context));
           ball = releaseBall(ball, holder, { vx: v.vx, vy: v.vy }, { vz: v.vz, crossTeamId: holder.teamId, overTop: true });
           ballReleasedBy = holder.id;
+        } else if (decision?.type === 'scriptCross') {
+          stats.crosses[holder.teamId].attempted += 1;
+          const v = overTopVelocity(ball, decision.aim, holder, rng, blunderScale(holder, decision.context), CROSS.arrivalHeight);
+          ball = releaseBall(ball, holder, { vx: v.vx, vy: v.vy }, { vz: v.vz, crossTeamId: holder.teamId });
+          ballReleasedBy = holder.id;
         } else if (decision?.type === 'pass') {
           stats.passes[holder.teamId].attempted += 1;
           ball = releaseBall(ball, holder, passVelocity(ball, decision.option, holder, rng, blunderScale(holder, decision.context)), {
@@ -1908,6 +1991,17 @@ export function createSimulation(home, away, seed, options = {}) {
             passTeamId: holder.teamId,
           });
           ballReleasedBy = holder.id;
+        }
+        // Strategi detil: perintah skrip sudah dijalankan (atau dibatalkan).
+        const run = teams[holder.teamId].script;
+        if (run && decision?.type === 'scriptAbort') {
+          stats.scripts[holder.teamId].aborted += 1;
+          teams[holder.teamId].scriptCooldowns = { ...(teams[holder.teamId].scriptCooldowns ?? {}), [run.id]: tick + SCRIPT.cooldownTicks };
+          teams[holder.teamId].script = null;
+        } else if (run && decision?.script) {
+          const lastPass = decision.script === 'oper' ? { to: decision.option.receiver.id, released: true, received: false } : decision.script === 'umpanSilang' ? { to: null, released: true, received: false } : run.lastPass;
+          if (decision.script === 'tembak') stats.scripts[holder.teamId].shots += 1;
+          teams[holder.teamId].script = { ...run, order: null, lastPass, stepTick: tick };
         }
         // Offside dinilai saat bola dimainkan: tandai rekan yang offside / akan dibenderai.
         if (ballReleasedBy === holder.id) {
@@ -2067,7 +2161,11 @@ export function createSimulation(home, away, seed, options = {}) {
         const pressing = presser && distance(presser, player) < PRESSURE_RADIUS * 2 ? presser : null;
         const opponentsOfHolder = prev.players.filter((p) => p.teamId !== player.teamId);
         const laneBlocker = shotLaneBlocker(ball, opponentsOfHolder, team.attacksRight);
-        if (isBreakaway(player, opponentsOfHolder, team.attacksRight)) {
+        const scriptOrder = team.script?.order;
+        if (scriptOrder?.type === 'giring') {
+          target = scriptOrder.pitchPoint;
+          moveOptions = { speedScale: DRIBBLE_SPEED_SCALE };
+        } else if (isBreakaway(player, opponentsOfHolder, team.attacksRight)) {
           // Satu lawan satu: lari secepatnya ke arah gawang.
           const goalX = team.attacksRight ? PITCH.length - BREAKAWAY_AIM_DEPTH : BREAKAWAY_AIM_DEPTH;
           target = { x: goalX, y: PITCH.width / 2 };
@@ -2092,6 +2190,11 @@ export function createSimulation(home, away, seed, options = {}) {
         if (owner) task = 'press';
         else task = ball.passTargetId === player.id ? 'receive' : 'chase';
         target = roleTargets.get(player.id);
+        moveOptions = { urgent: true };
+      } else if (team.script?.runs?.[player.id]) {
+        // Strategi detil: lari ke titik skema (kalah dari tugas mendesak di atas: memegang/mengejar bola).
+        task = 'skema';
+        target = team.script.runs[player.id];
         moveOptions = { urgent: true };
       } else {
         // Lapisan keputusan untuk bentuk tim: bergiliran tiap beberapa tick,

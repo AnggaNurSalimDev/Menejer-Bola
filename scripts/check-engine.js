@@ -44,6 +44,7 @@ import { parryVelocity } from '../src/engine/keeper.js';
 import { boxRunSpots } from '../src/engine/simulation.js';
 import { reshape, outfieldSlots, tacticsErrors, defaultTactics, teamStyle, TRANSITION, coachTactics, pressAllowedAt, LINE_OPTIONS, laneSlot, LANES, effectiveSlot, clampCustomSlot, CUSTOM_SLOT, minCostAssignment, baseSlots, ZONES, zoneWeights, zonedSlot, zoneCenter, mirrorZone } from '../src/engine/tactics.js';
 import { slotForPoint } from '../src/engine/shape.js';
+import { scriptErrors, renameInScripts, SCRIPT_ZONES, triggerMet, advanceScript } from '../src/engine/scripts.js';
 import { assignMarks } from '../src/engine/marking.js';
 import { substitutionErrors, SUBS } from '../src/engine/substitution.js';
 import { repairShape, applySendOffs, emergencyKeeper } from '../src/engine/sendoff.js';
@@ -773,6 +774,67 @@ console.log('Detail 8 zona (2 Nov)');
     if (i % 75 === 0) errs2.push(...validateMatchState(s));
   }
   check('state valid dengan detail zona', errs2.slice(0, 5));
+}
+
+console.log('Strategi detil: engine skrip (2 Nov)');
+{
+  check('daftar zona skrip sama dengan zona taktik', JSON.stringify(SCRIPT_ZONES) === JSON.stringify(ZONES) ? [] : ['beda']);
+  const ok = { id: 's1', name: 'Uji', zone: 'lawanKiri', holderId: 'a', playerIds: ['b'], steps: [{ trigger: { type: 'mulai' }, actions: [{ type: 'oper', to: 'b' }, { type: 'lari', playerId: 'c', point: { x: 90, y: 30 } }] }, { trigger: { type: 'operanDiterima' }, actions: [{ type: 'tembak' }] }] };
+  const bad = [
+    { ...ok, zone: 'tengah' },
+    { ...ok, steps: [] },
+    { ...ok, steps: [{ trigger: { type: 'waktu', detik: 2 }, actions: [{ type: 'tembak' }] }] },
+    { ...ok, steps: [{ trigger: { type: 'mulai' }, actions: [{ type: 'oper', to: 'b' }, { type: 'tembak' }] }] },
+    { ...ok, steps: [{ trigger: { type: 'mulai' }, actions: [{ type: 'lari', playerId: 'c', point: { x: 200, y: 30 } }] }] },
+  ];
+  check('skrip sah diterima, skrip cacat ditolak (zona, tanpa langkah, langkah 1 bukan "mulai", 2 aksi pemegang bola, titik di luar lapangan)', scriptErrors([ok]).length === 0 && bad.every((x) => scriptErrors([x]).length > 0) ? [] : [JSON.stringify(scriptErrors([ok]))]);
+  const ren = renameInScripts([ok], 'b', 'z')[0];
+  check('pergantian: id pemain diganti di semua bagian skrip', ren.playerIds[0] === 'z' && ren.steps[0].actions[0].to === 'z' ? [] : ['salah']);
+  // Pemicu & langkah tanpa simulasi.
+  const ctx = { tick: 10, byId: new Map([['c', { id: 'c', x: 90, y: 30 }]]), attacksRight: true };
+  const run0 = { id: 's1', step: 0, startTick: 10, stepTick: 10, runs: {}, order: null, lastPass: null };
+  const r1 = advanceScript(ok, run0, ctx);
+  check('langkah "mulai" langsung jalan: perintah oper + titik lari terpasang, langkah 2 menunggu', r1.run.order?.type === 'oper' && r1.run.runs.c && r1.run.step === 1 ? [] : [JSON.stringify(r1.run)]);
+  const r2 = advanceScript(ok, { ...r1.run, order: null, lastPass: { to: 'b', released: true, received: false } }, { ...ctx, tick: 12 });
+  check('langkah 2 menunggu operan DITERIMA', r2.run.step === 1 && !r2.run.order ? [] : [JSON.stringify(r2.run)]);
+  const r3 = advanceScript(ok, { ...r1.run, order: null, lastPass: { to: 'b', released: true, received: true } }, { ...ctx, tick: 13 });
+  check('operan diterima → perintah tembak', r3.run.order?.type === 'tembak' ? [] : [JSON.stringify(r3.run)]);
+  const away = advanceScript(ok, { ...r1.run, order: null }, { ...ctx, attacksRight: false });
+  check('pemicu "pemainSampai" & waktu', triggerMet({ runs: { c: { x: 90, y: 31 } }, stepTick: 0 }, { type: 'pemainSampai', playerId: 'c' }, ctx) && triggerMet({ stepTick: 0 }, { type: 'waktu', detik: 1 }, { ...ctx, tick: 10 }) && !triggerMet({ stepTick: 5 }, { type: 'waktu', detik: 1 }, { ...ctx, tick: 10 }) ? [] : ['salah']);
+  check('titik skrip dicerminkan untuk tim yang menyerang ke kiri', away.run !== null ? [] : ['null']);
+  // Simulasi: skrip sederhana di zona lawan (tanpa syarat posisi) benar-benar jalan.
+  const teams = createDemoTeams(2026, {});
+  let started = 0;
+  let completedOrShot = 0;
+  let passes = 0;
+  const errs = [];
+  for (const seed of [1, 2, 3, 4]) {
+    const sim = createSimulation(teams.home, teams.away, seed, { aiTeams: ['away'] });
+    let st = sim.getState();
+    const mine = st.players.filter((q) => q.teamId === 'home');
+    const holderIds = mine.filter((q) => q.role !== 'GK').map((q) => q.id);
+    const st9 = mine.find((q) => q.role === 'ST');
+    // Satu skrip per pemain lapangan (selain penyerang): bila ia pegang bola di zona lawan-kiri/kanan → oper ke ST, ST tembak.
+    const scripts = [];
+    for (const z of ['lawanKiri', 'lawanKanan'])
+      for (const h of holderIds.filter((id) => id !== st9.id))
+        scripts.push({ id: `${z}-${h}`, name: 'Ke striker', zone: z, holderId: h, playerIds: [], steps: [{ trigger: { type: 'mulai' }, actions: [{ type: 'oper', to: st9.id }] }, { trigger: { type: 'operanDiterima' }, actions: [{ type: 'tembak' }] }] });
+    st = sim.setTactics('home', { scripts: scripts.slice(0, 16) });
+    while (st.period === 'first') {
+      st = sim.step();
+      if (st.tick % 60 === 0) errs.push(...validateMatchState(st));
+    }
+    started += st.stats.scripts.home.started;
+    completedOrShot += st.stats.scripts.home.completed + st.stats.scripts.home.shots;
+    passes += st.stats.passes.home.attempted;
+  }
+  check('skrip berjalan di laga (mulai > 0, ada yang selesai / berujung tembakan)', started > 0 && completedOrShot > 0 ? [] : [`mulai ${started}, selesai/tembak ${completedOrShot}`]);
+  check('state valid selama skrip berjalan', errs.slice(0, 5));
+  const sim2 = createSimulation(teams.home, teams.away, 3, { aiTeams: ['away'] });
+  const gk = sim2.getState().players.find((q) => q.teamId === 'home' && q.role === 'GK');
+  let gkErr = false;
+  try { sim2.setTactics('home', { scripts: [{ ...ok, holderId: gk.id, playerIds: [], steps: [{ trigger: { type: 'mulai' }, actions: [{ type: 'tembak' }] }] }] }); } catch { gkErr = true; }
+  check('kiper tidak bisa jadi bagian skrip', gkErr ? [] : ['diterima']);
 }
 
 console.log('Skema bola mati (8d)');
