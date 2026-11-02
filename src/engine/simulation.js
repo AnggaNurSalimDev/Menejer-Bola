@@ -137,6 +137,7 @@ import {
 } from './attack.js';
 import { hash01 } from './scuffle.js';
 import { SCRIPT, tryStartScript, advanceScript } from './scripts.js';
+import { activeGroup, groupPassBonus } from './groups.js';
 import {
   applyTactics,
   MAX_CROSS_CHANCE,
@@ -204,6 +205,7 @@ function cloneStats(stats) {
     overTop: perTeam(stats.overTop),
     switches: perTeam(stats.switches),
     scripts: perTeam(stats.scripts),
+    groups: perTeam(stats.groups),
     scriptById: Object.fromEntries(Object.entries(stats.scriptById ?? {}).map(([t, m]) => [t, Object.fromEntries(Object.entries(m).map(([k, v]) => [k, { ...v }]))])),
     headers: perTeam(stats.headers),
     longShots: perTeam(stats.longShots),
@@ -619,6 +621,8 @@ function decideHolder(holder, ball, players, rng, match) {
     (runnerAvailable && ball.heldTicks >= RUN_SPOT_MIN_TICKS);
   if (!ready) return null;
 
+  // Kelompok aktif untuk pemegang bola ini (bobot operan ke rekan sekelompok).
+  const group = match.groupOf?.[holder.teamId] ?? null;
   // Kecenderungan umpan silang dari filosofi pelatih.
   const crossChance = Math.min(MAX_CROSS_CHANCE, match.philosophies[holder.teamId].crossPreference * (match.crossScale?.[holder.teamId] ?? 1));
   if (cross && rng.chance(crossChance)) {
@@ -636,6 +640,7 @@ function decideHolder(holder, ball, players, rng, match) {
     misjudgeScale: blunderScale(holder, context),
     progressScale: progressWeightScale(holder),
     directness: match.styles?.[holder.teamId]?.directness ?? 1,
+    bonusFor: group ? (rid) => groupPassBonus(group, holder.id, rid, ball.previousOwnerId) : null,
   });
   const best = options[0] ?? null;
   // Bola lambung ke belakang garis (31 Okt): untuk pelari yang sedang berlari, bila terobosan tanah
@@ -1840,6 +1845,21 @@ export function createSimulation(home, away, seed, options = {}) {
         if (team.script?.order) match.scriptOrders[id] = team.script.order;
       }
     }
+    // Kelompok (2 Nov): aktif bila bola di zona kelompok & dipegang anggota, dan tidak ada skema berjalan.
+    match.groupOf = {};
+    {
+      const holderNow = ball.ownerId !== null ? byId.get(ball.ownerId) : null;
+      if (holderNow && ball.setPieceKind === null && ball.restartKind === null) {
+        const team = teams[holderNow.teamId];
+        const groups = team.activeTactics?.groups ?? [];
+        if (groups.length > 0 && !team.script) {
+          const weights = zoneWeights(toTeamFrame(ball, team.attacksRight));
+          const zone = Object.entries(weights).sort((x, y) => y[1] - x[1])[0][0];
+          const g = activeGroup(groups, zone, holderNow.id);
+          if (g) match.groupOf[holderNow.teamId] = g;
+        }
+      }
+    }
     const tempoOf = (player) => philosophies[player.teamId].tempo * styles[player.teamId].tempo;
     const events = [];
     const note = (playerId, event) => events.push([playerId, event]);
@@ -2042,6 +2062,16 @@ export function createSimulation(home, away, seed, options = {}) {
           ballReleasedBy = holder.id;
         } else if (decision?.type === 'pass') {
           stats.passes[holder.teamId].attempted += 1;
+          const g = match.groupOf?.[holder.teamId];
+          if (g) {
+            const gs = stats.groups[holder.teamId];
+            const rid = decision.option.receiver.id;
+            gs.passes += 1;
+            if (g.memberIds.includes(rid)) {
+              gs.toMember += 1;
+              if (ball.previousOwnerId && ball.previousOwnerId !== rid && ball.previousOwnerId !== holder.id && g.memberIds.includes(ball.previousOwnerId)) gs.thirdMan += 1;
+            }
+          }
           ball = releaseBall(ball, holder, passVelocity(ball, decision.option, holder, rng, blunderScale(holder, decision.context)), {
             passTargetId: decision.option.receiver.id,
             passTeamId: holder.teamId,

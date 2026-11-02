@@ -1577,3 +1577,40 @@ details.fold {
   display: block;
   margin: 0.4rem 0 0.15rem;
 }
+
+/* Kelompok (2 Nov): garis antar anggota */
+.grp line {
+  stroke-width: 0.9;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+.grp--0 line { stroke: #e599f7; }
+.grp--1 line { stroke: #ffd8a8; }
+.grp--2 line { stroke: #96f2d7; }
+.grp--3 line { stroke: #a5d8ff; }
+.grp--edit line {
+  stroke: #ffffff;
+  stroke-width: 1.2;
+  stroke-dasharray: 1.6 0.8;
+}
+.grp-swatch {
+  display: inline-block;
+  width: 1.4rem;
+  height: 0.3rem;
+  border-radius: 2px;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+}
+.grp-swatch.grp--0 { background: #e599f7; }
+.grp-swatch.grp--1 { background: #ffd8a8; }
+.grp-swatch.grp--2 { background: #96f2d7; }
+.grp-swatch.grp--3 { background: #a5d8ff; }
+.lane-dot.is-grouped circle:not(.lane-dot__hit) {
+  stroke: #ffffff;
+  stroke-width: 0.8;
+}
+.group-editor .script-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}

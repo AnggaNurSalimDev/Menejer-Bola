@@ -156,6 +156,7 @@ function createStats(teamIds) {
     switches: perTeam(() => ({ attempted: 0, won: 0 })),
     scripts: perTeam(() => ({ started: 0, completed: 0, aborted: 0, shots: 0 })),
     scriptById: perTeam(() => ({})), // id skema → { started, completed, aborted, shots }
+    groups: perTeam(() => ({ passes: 0, toMember: 0, thirdMan: 0 })), // operan saat kelompok aktif: total, ke anggota, pemain ketiga
     headers: perTeam(() => ({ shots: 0, goals: 0 })),
     longShots: perTeam(() => ({ shots: 0, goals: 0 })), // tembakan kaki dari luar kotak penalti
     aerialsWon: perTeam(() => 0),

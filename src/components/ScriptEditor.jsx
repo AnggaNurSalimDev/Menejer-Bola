@@ -113,6 +113,11 @@ export default function ScriptEditor({ draft, players, onChange, onSave, onCance
       )}
       {zones.length > 0 && onZone && <p className="script-hint">Tempat bola saat skema dimulai. Bentuk formasi di papan mengikuti zona ini; operan, giring, umpan silang dan lari boleh berakhir di luar zona.</p>}
 
+      <p className="script-hint">
+        💡 Saran: skema pendek lebih sering berhasil — <b>3 langkah atau kurang</b> dan sedikit pemain di syarat utama. Tiap langkah bisa gagal (operan dipotong,
+        bola direbut), jadi peluang selesai mengecil di tiap langkah tambahan. Lebih baik beberapa skema kecil daripada satu skema panjang.
+      </p>
+      {draft.steps.length > 3 && <p className="script-warn">⚠️ Skema ini {draft.steps.length} langkah — kemungkinan jarang selesai. Pertimbangkan memecahnya.</p>}
       {zoneWarning && <p className="script-warn">⚠️ {zoneWarning}</p>}
       <fieldset className="script-box">
         <legend>Syarat utama</legend>

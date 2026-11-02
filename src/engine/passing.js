@@ -95,6 +95,7 @@ export function evaluatePassOptions({
   misjudgeScale = 1,
   progressScale = 1,
   directness = 1,
+  bonusFor = null, // (receiverId) → tambahan nilai (kelompok, groups.js)
 }) {
   if (!holder || !origin) throw new TypeError('evaluatePassOptions: holder dan origin wajib ada');
 
@@ -158,7 +159,8 @@ export function evaluatePassOptions({
       WEIGHTS.distance * passDistance -
       (receiver.role === 'GK' ? WEIGHTS.keeper : 0) -
       (receiver.id === previousOwnerId ? WEIGHTS.returnPass : 0) +
-      (isRun ? THROUGH_BALL_BONUS : 0);
+      (isRun ? THROUGH_BALL_BONUS : 0) +
+      (bonusFor ? bonusFor(receiver.id) : 0);
 
     const safe = margin > (isRun ? THROUGH_SAFE_MARGIN : SAFE_MARGIN);
     options.push({ receiver, target, speed, margin, trueMargin, score, safe, offside, through: !!isRun });

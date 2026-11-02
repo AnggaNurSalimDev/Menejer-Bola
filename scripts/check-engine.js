@@ -42,8 +42,9 @@ import { lingerTicks, freeKickSettleTargets, AFTER_INCIDENT } from '../src/engin
 import { pickCover } from '../src/engine/roles.js';
 import { parryVelocity } from '../src/engine/keeper.js';
 import { boxRunSpots } from '../src/engine/simulation.js';
-import { reshape, outfieldSlots, tacticsErrors, defaultTactics, teamStyle, TRANSITION, coachTactics, pressAllowedAt, LINE_OPTIONS, laneSlot, LANES, effectiveSlot, clampCustomSlot, CUSTOM_SLOT, minCostAssignment, baseSlots, ZONES, zoneWeights, zonedSlot, zoneCenter, mirrorZone } from '../src/engine/tactics.js';
+import { reshape, outfieldSlots, tacticsErrors, defaultTactics, teamStyle, TRANSITION, coachTactics, pressAllowedAt, LINE_OPTIONS, laneSlot, LANES, effectiveSlot, clampCustomSlot, CUSTOM_SLOT, minCostAssignment, baseSlots, ZONES, zoneWeights, toTeamFrame, zonedSlot, zoneCenter, mirrorZone } from '../src/engine/tactics.js';
 import { slotForPoint } from '../src/engine/shape.js';
+import { GROUP_ZONES, groupErrors, activeGroup, groupPassBonus, renameInGroups } from '../src/engine/groups.js';
 import { scriptErrors, renameInScripts, SCRIPT_ZONES, triggerMet, advanceScript } from '../src/engine/scripts.js';
 import { assignMarks } from '../src/engine/marking.js';
 import { substitutionErrors, SUBS } from '../src/engine/substitution.js';
@@ -856,6 +857,62 @@ console.log('Strategi detil: engine skrip (2 Nov)');
   let gkErr = false;
   try { sim2.setTactics('home', { scripts: [{ ...ok, holderId: gk.id, playerIds: [], steps: [{ trigger: { type: 'mulai' }, actions: [{ type: 'tembak' }] }] }] }); } catch { gkErr = true; }
   check('kiper tidak bisa jadi bagian skrip', gkErr ? [] : ['diterima']);
+}
+
+console.log('Kelompok (2 Nov)');
+{
+  check('daftar zona kelompok sama dengan zona taktik', JSON.stringify(GROUP_ZONES) === JSON.stringify(ZONES) ? [] : ['beda']);
+  const ok = { id: 'g1', zone: 'lawanKiri', memberIds: ['a', 'b', 'c'] };
+  const bad = [{ ...ok, zone: 'tengah' }, { ...ok, memberIds: ['a'] }, { ...ok, memberIds: ['a', 'b', 'c', 'd', 'e'] }, { ...ok, memberIds: ['a', 'a'] }];
+  const five = [1, 2, 3, 4, 5].map((i) => ({ ...ok, id: `g${i}` }));
+  check('kelompok sah diterima; zona salah, 1 atau 5 anggota, anggota ganda, 5 kelompok di satu zona ditolak', groupErrors([ok]).length === 0 && bad.every((x) => groupErrors([x]).length > 0) && groupErrors(five).length > 0 ? [] : [JSON.stringify(groupErrors([ok]))]);
+  check('kelompok aktif hanya bila pemegang bola anggota & zonanya cocok', activeGroup([ok], 'lawanKiri', 'b') === ok && activeGroup([ok], 'lawanKanan', 'b') === null && activeGroup([ok], 'lawanKiri', 'z') === null ? [] : ['salah']);
+  check(
+    'bobot: anggota > bukan anggota; pemain ketiga (dari rekan sekelompok ke anggota lain) > balik ke pemberi',
+    groupPassBonus(ok, 'a', 'b', null) > 0 && groupPassBonus(ok, 'a', 'z', null) === 0 && groupPassBonus(ok, 'a', 'c', 'b') > groupPassBonus(ok, 'a', 'b', 'b') ? [] : ['salah'],
+  );
+  check('pergantian: id anggota diganti', renameInGroups([ok], 'b', 'z')[0].memberIds.join() === 'a,z,c' ? [] : ['salah']);
+  const teams = createDemoTeams(2026, {});
+  const errs = [];
+  let toMember = 0;
+  let toMember0 = 0;
+  for (const seed of [1, 2, 3]) {
+    for (const withGroups of [false, true]) {
+      const sim = createSimulation(teams.home, teams.away, seed, { aiTeams: ['away'] });
+      let st = sim.getState();
+      const id = (n) => st.players.find((q) => q.teamId === 'home' && q.number === n).id;
+      const groups = ZONES.map((z, i) => ({ id: `g${i}`, zone: z, memberIds: [[3, 5, 6], [2, 4, 8], [3, 11, 6, 10], [2, 7, 8, 9]][i].map(id) }));
+      if (withGroups) st = sim.setTactics('home', { groups });
+      // Hitung operan ke anggota pada kedua laga dengan definisi kelompok yang sama (laga tanpa kelompok = pembanding).
+      let n = 0;
+      while (st.period === 'first') {
+        const before = st;
+        st = sim.step();
+        if (st.tick % 60 === 0) errs.push(...validateMatchState(st));
+        const o = before.ball.ownerId;
+        if (o && st.ball.ownerId === null && st.ball.passTargetId) {
+          const holder = before.players.find((q) => q.id === o);
+          const team = before.teams.home;
+          const w = zoneWeights(toTeamFrame(before.ball, team.attacksRight));
+          const zone = Object.entries(w).sort((x, y) => y[1] - x[1])[0][0];
+          const ag = holder?.teamId === 'home' ? activeGroup(groups, zone, o) : null;
+          const g = ag && ag.memberIds.includes(st.ball.passTargetId) ? ag : null;
+          if (g) n += 1;
+        }
+      }
+      if (withGroups) toMember += n;
+      else toMember0 += n;
+    }
+  }
+  check(`kelompok menambah operan antar anggota di zonanya (${toMember0} → ${toMember})`, toMember > toMember0 * 1.15 ? [] : ['tidak naik']);
+  check('state valid dengan kelompok', errs.slice(0, 5));
+  const sim2 = createSimulation(teams.home, teams.away, 3, { aiTeams: ['away'] });
+  const s2 = sim2.getState();
+  const gk = s2.players.find((q) => q.teamId === 'home' && q.role === 'GK');
+  const cb = s2.players.find((q) => q.teamId === 'home' && q.role === 'CB');
+  let gkErr = false;
+  try { sim2.setTactics('home', { groups: [{ id: 'g', zone: 'sendiriKiri', memberIds: [gk.id, cb.id] }] }); } catch { gkErr = true; }
+  check('kiper tidak bisa jadi anggota kelompok', gkErr ? [] : ['diterima']);
 }
 
 console.log('Skema bola mati (8d)');
