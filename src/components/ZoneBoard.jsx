@@ -164,6 +164,24 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
     setPicking(null);
     setViewId(d.id);
   }
+  // Pemegang bola skema berdiri jauh dari zona skema (posisinya di gambar zona ini) → skema mungkin tak
+  // pernah aktif. Sarankan zona tempat ia biasanya berada.
+  function holderZoneWarning() {
+    if (!draft?.holderId) return null;
+    const at = here.get(draft.holderId);
+    if (!at) return null;
+    const r = zoneRect(zone);
+    const dx = Math.max(r.x - at.x, 0, at.x - (r.x + r.w));
+    const dy = Math.max(r.y - at.y, 0, at.y - (r.y + r.h));
+    if (Math.hypot(dx, dy) <= 6) return null;
+    const own = ZONES.find((z) => {
+      const q = zoneRect(z);
+      return at.x >= q.x && at.x <= q.x + q.w && at.y >= q.y && at.y <= q.y + q.h;
+    });
+    const n = players.find((q) => q.id === draft.holderId)?.number;
+    return `Pemegang bola #${n} biasanya tidak berada di zona ${ZONE_LABEL[zone].toLowerCase()} (zona = tempat bola saat skema mulai), jadi skema ini mungkin jarang atau tidak pernah aktif.${own ? ` Mungkin maksudmu zona ${ZONE_LABEL[own].toLowerCase()}?` : ''}`;
+  }
+
   function removeScript(id) {
     const s0 = scripts.find((x) => x.id === id);
     onSetTactics({ scripts: scripts.filter((x) => x.id !== id) }, `Skema "${s0?.name ?? ''}" dihapus`);
@@ -356,6 +374,7 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
                 setPicking(null);
               }}
               onSave={saveDraft}
+              zoneWarning={holderZoneWarning()}
             />
           )}
         </section>

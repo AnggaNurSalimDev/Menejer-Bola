@@ -50,7 +50,24 @@ function PlayerSelect({ players, value, onChange, disabled, placeholder = 'pilih
 }
 
 // draft: skrip yang sedang diedit. onChange(draft). onPick(callback) → mode pilih titik di lapangan.
-export default function ScriptEditor({ draft, players, onChange, onSave, onCancel, onPick, picking, locked }) {
+// Siapa yang memegang bola saat aksi pemegang bola tiap langkah dijalankan (2 Nov: pengguna bingung
+// umpan silang dilakukan pemain lain). null = belum jelas (bola baru dilambungkan / ditembak).
+export function carriersBySteps(script) {
+  const out = [];
+  let carrier = script.holderId || null;
+  for (const step of script.steps) {
+    out.push(carrier);
+    for (const a of step.actions) {
+      if (a.type === 'oper') carrier = a.to || null;
+      else if (a.type === 'umpanSilang' || a.type === 'tembak') carrier = null;
+    }
+  }
+  return out;
+}
+
+const HOLDER_TYPES = new Set(['oper', 'giring', 'umpanSilang', 'tembak']);
+
+export default function ScriptEditor({ draft, players, onChange, onSave, onCancel, onPick, picking, locked, zoneWarning }) {
   const [showErrors, setShowErrors] = useState(false);
   const outfield = players.filter((p) => p.role !== 'GK').sort((a, b) => a.number - b.number);
   const errors = scriptErrors([draft]);
@@ -61,6 +78,8 @@ export default function ScriptEditor({ draft, players, onChange, onSave, onCance
   const togglePlayer = (id) =>
     set({ playerIds: draft.playerIds.includes(id) ? draft.playerIds.filter((x) => x !== id) : [...draft.playerIds, id] });
   const pointText = (pt) => (pt ? `(${pt.x.toFixed(0)}, ${pt.y.toFixed(0)}) m` : 'belum dipilih');
+  const carriers = carriersBySteps(draft);
+  const num = (id) => players.find((p) => p.id === id)?.number;
 
   return (
     <div className="script-editor">
@@ -78,8 +97,10 @@ export default function ScriptEditor({ draft, players, onChange, onSave, onCance
         />
       </div>
 
+      {zoneWarning && <p className="script-warn">⚠️ {zoneWarning}</p>}
       <fieldset className="script-box">
         <legend>Syarat utama</legend>
+        <p className="tac-note">Skema mulai saat bola dipegang pemain di bawah ini dan bola berada di zona yang dipilih di atas lapangan.</p>
         <div className="script-row">
           <span className="tac-label">Bola di</span>
           <PlayerSelect players={outfield} value={draft.holderId} disabled={locked} onChange={(v) => set({ holderId: v })} placeholder="pilih pemegang bola" />
@@ -167,6 +188,11 @@ export default function ScriptEditor({ draft, players, onChange, onSave, onCance
                     </option>
                   ))}
                 </select>
+                {HOLDER_TYPES.has(a.type) && (
+                  <span className="script-by" title="Aksi pemegang bola dilakukan oleh pemain yang memegang bola pada langkah ini">
+                    oleh {carriers[i] ? `#${num(carriers[i]) ?? '?'}` : 'pemenang bola (belum jelas)'}
+                  </span>
+                )}
                 {a.type === 'oper' && <PlayerSelect players={outfield} value={a.to} disabled={locked} onChange={(v) => setAction(i, k, { to: v })} placeholder="penerima" />}
                 {a.type === 'lari' && <PlayerSelect players={outfield} value={a.playerId} disabled={locked} onChange={(v) => setAction(i, k, { playerId: v })} placeholder="pelari" />}
                 {(a.type === 'lari' || a.type === 'giring' || a.type === 'umpanSilang') && (
@@ -199,7 +225,7 @@ export default function ScriptEditor({ draft, players, onChange, onSave, onCance
             type="button"
             className="lane-reset"
             disabled={locked}
-            onClick={() => set({ steps: [...draft.steps, { trigger: { type: 'operanDiterima' }, actions: [{ type: 'tembak' }] }] })}
+            onClick={() => set({ steps: [...draft.steps, { trigger: { type: 'operanDiterima' }, actions: [{ type: 'oper', to: '' }] }] })}
           >
             + Langkah
           </button>
@@ -261,6 +287,7 @@ export function ScriptOverlay({ script, pos, numberOf }) {
         carrierAt = a.point;
       } else if (a.type === 'tembak') {
         shapes.push({ kind: 'shot', from: carrierAt, to: { x: 105, y: 34 }, step: i + 1 });
+        carrierAt = null; // setelah tembakan, tak ada lagi pemegang bola yang jelas
       }
     }
   });
