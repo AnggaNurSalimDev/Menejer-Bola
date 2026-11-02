@@ -45,7 +45,7 @@ import {
   isBetweenPosts,
   insideOwnPenaltyArea,
 } from './pitch.js';
-import { rollBall, MAX_KICK_SPEED } from './ball.js';
+import { rollBall, MAX_KICK_SPEED, passSpeedForDistance } from './ball.js';
 import { computeAnchor } from './shape.js';
 import { stepBody } from './movement.js';
 import { pickChaser, pickPresser, pickCover, reachTime } from './roles.js';
@@ -554,8 +554,19 @@ function decideHolder(holder, ball, players, rng, match) {
         previousOwnerId: null,
         directness: 1,
       });
-      const opt = options.find((o) => o.receiver.id === order.to);
-      return opt ? { type: 'pass', option: opt, context, script: 'oper' } : { type: 'scriptAbort', context };
+      let opt = options.find((o) => o.receiver.id === order.to);
+      // Penerima di luar jarak pandang / pilihan biasa (2 Nov, keputusan pengguna): operan skema tetap
+      // dilakukan — sampai atau tidaknya urusan stat & fisika (makin jauh, makin mudah dipotong / meleset).
+      if (!opt) {
+        const receiver = players.find((p) => p.id === order.to && p.teamId === holder.teamId);
+        const d = receiver ? distance(ball, receiver) : 0;
+        if (!receiver || d < 1) return { type: 'scriptAbort', context };
+        const speed = passSpeedForDistance(d, blunder(holder, 'passArrival'));
+        const lead = (d / speed) * 0.6;
+        const target = clampToPitch({ x: receiver.x + receiver.vx * lead, y: receiver.y + receiver.vy * lead }, 0.5);
+        opt = { receiver, target, speed: passSpeedForDistance(distance(ball, target), blunder(holder, 'passArrival')), margin: 0, trueMargin: 0, score: 0, safe: false, offside: false, through: false };
+      }
+      return { type: 'pass', option: opt, context, script: 'oper' };
     }
     if (order.type === 'tembak') {
       const shot = evaluateShot({ origin: ball, opponents, attacksRight: holder.attacksRight, pressured, shotSpeed: shotSpeedFor(holder), screeners: players.filter((p) => p.id !== holder.id) });

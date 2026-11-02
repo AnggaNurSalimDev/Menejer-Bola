@@ -714,6 +714,27 @@ console.log('Ganti formasi: perpindahan pemain (2 Nov)');
     if (worst > 36) errs.push(`${from} → ${to}: lari terjauh ${worst.toFixed(0)} m`);
   }
   check('ganti formasi: tidak ada pemain yang lari > 36 m (bergeser berantai)', errs);
+  // Operan skema tetap dilakukan meski penerima di luar jarak pandang (bek → penyerang dari sepertiga sendiri).
+  {
+    let t = { started: 0, completed: 0, aborted: 0 };
+    for (const seed of [1, 2, 3]) {
+      const sim = createSimulation(teams.home, teams.away, seed, { aiTeams: ['away'] });
+      let st = sim.getState();
+      const mine = st.players.filter((q) => q.teamId === 'home');
+      const striker = mine.find((q) => q.role === 'ST');
+      const backs = mine.filter((q) => ['CB', 'LB', 'RB'].includes(q.role));
+      const list = [];
+      for (const z of ['sendiriKiri', 'sendiriKanan']) for (const b of backs) list.push({ id: `${z}-${b.id}`, name: 'Jauh', zone: z, holderId: b.id, playerIds: [], steps: [{ trigger: { type: 'mulai' }, actions: [{ type: 'oper', to: striker.id }] }] });
+      st = sim.setTactics('home', { scripts: list });
+      while (st.period === 'first') {
+        st = sim.step();
+        if (st.tick % 60 === 0) errs.push(...validateMatchState(st));
+      }
+      for (const k of Object.keys(t)) t[k] += st.stats.scripts.home[k];
+    }
+    check('operan skema jauh (di luar jarak pandang) tetap dilepas: batal ≤ 25%', t.started > 10 && t.aborted <= 0.25 * t.started ? [] : [JSON.stringify(t)]);
+    check('state valid dengan operan skema jauh', errs.slice(0, 5));
+  }
   const sim2 = createSimulation(teams.home, teams.away, 3, { aiTeams: ['away'] });
   const s2 = sim2.setTactics('home', { baseFormation: '4-3-3' });
   const bs = baseSlots(s2.players.filter((q) => q.teamId === 'home'), s2.teams.home.tactics);

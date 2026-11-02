@@ -301,6 +301,12 @@ export function ScriptOverlay({ script, pos, numberOf }) {
       {shapes.map((s, i) => {
         const mx = (s.from.x + s.to.x) / 2;
         const my = (s.from.y + s.to.y) / 2;
+        // Nomor langkah di dekat PEMAIN yang bergerak/menendang (2 Nov, masukan pengguna: di tengah garis
+        // terbaca seperti titik singgah). Letaknya ±5 m dari pangkal panah, di sepanjang lintasan.
+        const len = Math.hypot(s.to.x - s.from.x, s.to.y - s.from.y);
+        const t = len > 0 ? Math.min(0.4, 5 / len) : 0;
+        const cx = s.kind === 'cross' ? (1 - t) * (1 - t) * s.from.x + 2 * (1 - t) * t * mx + t * t * s.to.x : s.from.x + (s.to.x - s.from.x) * t;
+        const cy = s.kind === 'cross' ? (1 - t) * (1 - t) * s.from.y + 2 * (1 - t) * t * (my - 10) + t * t * s.to.y : s.from.y + (s.to.y - s.from.y) * t;
         const d =
           s.kind === 'cross'
             ? `M${s.from.x},${s.from.y} Q${mx},${my - 10} ${s.to.x},${s.to.y}`
@@ -308,8 +314,8 @@ export function ScriptOverlay({ script, pos, numberOf }) {
         return (
           <g key={i} className={`sc sc--${s.kind}`}>
             <path d={d} markerEnd="url(#script-arrow)" />
-            <circle cx={mx} cy={s.kind === 'cross' ? my - 5 : my} r="1.7" />
-            <text x={mx} y={(s.kind === 'cross' ? my - 5 : my) + 0.8} textAnchor="middle">
+            <circle cx={cx} cy={cy} r="1.7" />
+            <text x={cx} y={cy + 0.8} textAnchor="middle">
               {s.step}
             </text>
           </g>
