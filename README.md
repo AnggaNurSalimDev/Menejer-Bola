@@ -39,7 +39,8 @@ Proyek ini dibuat untuk senang-senang.
 - Taktik 5 jalur (1 Nov): fokus serangan (kiri/tengah/kanan), lindungi (tengah/sayap), dan instruksi jalur per pemain di tab Tim (tetap / half-space / melebar / ke kotak). Tidak ada pilihan dominan; beberapa lebih lemah melawan lawan bawaan (lihat dokumen arah 8j).
 - Layer posisi (1 Nov): seret pemain di gambar taktik (dengan & tanpa bola) dan pilihan tempel lawan per pemain. Catatan: garis bek yang diseret sangat tinggi masih terlalu kuat (lihat dokumen arah 8k).
 - Detail 8 zona (2 Nov): atur posisi pemain per zona bola (sendiri/lawan × kiri/kanan) untuk dengan & tanpa bola, campuran halus antarzona, tombol cermin. Penalti tidak lagi berbaris kaku.
-- Berikutnya: umpan pindah sisi (skema menumpuk belum dimanfaatkan, lihat dokumen arah 8m); garis tinggi masih terlalu kuat; Strategi detil paling akhir, bola panjang di cabang percobaan menunggu keputusan; lalu liga.
+- Umpan pindah sisi (2 Nov): bola lambung diagonal ke rekan bebas di sisi jauh, ±6 per laga — skema menumpuk di satu sisi kini bisa dimanfaatkan.
+- Berikutnya: rata-rata gol sedikit di bawah target (2,35); garis tinggi masih terlalu kuat; Strategi detil paling akhir, bola panjang di cabang percobaan menunggu keputusan; lalu liga.
 
 Tip: tambahkan `?seed=13` di alamat (misalnya `http://localhost:5173/?seed=13`) untuk memutar ulang pertandingan tertentu.
 
