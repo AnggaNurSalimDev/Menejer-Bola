@@ -261,3 +261,50 @@ export function overTopPoint(origin, runner, line, attacksRight, defenderTime) {
   }
   return best ? { point: best.point, flight: best.flight } : null;
 }
+
+// ------------------------------------------------ umpan pindah sisi (2 Nov)
+// Studi: saat bola di satu sisi kubu lawan, 85% waktu ada rekan BEBAS di sisi jauh, tetapi bola hanya
+// 0,05 kali per laga dipindah ke sana — skema menumpuk di satu sisi (mis. PSG) tidak pernah dimanfaatkan.
+// Penyebab: operan biasa dibatasi jarak pandang dan jalurnya melintasi banyak pemain. Umpan pindah
+// sisi = bola lambung diagonal (tidak bisa dipotong di jalan), mendarat setinggi dada di depan rekan.
+export const SWITCH = Object.freeze({
+  minHolderDepth: 45, // meter dari gawang sendiri: bukan dari area sendiri
+  holderSide: 10, // pemegang bola ≥ sekian meter dari tengah lebar lapangan (di satu sisi)
+  receiverSide: 12, // penerima ≥ sekian meter dari tengah, di sisi seberang
+  freeRadius: 10, // tak ada lawan sedekat ini dengan penerima
+  minDistance: 25,
+  maxDistance: 50,
+  lead: 3, // meter di depan penerima (ke arah gawang lawan)
+  arrivalHeight: 1.2,
+  chance: Object.freeze({ low: 0.025, high: 0.09 }), // per keputusan, dari stat Visi (uji 1: 0,12–0,4 → 21 per laga, terlalu sering)
+  stuckBoost: 1.5, // lebih sering bila operan terbaik tidak maju / tidak aman / ditekan
+  stuckProgress: 4, // meter: operan terbaik dianggap tidak maju bila kurang dari ini
+});
+
+export function switchTarget(holder, teammates, opponents, attacksRight) {
+  if (!holder || holder.role === 'GK') return null;
+  if (forwardOf(holder, attacksRight) < SWITCH.minHolderDepth) return null;
+  const mid = PITCH.width / 2;
+  const holderSide = holder.y - mid;
+  if (Math.abs(holderSide) < SWITCH.holderSide) return null;
+  const line = offsideLine(opponents, attacksRight);
+  let best = null;
+  for (const r of teammates) {
+    if (r.id === holder.id || r.role === 'GK') continue;
+    const side = r.y - mid;
+    if (Math.sign(side) === Math.sign(holderSide) || Math.abs(side) < SWITCH.receiverSide) continue;
+    if (isOffside(r, holder, line, attacksRight)) continue;
+    if (forwardOf(r, attacksRight) < forwardOf(holder, attacksRight) - 10) continue; // bukan operan mundur jauh
+    const d = distance(holder, r);
+    if (d < SWITCH.minDistance || d > SWITCH.maxDistance) continue;
+    let space = Infinity;
+    for (const o of opponents) space = Math.min(space, distance(o, r));
+    if (space < SWITCH.freeRadius) continue;
+    const score = space + forwardOf(r, attacksRight) * 0.1;
+    if (!best || score > best.score || (score === best.score && r.id < best.r.id)) best = { r, score };
+  }
+  if (!best) return null;
+  const dir = attacksRight ? 1 : -1;
+  const aim = clampToPitch({ x: best.r.x + dir * SWITCH.lead, y: best.r.y }, 2);
+  return { aim, receiverId: best.r.id };
+}

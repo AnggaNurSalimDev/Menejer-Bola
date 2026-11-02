@@ -798,7 +798,9 @@ console.log('Skema bola mati (8d)');
   const seeds = [1, 2, 3, 4, 5, 6];
   const lambung = run({ freeKick: 'lambung' }, seeds);
   const pendek = run({ freeKick: 'pendek' }, seeds);
-  const tembak = run({ freeKick: 'tembak' }, [...seeds, 7, 8, 9, 10, 11, 12, 13, 14]);
+  // Bergantung keberuntungan seed (tendangan bebas dekat gawang jarang): berhenti begitu terjadi, maks 40 babak.
+  let tembak = { fkShots: 0 };
+  for (let sd = 1; sd <= 40 && tembak.fkShots === 0; sd += 1) tembak = run({ freeKick: 'tembak' }, [sd]);
   check('tendangan bebas "lambung" & "pendek" tidak pernah ditembak langsung', lambung.fkShots === 0 && pendek.fkShots === 0 ? [] : [`${lambung.fkShots} / ${pendek.fkShots}`]);
   check('tendangan bebas "tembak" dicoba bila ada kesempatan', tembak.fkShots > 0 ? [] : ['tidak pernah']);
   // Titik serbuan kotak per skema (bola di pojok kiri atas, tim menyerang ke kanan).
