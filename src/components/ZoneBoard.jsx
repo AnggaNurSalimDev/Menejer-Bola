@@ -102,7 +102,10 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
     remember({ phase: v });
   }
   function pickZone(v) {
-    if (draft || picking) return;
+    if (picking) setPicking(null);
+    // Skema yang sedang diedit ikut pindah ke zona yang dipilih (2 Nov: dulu tombol zona terkunci
+    // diam-diam saat mengedit — pengguna mengira papan rusak).
+    if (draft) setDraft({ ...draft, zone: v });
     setZone(v);
     remember({ zone: v });
   }
@@ -182,7 +185,7 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
           {ZONES.map((z) => {
             const n = zoneCount(tactics, key, z);
             return (
-              <button key={z} type="button" className={z === zone ? 'is-active' : undefined} disabled={Boolean(draft || picking)} title={draft ? 'Simpan atau batalkan skema dulu' : undefined} onClick={() => pickZone(z)}>
+              <button key={z} type="button" className={z === zone ? 'is-active' : undefined} title={draft ? 'Skema yang sedang diedit ikut pindah ke zona ini' : undefined} onClick={() => pickZone(z)}>
                 {ZONE_LABEL[z]}
                 {n > 0 && <span className="zone-count">{n}</span>}
               </button>
@@ -215,7 +218,10 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
               </button>
             </>
           ) : (
-            <>Sedang mengedit skema "{draft.name}" — zona & fase dikunci sampai skema disimpan atau dibatalkan (editor di bawah lapangan).</>
+            <>
+              Sedang mengedit skema "{draft.name}" untuk zona {ZONE_LABEL[zone].toLowerCase()} — pilih zona lain untuk memindahkannya. Editor ada di bawah
+              lapangan.
+            </>
           )}
         </p>
       )}
@@ -354,7 +360,15 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
           )}
         </section>
       ) : (
-        <p className="tac-note">Strategi detil (skema oper & lari) dibuat di layer Dengan bola.</p>
+        <section className="scripts" aria-label="Strategi detil">
+          <div className="scripts__head">
+            <h5>Strategi detil</h5>
+            <button type="button" className="lane-reset" onClick={() => pickPhase('attack')}>
+              Buat skema (pindah ke Dengan bola)
+            </button>
+          </div>
+          <p className="tac-note">Skema oper, lari, dan tembak dibuat untuk saat tim memegang bola.</p>
+        </section>
       )}
       <p className="lane-legend">
         Pilih zona (klik kotaknya atau tombol di atas), lalu seret pemain: itu posisinya saat bola ada di zona tersebut. Zona yang tidak diatur memakai
