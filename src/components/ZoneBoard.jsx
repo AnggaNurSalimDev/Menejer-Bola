@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import ScriptEditor, { ScriptOverlay, blankScript, ACTION_LABEL } from './ScriptEditor.jsx';
 import { PITCH } from '../engine/pitch.js';
 import { computeAnchor, slotForPoint } from '../engine/shape.js';
 import {
@@ -54,6 +55,9 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
   const [zone, setZone] = useState(ZONES.includes(pref.zone) ? pref.zone : 'lawanKiri');
   const [ghostOn, setGhostOn] = useState(pref.ghost !== false);
   const [drag, setDrag] = useState(null);
+  const [draft, setDraft] = useState(null); // Strategi detil: skema yang sedang diedit
+  const [viewId, setViewId] = useState(null); // skema yang garisnya ditampilkan
+  const [picking, setPicking] = useState(null); // { step, action, cb } — menunggu klik titik
   const svgRef = useRef(null);
 
   if (!tactics || !Array.isArray(players) || players.length === 0) return null;
@@ -84,10 +88,12 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
     savePref({ phase, zone, ghost: ghostOn, ...next });
   }
   function pickPhase(v) {
+    if (draft) return;
     setPhase(v);
     remember({ phase: v });
   }
   function pickZone(v) {
+    if (draft || picking) return;
     setZone(v);
     remember({ zone: v });
   }
@@ -108,7 +114,7 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
   }
   function start(evt, p) {
     evt.stopPropagation();
-    if (locked || p.role === 'GK') return;
+    if (locked || p.role === 'GK' || picking) return;
     evt.preventDefault(); // cegah seleksi teks / seret bawaan browser
     evt.currentTarget.setPointerCapture?.(evt.pointerId);
     const q = toPitch(evt);
@@ -136,6 +142,21 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
   }
 
   const count = zoneCount(tactics, key, zone);
+  const scripts = tactics.scripts ?? [];
+  const zoneScripts = scripts.filter((x) => x.zone === zone);
+  const numberOf = (id) => players.find((q) => q.id === id)?.number ?? '?';
+  function saveDraft(d) {
+    const next = [...scripts.filter((x) => x.id !== d.id), { ...d, zone }];
+    onSetTactics({ scripts: next }, `Skema "${d.name}" disimpan (${ZONE_LABEL[zone].toLowerCase()})`);
+    setDraft(null);
+    setPicking(null);
+    setViewId(d.id);
+  }
+  function removeScript(id) {
+    const s0 = scripts.find((x) => x.id === id);
+    onSetTactics({ scripts: scripts.filter((x) => x.id !== id) }, `Skema "${s0?.name ?? ''}" dihapus`);
+    if (viewId === id) setViewId(null);
+  }
 
   return (
     <div className="zone-board">
@@ -184,6 +205,14 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
         onPointerMove={move}
         onPointerUp={end}
         onPointerCancel={() => setDrag(null)}
+        onClick={(evt) => {
+          if (!picking) return;
+          const q = toPitch(evt);
+          if (!q) return;
+          picking.cb({ x: Math.round(q.x * 2) / 2, y: Math.round(q.y * 2) / 2 });
+          setPicking(null);
+        }}
+        data-picking={picking ? 'ya' : undefined}
       >
         <rect x="0" y="0" width={W} height={H} className="lane-pitch" />
         <line x1={W / 2} x2={W / 2} y1="0" y2={H} className="lane-line" />
@@ -221,6 +250,7 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
             </g>
           );
         })}
+        {phase === 'attack' && <ScriptOverlay script={draft ?? scripts.find((x) => x.id === viewId && x.zone === zone)} pos={(id) => here.get(id) ?? null} />}
         <g className="zone-ball" pointerEvents="none">
           <circle cx={ball.x} cy={ball.y} r="1.4" />
         </g>
@@ -238,6 +268,68 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
           );
         })}
       </svg>
+      {phase === 'attack' ? (
+        <section className="scripts" aria-label="Strategi detil">
+          <div className="scripts__head">
+            <h5>Strategi detil · {ZONE_LABEL[zone].toLowerCase()}</h5>
+            {!draft && (
+              <button
+                type="button"
+                className="lane-reset"
+                disabled={locked || scripts.length >= 16}
+                onClick={() => setDraft(blankScript(zone, players.find((q) => q.role !== 'GK')?.id))}
+              >
+                + Skema baru
+              </button>
+            )}
+          </div>
+          {!draft && zoneScripts.length === 0 && (
+            <p className="tac-note">Belum ada skema di zona ini. Skema dijalankan saat bola dipegang pemain yang ditentukan di zona ini dan pemain skema sudah di posisi zonanya.</p>
+          )}
+          {!draft && zoneScripts.length > 0 && (
+            <ul className="scripts__list">
+              {zoneScripts.map((x) => (
+                <li key={x.id} className={viewId === x.id ? 'is-on' : undefined}>
+                  <button type="button" className="scripts__name" onClick={() => setViewId(viewId === x.id ? null : x.id)}>
+                    {x.name}
+                    <span className="tac-note">
+                      {' '}
+                      · bola di #{numberOf(x.holderId)} · {x.steps.length} langkah ·{' '}
+                      {x.steps
+                        .flatMap((st) => st.actions.map((a) => ACTION_LABEL[a.type].toLowerCase().split(' ')[0]))
+                        .slice(0, 4)
+                        .join(' → ')}
+                    </span>
+                  </button>
+                  <button type="button" className="link-btn" disabled={locked} onClick={() => setDraft(JSON.parse(JSON.stringify(x)))}>
+                    ubah
+                  </button>
+                  <button type="button" className="link-btn" disabled={locked} onClick={() => removeScript(x.id)}>
+                    hapus
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {draft && (
+            <ScriptEditor
+              draft={draft}
+              players={players}
+              locked={locked}
+              picking={picking}
+              onChange={setDraft}
+              onPick={(at, cb) => setPicking({ ...at, cb })}
+              onCancel={() => {
+                setDraft(null);
+                setPicking(null);
+              }}
+              onSave={saveDraft}
+            />
+          )}
+        </section>
+      ) : (
+        <p className="tac-note">Strategi detil (skema oper & lari) dibuat di layer Dengan bola.</p>
+      )}
       <p className="lane-legend">
         Pilih zona (klik kotaknya atau tombol di atas), lalu seret pemain: itu posisinya saat bola ada di zona tersebut. Zona yang tidak diatur memakai
         posisi layer biasa; saat bola berpindah zona, pemain bergeser halus di antara skema. Cincin kuning = posisi zona ini · ⚪ = bola contoh.
