@@ -13,6 +13,20 @@ import { STAT_MIN, STAT_MAX } from './stats.js';
 
 export const TACKLE_RANGE = 1.6; // meter
 export const TACKLE_ATTEMPT_CHANCE = 0.1; // peluang mencoba per tick saat dalam jangkauan
+// Penggiring yang berlari LURUS KE ARAH bek (2 Nov, ditemukan lewat Strategi detil: skrip "giring
+// masuk kotak" menang 72%): bek yang sudah siap lebih mudah merebut bola dari pemain yang datang
+// ke arahnya. AI biasa jarang begini (menggiring menjauhi tekanan), jadi efek umumnya kecil.
+export const HEAD_ON = Object.freeze({ cos: 0.5, minSpeed: 2, attemptScale: 3, successBonus: 0.1 });
+
+// Pemegang bola bergerak menuju pemain ini (sudut ≤ 60°, laju ≥ minSpeed)?
+export function runningAt(holder, defender) {
+  const speed = Math.hypot(holder.vx ?? 0, holder.vy ?? 0);
+  if (!(speed >= HEAD_ON.minSpeed)) return false;
+  const d = distance(holder, defender);
+  if (!(d > 0)) return true;
+  const cos = ((holder.vx ?? 0) * (defender.x - holder.x) + (holder.vy ?? 0) * (defender.y - holder.y)) / (speed * d);
+  return cos >= HEAD_ON.cos;
+}
 export const BEATEN_COOLDOWN_TICKS = 15; // terhuyung 1,5 detik setelah gagal
 export const SUCCESS_COOLDOWN_TICKS = 5;
 
@@ -37,6 +51,7 @@ function skill(player, key) {
 export function tackleSuccessChance(defender, holder) {
   const raw =
     BASE_SUCCESS +
+    (runningAt(holder, defender) ? HEAD_ON.successBonus : 0) +
     (skill(defender, 'tackling') - skill(holder, 'dribbling')) * SKILL_WEIGHT +
     (skill(defender, 'kekuatan') - skill(holder, 'kekuatan')) * STRENGTH_WEIGHT;
   return Math.min(MAX_SUCCESS, Math.max(MIN_SUCCESS, raw));
@@ -51,7 +66,8 @@ export function pickTackler(holder, opponents, rng, attemptScale = () => 1) {
   if (inRange.length === 0) return null;
   const scale = attemptScale(inRange[0]);
   if (!(scale >= 0 && scale <= 1)) throw new RangeError(`pickTackler: attemptScale tidak valid ${scale}`);
-  return rng.chance(TACKLE_ATTEMPT_CHANCE * scale) ? inRange[0] : null;
+  const headOn = runningAt(holder, inRange[0]) ? HEAD_ON.attemptScale : 1;
+  return rng.chance(Math.min(1, TACKLE_ATTEMPT_CHANCE * scale * headOn)) ? inRange[0] : null;
 }
 
 // Kecepatan bola yang terlepas akibat tekel berhasil:

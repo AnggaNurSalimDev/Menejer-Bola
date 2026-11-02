@@ -102,6 +102,11 @@ export function pickPresser(teamPlayers, holder, attacksRight, previousId) {
 export const COVER = Object.freeze({
   gap: 2.6, // meter dari pemegang bola, di garis ke tengah gawang
   zone: 18, // meter: radius hitung jumlah pemain di sekitar bola
+  // Zona bahaya (2 Nov, ditemukan lewat Strategi detil): pemegang bola ≤ danger m dari gawang selalu
+  // dihadang bek kedua di jalur ke gawang, apa pun garis beknya dan walau kalah jumlah. Dulu skrip
+  // "giring masuk kotak lalu tembak" menang 72%: hanya satu penekan yang mengejar dari belakang
+  // (bek terdekat rata-rata 3,7 m; ±4 tekel per laga dari ±113 dtk menggiring).
+  danger: 25,
 });
 
 export function coverPoint(holder, attacksRight) {
@@ -121,8 +126,12 @@ export function outnumberedAt(holder, defenders, attackers) {
 // Pilih penutup: bek tercepat ke titik tutup, bukan penekan & bukan kiper. null bila tidak perlu.
 export function pickCover(teamPlayers, holder, attacksRight, { range, chaserId, previousId, attackers }) {
   const ownGoal = { x: attacksRight ? 0 : PITCH.length, y: PITCH.width / 2 };
-  if (!(range > 0) || distance(holder, ownGoal) > range) return null;
-  if (outnumberedAt(holder, teamPlayers, attackers)) return null;
+  const toGoal = distance(holder, ownGoal);
+  const inDanger = toGoal <= COVER.danger;
+  if (!inDanger) {
+    if (!(range > 0) || toGoal > range) return null;
+    if (outnumberedAt(holder, teamPlayers, attackers)) return null;
+  }
   const point = coverPoint(holder, attacksRight);
   const candidates = teamPlayers
     .filter((p) => p.role !== 'GK' && p.id !== chaserId)

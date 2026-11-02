@@ -956,7 +956,12 @@ console.log('AI pelatih & penutup tembakan');
     const near = pickCover(defenders, holderNear, true, { range: 26, chaserId: null, previousId: null, attackers: [holderNear] });
     check('penutup tembakan aktif dekat gawang sendiri', near && near.point.x < holderNear.x ? [] : ['tidak ada penutup']);
     check('penutup tidak aktif jauh dari gawang', pickCover(defenders, holderFar, true, { range: 26, chaserId: null, previousId: null, attackers: [holderFar] }) === null ? [] : ['aktif']);
-    check('penutup tidak aktif saat kalah jumlah di sekitar bola', pickCover(defenders.slice(0, 2), holderNear, true, { range: 26, chaserId: null, previousId: null, attackers: lone }) === null ? [] : ['aktif']);
+    // Di luar zona bahaya (> 25 m dari gawang) aturan "kalah jumlah → tidak menutup" tetap berlaku;
+    // di zona bahaya penutup selalu ada (2 Nov, COVER.danger).
+    const holderMid = { ...attackers[9], x: 30, y: 34 };
+    const loneMid = [{ ...holderMid }, ...attackers.slice(0, 9).map((p, i) => ({ ...p, x: 28 + (i % 3), y: 30 + i }))];
+    check('penutup tidak aktif saat kalah jumlah di sekitar bola (di luar zona bahaya)', pickCover(defenders.slice(0, 2), holderMid, true, { range: 36, chaserId: null, previousId: null, attackers: loneMid }) === null ? [] : ['aktif']);
+    check('zona bahaya: penutup tetap ada walau kalah jumlah', pickCover(defenders.slice(0, 2), holderNear, true, { range: 0, chaserId: null, previousId: null, attackers: lone }) !== null ? [] : ['tidak ada']);
     check('hanya garis rendah yang menutup tembakan', LINE_OPTIONS.rendah.coverRange > 0 && LINE_OPTIONS.normal.coverRange === 0 && LINE_OPTIONS.tinggi.coverRange === 0 ? [] : ['salah']);
   }
   const teams = createDemoTeams(2026, {});
