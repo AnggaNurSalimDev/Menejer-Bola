@@ -147,6 +147,7 @@ import {
   zonedSlot,
   zoneWeights,
   toTeamFrame,
+  minCostAssignment,
   reslotTeam,
   TRANSITION,
 } from './tactics.js';
@@ -462,6 +463,36 @@ function cornerPreferredSpot(ball, attacksRight, scheme) {
 }
 
 // Penyerang mana menuju titik serbuan mana. Map playerId → titik.
+// Pertahanan kotak (2 Nov, ronde realisme): saat lawan siap mengumpan silang / sepak pojok / bola silang
+// di udara, bek & satu gelandang bertahan turun mengisi titik kunci di kotak. Dulu hanya ±3 bek di kotak
+// saat umpan silang dilepas (nyata 5–7) → gol per umpan silang ±2× dunia nyata, pojok 13% (nyata ±3%).
+// Titik: kedalaman dari garis gawang sendiri (m) & geser ke sisi bola (+ = sisi bola).
+export const BOX_DEFENSE = Object.freeze({
+  spots: Object.freeze([
+    Object.freeze({ depth: 5.5, side: 3.5 }), // tiang dekat
+    Object.freeze({ depth: 7.5, side: 0 }), // tengah
+    Object.freeze({ depth: 6.5, side: -4.5 }), // tiang jauh
+    Object.freeze({ depth: 11, side: 1.5 }), // titik penalti
+    Object.freeze({ depth: 15, side: -2 }), // tepi kotak (bola tarik-balik)
+  ]),
+  roles: Object.freeze(['CB', 'LB', 'RB', 'DM']),
+});
+
+export function boxDefenseTargets(players, defendingTeamId, ball, defendersAttackRight, excluded = new Set()) {
+  const pool = players.filter((p) => p.teamId === defendingTeamId && BOX_DEFENSE.roles.includes(p.role) && !excluded.has(p.id));
+  const result = new Map();
+  if (pool.length === 0) return result;
+  const goalX = defendersAttackRight ? 0 : PITCH.length;
+  const into = defendersAttackRight ? 1 : -1;
+  const ballSide = Math.sign(ball.y - PITCH.width / 2) || 1;
+  const spots = BOX_DEFENSE.spots.slice(0, pool.length).map((s) => ({ x: goalX + into * s.depth, y: PITCH.width / 2 + ballSide * s.side }));
+  const chosen = [...pool].sort((a, b) => distance(a, spots[1]) - distance(b, spots[1]) || a.id.localeCompare(b.id)).slice(0, spots.length);
+  const cost = chosen.map((p) => spots.map((sp) => distance(p, sp) ** 2));
+  const assign = minCostAssignment(cost);
+  chosen.forEach((p, i) => result.set(p.id, spots[assign[i]]));
+  return result;
+}
+
 function assignBoxRuns(players, teamId, ball, attacksRight, excluded, scheme = 'campur') {
   const runs = new Map();
   const free = players.filter(
@@ -1259,9 +1290,15 @@ export function restartTargets(players, ball, takerId, teams) {
       ? assignBoxRuns(players, restartTeamId, ball, ar, new Set([takerId]), teams[restartTeamId].tactics?.corner)
       : new Map();
   const targets = new Map();
+  const defendId = Object.keys(teams).find((id) => id !== restartTeamId);
+  const boxD = ball.restartKind === 'corner' && defendId ? boxDefenseTargets(players, defendId, ball, teams[defendId].attacksRight) : new Map();
   for (const p of players) {
     if (p.id === takerId) {
       targets.set(p.id, clampToPitch(ball, 0.3));
+      continue;
+    }
+    if (boxD.has(p.id)) {
+      targets.set(p.id, boxD.get(p.id));
       continue;
     }
     const phase = p.teamId === restartTeamId ? 'attack' : 'defend';
@@ -2097,6 +2134,7 @@ export function createSimulation(home, away, seed, options = {}) {
     // Serbuan kotak: umpan silang sedang/akan datang (pemegang di zona sayap,
     // sepak pojok, atau bola silang di udara). Paling banyak BOX_RUN_COUNT penyerang.
     let boxRuns = new Map();
+    let boxDefense = new Map();
     const crossingTeamId =
       ball.crossTeamId ??
       (owner && owner.role !== 'GK' && inCrossZone(ball, teams[owner.teamId].attacksRight) ? owner.teamId : null) ??
@@ -2114,6 +2152,11 @@ export function createSimulation(home, away, seed, options = {}) {
         excluded,
         atCorner ? teams[crossingTeamId].tactics.corner : 'campur',
       );
+      const defId = teamIds.find((id) => id !== crossingTeamId);
+      if (defId) {
+        const busy = new Set([teams[defId].chaserId, teams[defId].coverId, ...(teams[defId].counterIds ?? [])].filter(Boolean));
+        boxDefense = boxDefenseTargets(prev.players, defId, ball, teams[defId].attacksRight, busy);
+      }
     }
 
     // Tendangan bebas sedang disiapkan: tim bertahan memasang pagar betis & mundur ≥ 9,15 m.
@@ -2221,7 +2264,7 @@ export function createSimulation(home, away, seed, options = {}) {
           const outA = computeAnchor({ ...player, slot: outSlot }, ball, team.attacksRight, phase, style);
           const inA = computeAnchor({ ...player, slot: inSlot }, ball, team.attacksRight, phase, style);
           const b = team.shapeBlend ?? 0;
-          target = boxRuns.get(player.id) ?? { x: outA.x + (inA.x - outA.x) * b, y: outA.y + (inA.y - outA.y) * b };
+          target = boxRuns.get(player.id) ?? boxDefense.get(player.id) ?? { x: outA.x + (inA.x - outA.x) * b, y: outA.y + (inA.y - outA.y) * b };
           if (phase === 'defend') {
             const mark = marksByTeam.get(player.teamId)?.get(player.id);
             const holdLine =
