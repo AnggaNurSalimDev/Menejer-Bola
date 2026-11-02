@@ -1520,3 +1520,22 @@ details.fold {
     gap: 3px;
   }
 }
+.script-chip {
+  margin: 0 auto 8px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: #3b2f07;
+  color: #ffd43b;
+  border: 1px solid #ffd43b66;
+  font-size: 0.85rem;
+}
+.script-chip[hidden] {
+  display: none;
+}
+.scripts__stats {
+  display: block;
+  font-size: 0.72rem;
+  color: #868e96;
+}

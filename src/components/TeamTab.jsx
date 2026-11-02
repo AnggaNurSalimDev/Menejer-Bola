@@ -513,7 +513,7 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
           summary={zoneSummary}
           defaultOpen={!narrow}
         >
-          <ZoneBoard players={onPitch} tactics={team.tactics} color={shirt} locked={locked} onSetTactics={setTactic} nameOf={name} />
+          <ZoneBoard players={onPitch} tactics={team.tactics} color={shirt} locked={locked} onSetTactics={setTactic} nameOf={name} scriptStats={state.stats.scriptById?.[teamId] ?? {}} />
         </Fold>
 
         <Fold id="setpieces" className="strategy__setpieces" title="Bola mati" summary={`pojok ${CORNER_LABEL[team.tactics.corner]} · tendangan bebas ${FREE_KICK_LABEL[team.tactics.freeKick]}`} defaultOpen={!narrow}>

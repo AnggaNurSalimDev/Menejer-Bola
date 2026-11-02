@@ -203,6 +203,7 @@ function cloneStats(stats) {
     overTop: perTeam(stats.overTop),
     switches: perTeam(stats.switches),
     scripts: perTeam(stats.scripts),
+    scriptById: Object.fromEntries(Object.entries(stats.scriptById ?? {}).map(([t, m]) => [t, Object.fromEntries(Object.entries(m).map(([k, v]) => [k, { ...v }]))])),
     headers: perTeam(stats.headers),
     longShots: perTeam(stats.longShots),
     aerialsWon: { ...stats.aerialsWon },
@@ -1738,6 +1739,13 @@ export function createSimulation(home, away, seed, options = {}) {
     // Strategi detil (2 Nov): mulai / majukan / batalkan skrip tiap tim. Perintah untuk pemegang bola
     // masuk ke match.scriptOrders dan dijalankan di keputusan pemegang bola (fisika tetap berlaku).
     match.scriptOrders = {};
+    const bumpScript = (teamId, scriptId, key) => {
+      stats.scripts[teamId][key] += 1;
+      const m = (stats.scriptById[teamId] ??= {});
+      const c = (m[scriptId] ??= { started: 0, completed: 0, aborted: 0, shots: 0 });
+      c[key] += 1;
+    };
+    match.bumpScript = bumpScript;
     {
       const holderNow = ball.ownerId !== null ? byId.get(ball.ownerId) : null;
       const inPoss = holderNow?.teamId ?? ball.passTeamId ?? ball.crossTeamId ?? ball.shotTeamId ?? ball.restartTeamId ?? null;
@@ -1746,7 +1754,7 @@ export function createSimulation(home, away, seed, options = {}) {
         const scripts = team.activeTactics?.scripts ?? [];
         const endScript = (outcome) => {
           if (!team.script) return;
-          stats.scripts[id][outcome] += 1;
+          bumpScript(id, team.script.id, outcome);
           team.scriptCooldowns = { ...(team.scriptCooldowns ?? {}), [team.script.id]: tick + SCRIPT.cooldownTicks };
           team.script = null;
         };
@@ -1776,7 +1784,7 @@ export function createSimulation(home, away, seed, options = {}) {
           const anchorOf = (pl) => computeAnchor({ ...pl, slot: zonedSlot(pl, team.activeTactics, 'in', weights) }, ball, team.attacksRight, 'attack', styles[id]);
           const started = tryStartScript(scripts, { tick, ownerId: holderNow.id, zone, anchorOf, byId, cooldowns: team.scriptCooldowns });
           if (started) {
-            stats.scripts[id].started += 1;
+            bumpScript(id, started.id, 'started');
             const res = advanceScript(scripts.find((x) => x.id === started.id), started, { tick, byId, attacksRight: team.attacksRight });
             team.script = res.ended ? null : res.run;
           }
@@ -1995,12 +2003,12 @@ export function createSimulation(home, away, seed, options = {}) {
         // Strategi detil: perintah skrip sudah dijalankan (atau dibatalkan).
         const run = teams[holder.teamId].script;
         if (run && decision?.type === 'scriptAbort') {
-          stats.scripts[holder.teamId].aborted += 1;
+          match.bumpScript(holder.teamId, run.id, 'aborted');
           teams[holder.teamId].scriptCooldowns = { ...(teams[holder.teamId].scriptCooldowns ?? {}), [run.id]: tick + SCRIPT.cooldownTicks };
           teams[holder.teamId].script = null;
         } else if (run && decision?.script) {
           const lastPass = decision.script === 'oper' ? { to: decision.option.receiver.id, released: true, received: false } : decision.script === 'umpanSilang' ? { to: null, released: true, received: false } : run.lastPass;
-          if (decision.script === 'tembak') stats.scripts[holder.teamId].shots += 1;
+          if (decision.script === 'tembak') match.bumpScript(holder.teamId, run.id, 'shots');
           teams[holder.teamId].script = { ...run, order: null, lastPass, stepTick: tick };
         }
         // Offside dinilai saat bola dimainkan: tandai rekan yang offside / akan dibenderai.

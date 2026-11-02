@@ -49,7 +49,7 @@ export function zoneCount(tactics, key, zone) {
   return Object.keys(tactics?.[key]?.[zone] ?? {}).length;
 }
 
-export default function ZoneBoard({ players, tactics, color, locked, onSetTactics, nameOf }) {
+export default function ZoneBoard({ players, tactics, color, locked, onSetTactics, nameOf, scriptStats = {} }) {
   const pref = readPref();
   const [phase, setPhase] = useState(pref.phase === 'defend' ? 'defend' : 'attack');
   const [zone, setZone] = useState(ZONES.includes(pref.zone) ? pref.zone : 'lawanKiri');
@@ -299,6 +299,9 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
                         .flatMap((st) => st.actions.map((a) => ACTION_LABEL[a.type].toLowerCase().split(' ')[0]))
                         .slice(0, 4)
                         .join(' → ')}
+                    </span>
+                    <span className="scripts__stats">
+                      laga ini: aktif {scriptStats[x.id]?.started ?? 0} · selesai {scriptStats[x.id]?.completed ?? 0} · batal {scriptStats[x.id]?.aborted ?? 0} · tembakan {scriptStats[x.id]?.shots ?? 0}
                     </span>
                   </button>
                   <button type="button" className="link-btn" disabled={locked} onClick={() => setDraft(JSON.parse(JSON.stringify(x)))}>

@@ -73,6 +73,7 @@ export default function App() {
   const tabRef = useRef(tab);
   tabRef.current = tab;
   const subToastRef = useRef(null);
+  const scriptChipRef = useRef(null);
 
   const clockRef = useRef(null);
   const scoreRef = useRef(null);
@@ -117,6 +118,15 @@ export default function App() {
             })
             .join('   '),
         );
+      }
+
+      // Strategi detil: skema tim pengguna yang sedang berjalan.
+      const chip = scriptChipRef.current;
+      if (chip) {
+        const run = state.teams[USER_TEAM]?.script;
+        const sc = run ? (state.teams[USER_TEAM].activeTactics?.scripts ?? []).find((x) => x.id === run.id) : null;
+        chip.hidden = !sc;
+        set(chip, sc ? `🧩 Skema "${sc.name}" · langkah ${Math.min(run.step, sc.steps.length)}/${sc.steps.length}` : '');
       }
 
       if (state.period === 'halftime' || state.period === 'fulltime') {
@@ -283,6 +293,7 @@ export default function App() {
 
       <div ref={whistleRef} className="whistle-banner" hidden aria-live="polite" />
       <div ref={subToastRef} className="sub-toast" hidden aria-live="polite" />
+      <div ref={scriptChipRef} className="script-chip" hidden aria-live="polite" />
 
       {/* Tab Tim: simulasi tetap berjalan di belakang. */}
       <div hidden={tab !== 'team'}>
