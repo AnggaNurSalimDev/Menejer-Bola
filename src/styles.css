@@ -1615,3 +1615,24 @@ details.fold {
   justify-content: flex-end;
   gap: 0.5rem;
 }
+
+/* Gaya lawan (7 Nov) */
+.scout-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin: 6px 0 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 0.85rem;
+  color: #ced4da;
+}
+.scout-bar b {
+  color: #fff;
+}
+.scout-bar select {
+  margin-left: 4px;
+}

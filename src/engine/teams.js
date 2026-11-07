@@ -146,7 +146,7 @@ export function addBench(team, { seed, usedShortNames, quality }) {
 // Filosofi bawaan: Persada Bandung bermain fisik, Garuda Merah cepat (28 Okt).
 export function createDemoTeams(
   seed = 2026,
-  { homeQuality = 12, awayQuality = 12, homePhilosophy = 'fisik', awayPhilosophy = 'cepat' } = {},
+  { homeQuality = 12, awayQuality = 12, homePhilosophy = 'fisik', awayPhilosophy = 'cepat', homeFormation = '4-4-2', awayFormation = '4-3-3' } = {},
 ) {
   const usedShortNames = new Set();
 
@@ -155,7 +155,7 @@ export function createDemoTeams(
     id: 'home',
     name: 'Persada Bandung',
     colors: { shirt: '#1f4fbf', number: '#ffffff', goalkeeper: '#2f9e44' },
-    formation: '4-4-2',
+    formation: homeFormation,
     quality: homeQuality,
     philosophy: homePhilosophy,
     seed,
@@ -166,7 +166,7 @@ export function createDemoTeams(
     id: 'away',
     name: 'Garuda Merah',
     colors: { shirt: '#c92a2a', number: '#ffffff', goalkeeper: '#f08c00' },
-    formation: '4-3-3',
+    formation: awayFormation,
     quality: awayQuality,
     philosophy: awayPhilosophy,
     seed: seed + 1,

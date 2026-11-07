@@ -44,6 +44,7 @@ import { parryVelocity } from '../src/engine/keeper.js';
 import { boxRunSpots } from '../src/engine/simulation.js';
 import { reshape, outfieldSlots, tacticsErrors, defaultTactics, teamStyle, TRANSITION, coachTactics, pressAllowedAt, LINE_OPTIONS, laneSlot, LANES, effectiveSlot, clampCustomSlot, CUSTOM_SLOT, minCostAssignment, baseSlots, ZONES, zoneWeights, toTeamFrame, zonedSlot, zoneCenter, mirrorZone, mirrorGroups } from '../src/engine/tactics.js';
 import { slotForPoint } from '../src/engine/shape.js';
+import { CLUB_STYLES, STYLE_KEYS, styleTactics, styleErrors, randomStyle } from '../src/engine/clubStyles.js';
 import { GROUP_ZONES, groupErrors, activeGroup, groupPassBonus, renameInGroups } from '../src/engine/groups.js';
 import { scriptErrors, renameInScripts, SCRIPT_ZONES, triggerMet, advanceScript } from '../src/engine/scripts.js';
 import { assignMarks } from '../src/engine/marking.js';
@@ -859,6 +860,35 @@ console.log('Strategi detil: engine skrip (2 Nov)');
   check('kiper tidak bisa jadi bagian skrip', gkErr ? [] : ['diterima']);
 }
 
+console.log('Gaya klub AI (7 Nov)');
+{
+  check('semua gaya klub memakai formasi & filosofi yang dikenal', styleErrors());
+  const rngs = [0, 0.2, 0.5, 0.99].map((r) => randomStyle(() => r));
+  check('gaya acak selalu salah satu gaya', rngs.every((k) => STYLE_KEYS.includes(k)) ? [] : [rngs.join()]);
+  const errs = [];
+  for (const key of STYLE_KEYS) {
+    const s = CLUB_STYLES[key];
+    const t = createDemoTeams(2026, { awayFormation: s.formation, awayPhilosophy: s.philosophy });
+    const sim = createSimulation(t.home, t.away, 4, { aiTeams: ['away'] });
+    let st = sim.getState();
+    const mine = st.players.filter((q) => q.teamId === 'away');
+    try {
+      st = sim.setTactics('away', styleTactics(key, mine, st.teams.away.tactics));
+    } catch (e) {
+      errs.push(`${key}: ${e.message}`);
+      continue;
+    }
+    const tac = st.teams.away.tactics;
+    if (s.lanes && Object.keys(tac.playerLanes).length === 0) errs.push(`${key}: jalur pemain hilang`);
+    if (s.groups && tac.groups.length !== 2) errs.push(`${key}: kelompok ${tac.groups.length}`);
+    for (let i = 0; i < 600; i += 1) {
+      st = sim.step();
+      if (i % 100 === 0) errs.push(...validateMatchState(st).map((e) => `${key}: ${e}`));
+    }
+  }
+  check('tiap gaya bisa dipasang & laga berjalan valid', errs.slice(0, 6));
+}
+
 console.log('Kelompok (2 Nov)');
 {
   check('daftar zona kelompok sama dengan zona taktik', JSON.stringify(GROUP_ZONES) === JSON.stringify(ZONES) ? [] : ['beda']);
@@ -1033,7 +1063,14 @@ console.log('AI pelatih & penutup tembakan');
   const ctx = { goalsFor: 0, goalsAgainst: 0, minute: 30 };
   check('11 vs 11 → taktik dasar', coachTactics(base, { ...ctx, own: 11, opponents: 11 }) === base ? [] : ['diubah']);
   check('10 vs 11 → garis rendah', coachTactics(base, { ...ctx, own: 10, opponents: 11 }).outOfPossession.line === 'rendah' ? [] : ['salah']);
-  check('10 vs 11, tertinggal di menit 80 → kembali ke taktik dasar', coachTactics(base, { ...ctx, own: 10, opponents: 11, goalsAgainst: 1, minute: 80 }) === base ? [] : ['salah']);
+  check('10 vs 11, tertinggal di menit 80 → kejar gol (garis tinggi)', coachTactics(base, { ...ctx, own: 10, opponents: 11, goalsAgainst: 1, minute: 80 }).outOfPossession.line === 'tinggi' ? [] : ['salah']);
+  const lead = coachTactics(base, { ...ctx, own: 11, opponents: 11, goalsFor: 1, minute: 70 });
+  const chase = coachTactics(base, { ...ctx, own: 11, opponents: 11, goalsAgainst: 1, minute: 70 });
+  check('unggul di menit 70 → garis rendah + serangan balik', lead.outOfPossession.line === 'rendah' && lead.onWin === 'seranganBalik' ? [] : ['salah']);
+  check('tertinggal di menit 70 → garis tinggi, press tinggi, tempo cepat', chase.outOfPossession.line === 'tinggi' && chase.outOfPossession.press === 'tinggi' && chase.inPossession.tempo === 'cepat' ? [] : ['salah']);
+  check('unggul di menit 30 → taktik dasar', coachTactics(base, { ...ctx, own: 11, opponents: 11, goalsFor: 2 }) === base ? [] : ['diubah']);
+  check('taktik hasil penyesuaian di-cache (objek sama tiap tick)', coachTactics(base, { ...ctx, own: 11, opponents: 11, goalsFor: 1, minute: 70 }) === lead ? [] : ['dibuat ulang']);
+  check('taktik penyesuaian lolos validasi', [lead, chase].flatMap((t) => tacticsErrors(t)));
   check('tekanan rendah tidak menekan tinggi', !pressAllowedAt(teamStyle({ ...base, outOfPossession: { ...base.outOfPossession, press: 'rendah' } }), { x: 90, y: 34 }, true) ? [] : ['menekan']);
   {
     const demo = createDemoTeams(2026, {});

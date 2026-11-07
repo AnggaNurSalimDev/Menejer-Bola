@@ -5,12 +5,36 @@ import { createDemoTeams } from './engine/teams.js';
 import { createSimulation } from './engine/simulation.js';
 import { gameClock } from './engine/state.js';
 import { getPhilosophy } from './engine/philosophy.js';
+import { CLUB_STYLES, STYLE_KEYS, styleTactics, randomStyle } from './engine/clubStyles.js';
 
 const TEAM_SEED = 2026;
 const SPEEDS = [1, 2, 4, 8];
 const USER_TEAM = 'home'; // tim yang diatur pengguna; tim tamu diatur AI pelatih
 const TEAM_VIEW_EVERY_TICKS = 5; // tab Tim diperbarui 2× per detik (cukup untuk bar tenaga)
 const SUB_NOTICE_TICKS = 50;
+
+// Gaya lawan (7 Nov): pilihan pengguna disimpan di perangkat; "acak" ditentukan dari seed laga
+// (seed sama → gaya sama, jadi ?seed=… tetap memutar ulang laga yang sama).
+const STYLE_KEY = 'menejer-bola:gaya-lawan';
+function readStyleChoice() {
+  try {
+    const v = window.localStorage.getItem(STYLE_KEY);
+    return v === 'acak' || STYLE_KEYS.includes(v) ? v : 'acak';
+  } catch {
+    return 'acak';
+  }
+}
+function saveStyleChoice(v) {
+  try {
+    window.localStorage.setItem(STYLE_KEY, v);
+  } catch {
+    // penyimpanan tidak tersedia: abaikan
+  }
+}
+function seededUnit(seed) {
+  const x = Math.imul(seed >>> 0, 2654435761) >>> 0;
+  return x / 4294967296;
+}
 
 function randomSeed() {
   return Math.floor(Math.random() * 1_000_000);
@@ -62,6 +86,7 @@ const STAT_ROWS = [
 
 export default function App() {
   const [matchSeed, setMatchSeed] = useState(initialSeed);
+  const [styleChoice, setStyleChoice] = useState(readStyleChoice);
   const [running, setRunning] = useState(true);
   const [speed, setSpeed] = useState(1);
   // Snapshot state saat jeda babak / peluit akhir (null = sedang bermain).
@@ -84,13 +109,18 @@ export default function App() {
   const possessionRefs = { home: useRef(null), away: useRef(null), bar: useRef(null) };
   const rowRefs = useRef({});
 
-  const { home, away, simulation, namesById } = useMemo(() => {
-    const teams = createDemoTeams(TEAM_SEED);
+  const { home, away, simulation, namesById, awayStyle } = useMemo(() => {
+    const styleKey = styleChoice === 'acak' ? randomStyle(() => seededUnit(matchSeed)) : styleChoice;
+    const style = CLUB_STYLES[styleKey];
+    const teams = createDemoTeams(TEAM_SEED, { awayFormation: style.formation, awayPhilosophy: style.philosophy });
     const names = new Map(
       [...teams.home.players, ...teams.home.bench, ...teams.away.players, ...teams.away.bench].map((p) => [p.id, p.shortName]),
     );
-    return { ...teams, namesById: names, simulation: createSimulation(teams.home, teams.away, matchSeed, { aiTeams: ['away'] }) };
-  }, [matchSeed]);
+    const sim = createSimulation(teams.home, teams.away, matchSeed, { aiTeams: ['away'] });
+    const st = sim.getState();
+    sim.setTactics('away', styleTactics(styleKey, st.players.filter((p) => p.teamId === 'away'), st.teams.away.tactics));
+    return { ...teams, namesById: names, simulation: sim, awayStyle: styleKey };
+  }, [matchSeed, styleChoice]);
 
   // Semua angka diperbarui langsung di DOM, tanpa render ulang React setiap tick.
   const handleTick = useCallback(
@@ -246,6 +276,13 @@ export default function App() {
     setRunning(true);
   }
 
+  function chooseStyle(v) {
+    if (v !== 'acak' && !STYLE_KEYS.includes(v)) return;
+    saveStyleChoice(v);
+    setStyleChoice(v);
+    restart();
+  }
+
   function startSecondHalf() {
     if (simulation.getState().period !== 'halftime') return;
     const next = simulation.startSecondHalf();
@@ -266,6 +303,23 @@ export default function App() {
         </div>
         <TeamLabel team={away} align="left" mentalityRef={mentalityRefs.away} formationRef={formationRefs.away} />
       </header>
+
+      <div className="scout-bar">
+        <span>
+          Lawan: <b>{CLUB_STYLES[awayStyle].label}</b> · {CLUB_STYLES[awayStyle].formation} · filosofi {getPhilosophy(CLUB_STYLES[awayStyle].philosophy).label.toLowerCase()}
+        </span>
+        <label>
+          Gaya lawan{' '}
+          <select value={styleChoice} onChange={(e) => chooseStyle(e.target.value)}>
+            <option value="acak">Acak</option>
+            {STYLE_KEYS.map((k) => (
+              <option key={k} value={k}>
+                {CLUB_STYLES[k].label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       <nav className="tabs" role="tablist" aria-label="Tampilan">
         <button

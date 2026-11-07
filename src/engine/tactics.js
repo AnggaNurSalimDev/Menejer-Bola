@@ -535,13 +535,40 @@ export function applyTactics(state, teamId, changes) {
 // AI pelatih (untuk tim yang diatur AI): kalah jumlah → garis rendah (rapat, menutup tembakan; dulu
 // "mentalitas bertahan" — uji 29 Okt: menambah main langsung justru membuat tim lebih bocor);
 // tertinggal di menit ≥ 75 → kembali ke taktik dasarnya untuk mengejar. Mengembalikan taktik yang dipakai.
-export const COACH = Object.freeze({ chaseMinute: 75 });
+export const COACH = Object.freeze({
+  chaseMinute: 75, // kalah jumlah pemain: tetap garis rendah, kecuali tertinggal sejak menit ini
+  lateMinute: 63, // 7 Nov: ±70% laga — unggul → jaga skor, tertinggal → kejar gol
+});
 
-export function coachTactics(base, { own, opponents, goalsFor, goalsAgainst, minute }) {
+// Penyesuaian AI pelatih saat laga (7 Nov, gaya klub):
+//   kalah jumlah pemain (dan tidak sedang mengejar)  → garis rendah
+//   unggul & menit ≥ lateMinute                       → garis rendah, transisi serangan balik
+//   tertinggal & menit ≥ lateMinute                   → garis tinggi, press tinggi, tempo cepat
+// Hasil di-cache per taktik dasar supaya tidak menggabung ulang taktik setiap tick.
+const COACH_MODES = Object.freeze({
+  bertahan: Object.freeze({ outOfPossession: { line: 'rendah' } }),
+  jagaSkor: Object.freeze({ outOfPossession: { line: 'rendah' }, onWin: 'seranganBalik' }),
+  kejar: Object.freeze({ outOfPossession: { line: 'tinggi', press: 'tinggi' }, inPossession: { tempo: 'cepat' } }),
+});
+const coachCache = new WeakMap();
+
+export function coachMode({ own, opponents, goalsFor, goalsAgainst, minute }) {
   if (!(own > 0 && opponents > 0)) throw new RangeError('coachTactics: jumlah pemain tidak valid');
-  if (own >= opponents) return base;
-  if (goalsFor < goalsAgainst && minute >= COACH.chaseMinute) return base;
-  return mergeTactics(base, { outOfPossession: { line: 'rendah' } });
+  const late = minute >= COACH.lateMinute;
+  const chasing = goalsFor < goalsAgainst;
+  if (own < opponents && !(chasing && minute >= COACH.chaseMinute)) return 'bertahan';
+  if (late && goalsFor > goalsAgainst) return 'jagaSkor';
+  if (late && chasing) return 'kejar';
+  return null;
+}
+
+export function coachTactics(base, ctx) {
+  const mode = coachMode(ctx);
+  if (mode === null) return base;
+  let modes = coachCache.get(base);
+  if (!modes) coachCache.set(base, (modes = {}));
+  if (!modes[mode]) modes[mode] = mergeTactics(base, COACH_MODES[mode]);
+  return modes[mode];
 }
 
 export function isDefensiveShape(tactics) {
