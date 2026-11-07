@@ -1336,6 +1336,7 @@ details.fold {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  flex-wrap: wrap;
 }
 .scripts__head h5 {
   margin: 0;

@@ -575,10 +575,46 @@ export function baseSlots(players, tactics) {
 // Bukan sekadar membalik posisi: tiap pemain dipetakan ke "pasangannya" di sisi lain (bek kiri ↔ bek
 // kanan, gelandang tengah tetap dirinya) — pasangan dicari dengan penugasan optimal pada slot layer
 // biasa yang dicerminkan. Mengembalikan { zone: targetZone, map: { id → slot } }.
+export function mirrorTarget(zone) {
+  if (!ZONES.includes(zone)) throw new RangeError(`mirrorTarget: zona tidak dikenal ${zone}`);
+  return zone.endsWith('Kiri') ? zone.replace('Kiri', 'Kanan') : zone.replace('Kanan', 'Kiri');
+}
+
+// Pasangan cermin tiap pemain lapangan (bek kiri ↔ bek kanan, dst.): penugasan optimal pada posisi
+// yang dicerminkan kiri-kanan. Hasil: Map id → id pasangan (bijeksi; pemain tengah bisa berpasangan diri sendiri).
+export function mirrorPartners(players, tactics, phase) {
+  if (phase !== 'in' && phase !== 'out') throw new RangeError(`mirrorPartners: fase tidak dikenal ${phase}`);
+  const outfield = players.filter((p) => p.role !== 'GK').sort((a, b) => a.id.localeCompare(b.id));
+  const slots = outfield.map((p) => effectiveSlot(p, tactics, phase));
+  const cost = outfield.map((_, i) =>
+    outfield.map((__, j) => {
+      const dx = (slots[i].depth - slots[j].depth) * RESHAPE_DEPTH_METERS;
+      const dy = (1 - slots[i].lane - slots[j].lane) * PITCH.width;
+      return dx * dx + dy * dy;
+    }),
+  );
+  const pair = minCostAssignment(cost);
+  const partners = new Map(outfield.map((p, i) => [p.id, outfield[pair[i]].id]));
+  if (new Set(partners.values()).size !== partners.size) throw new Error('mirrorPartners: pasangan tidak unik');
+  return partners;
+}
+
+// Kelompok di `zone` dicerminkan ke zona seberang (kiri ↔ kanan, sisi lapangan sama). Kelompok lama di
+// zona tujuan diganti. Hasil: daftar kelompok lengkap yang baru.
+export function mirrorGroups(players, tactics, zone, makeId) {
+  const target = mirrorTarget(zone);
+  const partners = mirrorPartners(players, tactics, 'in');
+  const all = tactics.groups ?? [];
+  const mirrored = all
+    .filter((g) => g.zone === zone)
+    .map((g, i) => ({ id: makeId(i), zone: target, memberIds: g.memberIds.map((id) => partners.get(id) ?? id) }));
+  return { zone: target, groups: [...all.filter((g) => g.zone !== target), ...mirrored] };
+}
+
 export function mirrorZone(players, tactics, phase, zone) {
   if (!ZONES.includes(zone)) throw new RangeError(`mirrorZone: zona tidak dikenal ${zone}`);
   if (phase !== 'in' && phase !== 'out') throw new RangeError(`mirrorZone: fase tidak dikenal ${phase}`);
-  const target = zone.endsWith('Kiri') ? zone.replace('Kiri', 'Kanan') : zone.replace('Kanan', 'Kiri');
+  const target = mirrorTarget(zone);
   const source = (phase === 'in' ? tactics.zoneIn : tactics.zoneOut)?.[zone] ?? {};
   const outfield = players.filter((p) => p.role !== 'GK').sort((a, b) => a.id.localeCompare(b.id));
   const slots = outfield.map((p) => effectiveSlot(p, tactics, phase));

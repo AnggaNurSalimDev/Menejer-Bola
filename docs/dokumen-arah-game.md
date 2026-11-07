@@ -366,6 +366,7 @@ Setiap tahap harus bisa ditonton dan terasa benar sebelum lanjut ke tahap beriku
    - efek (kecenderungan, bukan paksaan; syarat "operan aman" tidak berubah): rekan sekelompok +0,5 nilai operan; pemain ketiga (bola dari rekan sekelompok → anggota LAIN) +0,3 lagi
    - UI di papan Detail zona (dengan bola): "+ Kelompok baru" → klik pemain di lapangan untuk masuk/keluar → garis berwarna antar anggota; statistik laga (operan saat kelompok aktif, ke rekan sekelompok, pemain ketiga)
    - uji keseimbangan (tim kandang 4-4-2 vs AI, 180 laga per kelompok uji): tanpa kelompok selisih gol +0,09; 4 kelompok isi 4 (sayap+gelandang+penyerang) +0,34 → beda +0,25 ± ±0,17 (belum pasti, tidak tampak eksploit); operan sukses 66,5% → 67,6%. Trio di zona sendiri (60 laga): operan antaranggota 3,9 → 7,3 per laga, tembakan sedikit turun (lebih banyak operan pendek di belakang)
+   - cermin kelompok (7 Nov, permintaan pengguna): tombol "Cermin ke …" di bagian Kelompok menyalin kelompok zona ini ke zona seberang (kiri ↔ kanan) dengan pemain pasangannya (`mirrorPartners`, penugasan optimal yang sama dengan cermin posisi zona); kelompok lama di zona tujuan diganti
    - TAHAP 2 (belum): juru kunci (opsional) bergeser membentuk segitiga (batas ±15 m, utamakan jalurnya) + "oper lalu bergerak" (±8 m)
    - skema: saran "3 langkah atau kurang" + peringatan bila > 3 langkah; persentase selesai di daftar skema
 8l. 📝 RENCANA (2 Nov, keputusan pengguna): detail 8 zona = BERIKUTNYA; Strategi detil = PALING AKHIR setelah semua yang lain selesai

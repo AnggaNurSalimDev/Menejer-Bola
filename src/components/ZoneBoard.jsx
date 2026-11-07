@@ -9,6 +9,7 @@ import {
   zoneWeights,
   zoneCenter,
   mirrorZone,
+  mirrorGroups,
   clampCustomSlot,
   CUSTOM_SLOT,
   ZONES,
@@ -208,6 +209,11 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
     onSetTactics({ groups: next }, `Kelompok ${gdraft.memberIds.map((id) => `#${numberOf(id)}`).join('-')} disimpan (${ZONE_LABEL[zone].toLowerCase()})`);
     setGdraft(null);
   }
+  function mirrorGroupsToOther() {
+    const stamp = Date.now().toString(36);
+    const m = mirrorGroups(players, tactics, zone, (i) => `g${stamp}${i}`);
+    onSetTactics({ groups: m.groups }, `Kelompok ${ZONE_LABEL[zone].toLowerCase()} dicerminkan ke ${ZONE_LABEL[m.zone].toLowerCase()}`);
+  }
   function removeGroup(id) {
     onSetTactics({ groups: groups.filter((g) => g.id !== id) }, 'Kelompok dihapus');
   }
@@ -365,6 +371,17 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
         <section className="scripts groups" aria-label="Kelompok">
           <div className="scripts__head">
             <h5>Kelompok · {ZONE_LABEL[zone].toLowerCase()}</h5>
+            {!gdraft && zoneGroups.length > 0 && (
+              <button
+                type="button"
+                className="lane-reset"
+                disabled={locked || Boolean(draft)}
+                onClick={mirrorGroupsToOther}
+                title={`Kelompok zona ini disalin ke ${ZONE_LABEL[mirrored].toLowerCase()} dengan pemain pasangannya (bek kiri ↔ bek kanan). Kelompok yang sudah ada di sana diganti.`}
+              >
+                Cermin ke {ZONE_LABEL[mirrored].toLowerCase()}
+              </button>
+            )}
             {!gdraft && (
               <button
                 type="button"

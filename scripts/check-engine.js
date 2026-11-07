@@ -42,7 +42,7 @@ import { lingerTicks, freeKickSettleTargets, AFTER_INCIDENT } from '../src/engin
 import { pickCover } from '../src/engine/roles.js';
 import { parryVelocity } from '../src/engine/keeper.js';
 import { boxRunSpots } from '../src/engine/simulation.js';
-import { reshape, outfieldSlots, tacticsErrors, defaultTactics, teamStyle, TRANSITION, coachTactics, pressAllowedAt, LINE_OPTIONS, laneSlot, LANES, effectiveSlot, clampCustomSlot, CUSTOM_SLOT, minCostAssignment, baseSlots, ZONES, zoneWeights, toTeamFrame, zonedSlot, zoneCenter, mirrorZone } from '../src/engine/tactics.js';
+import { reshape, outfieldSlots, tacticsErrors, defaultTactics, teamStyle, TRANSITION, coachTactics, pressAllowedAt, LINE_OPTIONS, laneSlot, LANES, effectiveSlot, clampCustomSlot, CUSTOM_SLOT, minCostAssignment, baseSlots, ZONES, zoneWeights, toTeamFrame, zonedSlot, zoneCenter, mirrorZone, mirrorGroups } from '../src/engine/tactics.js';
 import { slotForPoint } from '../src/engine/shape.js';
 import { GROUP_ZONES, groupErrors, activeGroup, groupPassBonus, renameInGroups } from '../src/engine/groups.js';
 import { scriptErrors, renameInScripts, SCRIPT_ZONES, triggerMet, advanceScript } from '../src/engine/scripts.js';
@@ -871,6 +871,18 @@ console.log('Kelompok (2 Nov)');
     'bobot: anggota > bukan anggota; pemain ketiga (dari rekan sekelompok ke anggota lain) > balik ke pemberi',
     groupPassBonus(ok, 'a', 'b', null) > 0 && groupPassBonus(ok, 'a', 'z', null) === 0 && groupPassBonus(ok, 'a', 'c', 'b') > groupPassBonus(ok, 'a', 'b', 'b') ? [] : ['salah'],
   );
+  {
+    const t0 = createDemoTeams(2026, {});
+    const s0 = createSimulation(t0.home, t0.away, 1).getState();
+    const mine = s0.players.filter((q) => q.teamId === 'home');
+    const num = (n) => mine.find((q) => q.number === n).id;
+    const tac = s0.teams.home.tactics;
+    const src = { ...tac, groups: [{ id: 'a', zone: 'lawanKiri', memberIds: [3, 11, 6].map(num) }, { id: 'old', zone: 'lawanKanan', memberIds: [9, 10].map(num) }] };
+    const m = mirrorGroups(mine, src, 'lawanKiri', (i) => `m${i}`);
+    const out = m.groups.filter((g) => g.zone === 'lawanKanan');
+    const nums = out[0]?.memberIds.map((id) => mine.find((q) => q.id === id).number).sort((x, y) => x - y).join();
+    check(`cermin kelompok: #3-#11-#6 kiri → kanan ${nums} (bek kiri↔kanan, sayap kiri↔kanan); kelompok lama di zona tujuan diganti`, m.zone === 'lawanKanan' && out.length === 1 && nums === '2,7,8' && m.groups.some((g) => g.id === 'a') && groupErrors(m.groups).length === 0 ? [] : [JSON.stringify(m)]);
+  }
   check('pergantian: id anggota diganti', renameInGroups([ok], 'b', 'z')[0].memberIds.join() === 'a,z,c' ? [] : ['salah']);
   const teams = createDemoTeams(2026, {});
   const errs = [];
