@@ -8,6 +8,7 @@ import { FORMATIONS } from '../engine/formations.js';
 import {
   TEMPO_OPTIONS,
   CROSS_OPTIONS,
+  PASSING_OPTIONS,
   WIDTH_OPTIONS,
   LINE_OPTIONS,
   PRESS_OPTIONS,
@@ -28,6 +29,7 @@ const LOSS_LABEL = { counterPress: 'Counter-press', seimbang: 'Seimbang', mundur
 const WIN_LABEL = { seranganBalik: 'Serangan balik', seimbang: 'Seimbang', bangunUlang: 'Bangun ulang' };
 const TEMPO_LABEL = { lambat: 'Lambat', normal: 'Normal', cepat: 'Cepat' };
 const CROSS_LABEL = { jarang: 'Jarang', normal: 'Normal', sering: 'Sering' };
+const PASSING_LABEL = { pendek: 'Pendek', campur: 'Campur', langsung: 'Langsung' };
 const CORNER_LABEL = { campur: 'Campur', tiangDekat: 'Tiang dekat', tiangJauh: 'Tiang jauh', pendek: 'Pendek' };
 const FOCUS_LABEL = { seimbang: 'Seimbang', kiri: 'Kiri', tengah: 'Tengah', kanan: 'Kanan' };
 const PROTECT_LABEL = { seimbang: 'Seimbang', tengah: 'Tengah', sayap: 'Sayap' };
@@ -250,6 +252,7 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
     ip.formation,
     `lebar ${WIDTH_LABEL[ip.width]}`,
     `tempo ${TEMPO_LABEL[ip.tempo]}`,
+    `operan ${PASSING_LABEL[ip.passing ?? 'campur'].toLowerCase()}`,
     `fokus ${FOCUS_LABEL[ip.focus ?? 'seimbang']}`,
     laneCount ? `${laneCount} instruksi pribadi` : null,
   ].filter(Boolean).join(' · ');
@@ -363,7 +366,7 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
               labels={LINE_LABEL}
               onPick={(v) => setTactic({ outOfPossession: { line: v } }, `Garis bek ${LINE_LABEL[v]}`)}
               disabled={locked}
-              hint="Rendah: rapat & menutup tembakan. Tinggi: merebut di depan, ruang di belakang terbuka"
+              hint="Rendah: rapat & menutup tembakan, bek tetap di belakang saat menyerang. Tinggi: merebut di depan, ruang di belakang terbuka"
             />
             <Choice
               label="Tekanan"
@@ -456,6 +459,15 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
               onPick={(v) => setTactic({ inPossession: { tempo: v } }, `Tempo ${TEMPO_LABEL[v]}`)}
               disabled={locked}
               hint="Seberapa lama pemain menahan bola sebelum mengoper"
+            />
+            <Choice
+              label="Gaya operan"
+              value={team.tactics.inPossession.passing ?? 'campur'}
+              options={Object.keys(PASSING_OPTIONS)}
+              labels={PASSING_LABEL}
+              onPick={(v) => setTactic({ inPossession: { passing: v } }, `Gaya operan ${PASSING_LABEL[v]}`)}
+              disabled={locked}
+              hint="Pendek = sabar membangun · Langsung = cepat mencari depan; saat dipress di sepertiga sendiri bola ditendang panjang ke penyerang"
             />
             <Choice
               label="Umpan silang"

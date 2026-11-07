@@ -30,9 +30,14 @@ import { groupErrors, renameInGroups } from './groups.js';
 
 export const TEMPO_OPTIONS = Object.freeze({ lambat: 1.25, normal: 1, cepat: 0.8 });
 export const CROSS_OPTIONS = Object.freeze({ jarang: 0.5, normal: 1, sering: 1.5 });
+// Gaya operan (7 Nov, dari diagnosis blok rendah): pengali bobot operan ke depan (passing.js), dikali
+// pengubah transisi. Langsung = cepat mencari depan (lolos dari pressing); pendek = sabar membangun.
+export const PASSING_OPTIONS = Object.freeze({ pendek: 0.75, campur: 1, langsung: 1.6 });
 export const WIDTH_OPTIONS = Object.freeze({ sempit: 1.15, normal: 1.35, lebar: 1.5 });
 export const LINE_OPTIONS = Object.freeze({
-  rendah: Object.freeze({ shift: -4, compact: 0.8, coverRange: 36 }),
+  // restShift (7 Nov, diagnosis blok rendah): garis belakang tetap di belakang saat menguasai bola
+  // ("rest defense") — 88% tembakan ke gawang blok rendah datang ≤ 10 dtk setelah ia kehilangan bola.
+  rendah: Object.freeze({ shift: -4, compact: 0.8, coverRange: 36, restShift: -8 }),
   normal: Object.freeze({ shift: 0, compact: 1, coverRange: 0 }),
   tinggi: Object.freeze({ shift: 5, compact: 1, coverRange: 0 }),
 });
@@ -194,7 +199,7 @@ export const FREE_KICK_SCHEMES = Object.freeze(['otomatis', 'tembak', 'lambung',
 export function defaultTactics(formation) {
   return {
     baseFormation: formation, // layer 1 (2 Nov): formasi dasar, acuan bayangan di gambar taktik
-    inPossession: { formation, width: 'normal', tempo: 'normal', cross: 'normal', focus: 'seimbang' },
+    inPossession: { formation, width: 'normal', tempo: 'normal', cross: 'normal', focus: 'seimbang', passing: 'campur' },
     outOfPossession: { formation, line: 'normal', press: 'tinggi', protect: 'seimbang' },
     playerLanes: {}, // id pemain → instruksi jalur dengan bola (tanpa entri = 'tetap')
     customIn: {}, // id pemain → { depth, lane } titik patokan pribadi dengan bola
@@ -224,6 +229,7 @@ export function teamStyle(tactics, sinceLoss = Infinity, sinceWin = Infinity) {
   if (inLoss && tactics.onLoss === 'mundur') pressZone = Math.min(pressZone, TRANSITION.regroupZone);
   return {
     blockShift: line.shift, // hanya saat tanpa bola (attackOnly ditangani di bawah)
+    restShift: line.restShift ?? 0, // garis belakang saat dengan bola (blok rendah)
     attackOnly: false,
     defendOnly: true,
     compact: line.compact,
@@ -234,7 +240,8 @@ export function teamStyle(tactics, sinceLoss = Infinity, sinceWin = Infinity) {
     protectWidth: PROTECT_OPTIONS[tactics.outOfPossession.protect ?? 'seimbang'],
     tempo: TEMPO_OPTIONS[tactics.inPossession.tempo] * (winMod?.tempo ?? 1),
     crossScale: CROSS_OPTIONS[tactics.inPossession.cross],
-    directness: winMod?.directness ?? 1,
+    directness: Math.min(3, Math.max(0.5, PASSING_OPTIONS[tactics.inPossession.passing ?? 'campur'] * (winMod?.directness ?? 1))),
+    longBalls: tactics.inPossession.passing === 'langsung',
     runScale: winMod?.runScale ?? 1,
     energyDrain: press.drain * (tactics.onLoss === 'counterPress' ? TRANSITION.counterDrain : 1),
     counterPress: inLoss && tactics.onLoss === 'counterPress',
@@ -378,6 +385,7 @@ const PHASE_KEYS = Object.freeze({
     tempo: (v) => v in TEMPO_OPTIONS,
     cross: (v) => v in CROSS_OPTIONS,
     focus: (v) => v in FOCUS_OPTIONS,
+    passing: (v) => v in PASSING_OPTIONS,
   }),
   outOfPossession: Object.freeze({
     formation: (v) => Boolean(FORMATIONS[v]),

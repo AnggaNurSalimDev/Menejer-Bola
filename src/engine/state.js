@@ -108,6 +108,7 @@ export function createInitialBall(kickOffTeamId) {
     crossTeamId: null,
     overTop: false, // bola lambung ke belakang garis bek (attack.js OVER_TOP); hanya bersama crossTeamId
     switchPlay: false, // umpan pindah sisi (attack.js SWITCH); hanya bersama crossTeamId
+    longBall: false, // bola panjang dari sepertiga sendiri (attack.js LONG_BALL); hanya bersama crossTeamId
     // Jenis tembakan yang sedang berjalan: 'foot' | 'long' | 'header' | null.
     shotKind: null,
     ownerId: null,
@@ -153,6 +154,7 @@ function createStats(teamIds) {
     clearances: perTeam(() => 0),
     crosses: perTeam(() => ({ attempted: 0, won: 0 })),
     overTop: perTeam(() => ({ attempted: 0, won: 0 })),
+    longBalls: perTeam(() => ({ attempted: 0, won: 0 })),
     switches: perTeam(() => ({ attempted: 0, won: 0 })),
     scripts: perTeam(() => ({ started: 0, completed: 0, aborted: 0, shots: 0 })),
     scriptById: perTeam(() => ({})), // id skema → { started, completed, aborted, shots }
@@ -422,6 +424,8 @@ export function validateMatchState(state, teams = []) {
   if (ball.overTop && ball.crossTeamId === null) errors.push('bola lambung ke belakang tanpa tim pengirim');
   if (ball.switchPlay && ball.crossTeamId === null) errors.push('umpan pindah sisi tanpa tim pengirim');
   if (ball.switchPlay && ball.overTop) errors.push('umpan pindah sisi sekaligus lambungan ke belakang');
+  if (ball.longBall && ball.crossTeamId === null) errors.push('bola panjang tanpa tim pengirim');
+  if (ball.longBall && (ball.overTop || ball.switchPlay)) errors.push('bola panjang sekaligus jenis lambungan lain');
   if (ball.crossTeamId !== null && ball.passTargetId !== null) errors.push('umpan silang sekaligus operan tanah');
   if (ball.lastTouchTeamId !== null && !teamIds.includes(ball.lastTouchTeamId)) {
     errors.push('lastTouchTeamId tidak valid');

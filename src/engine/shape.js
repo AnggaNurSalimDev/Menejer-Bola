@@ -105,6 +105,7 @@ export function computeAnchor(player, ball, attacksRight, phase = 'neutral', men
     // Garis belakang tetap (uji 1 Nov: menggeser bek ikut membuat tim kebobolan jauh lebih banyak
     // saat kehilangan bola — lawan menyerang sisi yang ditinggalkan).
     if (phase === 'attack' && player.slot.depth > FOCUS_BACK_LINE_DEPTH) y += mentality?.focusShift ?? 0;
+    if (phase === 'attack' && player.slot.depth <= FOCUS_BACK_LINE_DEPTH) x += mentality?.restShift ?? 0;
     y += (b.y - y) * shape.lateralPull;
     x = clamp(x, retreatLimit, PITCH.length - FRONT_MARGIN);
     y = clamp(y, FIELD_MARGIN, PITCH.width - FIELD_MARGIN);

@@ -13,7 +13,8 @@ import { createSimulation } from '../src/engine/simulation.js';
 import { createRng } from '../src/engine/rng.js';
 import { TICK_RATE, HALF_TICKS } from '../src/engine/constants.js';
 import { computeAnchor, PHASES } from '../src/engine/shape.js';
-import { PITCH } from '../src/engine/pitch.js';
+import { PITCH, distance } from '../src/engine/pitch.js';
+import { longBallTarget } from '../src/engine/attack.js';
 import { rollBall, predictBallPosition, timeToTravel, passSpeedForDistance } from '../src/engine/ball.js';
 import { findController } from '../src/engine/touch.js';
 import { goalLineCrossing } from '../src/engine/simulation.js';
@@ -887,6 +888,36 @@ console.log('Gaya klub AI (7 Nov)');
     }
   }
   check('tiap gaya bisa dipasang & laga berjalan valid', errs.slice(0, 6));
+}
+
+console.log('Gaya operan & blok rendah (7 Nov)');
+{
+  const base = defaultTactics('4-4-2');
+  const st = (passing) => teamStyle({ ...base, inPossession: { ...base.inPossession, passing } });
+  check('gaya operan: pendek < campur < langsung (pengali operan ke depan), langsung → bola panjang', st('pendek').directness < st('campur').directness && st('campur').directness < st('langsung').directness && st('langsung').longBalls && !st('campur').longBalls ? [] : ['salah']);
+  check('gaya operan tidak dikenal ditolak', tacticsErrors({ ...base, inPossession: { ...base.inPossession, passing: 'acak' } }).length > 0 ? [] : ['diterima']);
+  const low = teamStyle({ ...base, outOfPossession: { ...base.outOfPossession, line: 'rendah' } });
+  const cb = { id: 'cb', role: 'CB', slot: { depth: 0.17, lane: 0.4 } };
+  const cm = { id: 'cm', role: 'CM', slot: { depth: 0.31, lane: 0.4 } };
+  const mid = { x: PITCH.length / 2, y: PITCH.width / 2 };
+  const dCb = computeAnchor(cb, mid, true, 'attack', teamStyle(base)).x - computeAnchor(cb, mid, true, 'attack', low).x;
+  const dCm = computeAnchor(cm, mid, true, 'attack', teamStyle(base)).x - computeAnchor(cm, mid, true, 'attack', low).x;
+  check(`garis rendah: bek tetap di belakang saat dengan bola (${dCb.toFixed(1)} m), gelandang tidak (${dCm.toFixed(1)} m)`, dCb > 5 && Math.abs(dCm) < 0.5 ? [] : ['salah']);
+  const holder = { id: 'h', role: 'CB', x: 15, y: 30 };
+  const mates = [holder, { id: 's', role: 'ST', x: 60, y: 40 }, { id: 'm', role: 'CM', x: 35, y: 30 }];
+  const lb = longBallTarget(holder, mates, 70, true);
+  check('bola panjang menuju penyerang terdepan, tidak melewati garis offside, ≤ 60 m', lb && lb.targetId === 's' && lb.aim.x <= 70 && distance(holder, lb.aim) <= 60.01 ? [] : [JSON.stringify(lb)]);
+  check('tanpa penyerang ≥ 20 m lebih depan → tidak ada bola panjang', longBallTarget(holder, [holder, { id: 'm', role: 'CM', x: 30, y: 30 }], 70, true) === null ? [] : ['ada']);
+  const t = createDemoTeams(2026, {});
+  const sim = createSimulation(t.home, t.away, 6, { aiTeams: ['away'] });
+  let s2 = sim.setTactics('home', { inPossession: { passing: 'langsung' } });
+  const errs = [];
+  while (s2.period === 'first') {
+    s2 = sim.step();
+    if (s2.tick % 60 === 0) errs.push(...validateMatchState(s2));
+  }
+  check(`gaya operan langsung: bola panjang dipakai (${s2.stats.longBalls.home.attempted}×), tim lain tidak (${s2.stats.longBalls.away.attempted}×)`, s2.stats.longBalls.home.attempted > 0 && s2.stats.longBalls.away.attempted === 0 ? [] : ['salah']);
+  check('state valid dengan bola panjang', errs.slice(0, 5));
 }
 
 console.log('Kelompok (2 Nov)');

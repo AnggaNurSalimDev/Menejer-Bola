@@ -132,6 +132,8 @@ import {
   RUN_COOLDOWN_TICKS,
   RUN_START_CHANCE,
   overTopPoint,
+  LONG_BALL,
+  longBallTarget,
   switchTarget,
   SWITCH,
 } from './attack.js';
@@ -203,6 +205,7 @@ function cloneStats(stats) {
     clearances: { ...stats.clearances },
     crosses: perTeam(stats.crosses),
     overTop: perTeam(stats.overTop),
+    longBalls: perTeam(stats.longBalls),
     switches: perTeam(stats.switches),
     scripts: perTeam(stats.scripts),
     groups: perTeam(stats.groups),
@@ -669,6 +672,13 @@ function decideHolder(holder, ball, players, rng, match) {
 
   const forced =
     ball.heldTicks >= FORCED_PASS_TICKS || (pressured && ball.heldTicks >= PRESSURED_FORCED_TICKS);
+  // Gaya operan "langsung" (7 Nov, diagnosis blok rendah: 25–33% bola hilang di sepertiga sendiri saat
+  // dipress): dipaksa di sepertiga sendiri tanpa operan aman → tendang panjang ke penyerang terdepan
+  // (duel udara), seperti tim blok rendah sungguhan. Hanya untuk tim yang memilihnya.
+  if (forced && !best.safe && match.styles?.[holder.teamId]?.longBalls && forwardOf(ball, holder.attacksRight) <= LONG_BALL.ownThird && rng.chance(LONG_BALL.chance)) {
+    const long = longBallTarget(holder, players.filter((p) => p.teamId === holder.teamId), offsideLine(opponents, holder.attacksRight), holder.attacksRight);
+    if (long) return { type: 'longBall', aim: long.aim, context };
+  }
   // Dipaksa melepas bola di dekat gawang sendiri tanpa opsi aman: buang ke samping.
   if (forced && canSafetyClear(holder, ball, pressured, best.safe) && rng.chance(safetyClearChance(holder))) {
     return { type: 'safetyClear', context, pressured };
@@ -703,6 +713,7 @@ function releaseBall(ball, kicker, velocity, extra) {
     crossTeamId: null,
     overTop: false,
     switchPlay: false,
+    longBall: false,
     shotKind: null,
     fromCorner: false,
     outFrom: null,
@@ -835,6 +846,7 @@ function gainControl(ball, controller, stats, rng, note, tempo = 1) {
     crossTeamId: null,
     overTop: false,
     switchPlay: false,
+    longBall: false,
     shotKind: null,
   };
 }
@@ -906,6 +918,7 @@ function restartFromOut(ball, from, outPoint, teams, teamIds) {
     crossTeamId: null,
     overTop: false,
     switchPlay: false,
+    longBall: false,
     shotKind: null,
   };
 }
@@ -1110,6 +1123,7 @@ function freeKickBallAt(ball, spot, teamId, teams) {
     crossTeamId: null,
     overTop: false,
     switchPlay: false,
+    longBall: false,
     shotKind: null,
   };
 }
@@ -2049,6 +2063,12 @@ export function createSimulation(home, away, seed, options = {}) {
           const v = overTopVelocity(ball, decision.aim, holder, rng, blunderScale(holder, decision.context), SWITCH.arrivalHeight);
           ball = releaseBall(ball, holder, { vx: v.vx, vy: v.vy }, { vz: v.vz, crossTeamId: holder.teamId, switchPlay: true });
           ballReleasedBy = holder.id;
+        } else if (decision?.type === 'longBall') {
+          if (forwardOf(ball, holder.attacksRight) > LONG_BALL.ownThird) throw new Error(`bola panjang di luar sepertiga sendiri oleh ${holder.id}`);
+          stats.longBalls[holder.teamId].attempted += 1;
+          const v = overTopVelocity(ball, decision.aim, holder, rng, blunderScale(holder, decision.context), CROSS.arrivalHeight);
+          ball = releaseBall(ball, holder, { vx: v.vx, vy: v.vy }, { vz: v.vz, crossTeamId: holder.teamId, longBall: true });
+          ballReleasedBy = holder.id;
         } else if (decision?.type === 'overTop') {
           if (holder.role === 'GK') throw new Error(`bola lambung ke belakang oleh kiper ${holder.id}`);
           stats.overTop[holder.teamId].attempted += 1;
@@ -2432,7 +2452,7 @@ export function createSimulation(home, away, seed, options = {}) {
       const w = winner.player;
       const contact = clampToPitch(winner.point);
       stats.aerialsWon[w.teamId] += 1;
-      if (ball.crossTeamId === w.teamId) stats[ball.overTop ? 'overTop' : ball.switchPlay ? 'switches' : 'crosses'][w.teamId].won += 1;
+      if (ball.crossTeamId === w.teamId) stats[ball.overTop ? 'overTop' : ball.switchPlay ? 'switches' : ball.longBall ? 'longBalls' : 'crosses'][w.teamId].won += 1;
 
       if (w.role === 'GK' && insideOwnPenaltyArea(contact, w.attacksRight)) {
         if (rng.chance(keeperCatchChance(w))) {
@@ -2493,6 +2513,8 @@ export function createSimulation(home, away, seed, options = {}) {
         crossTeamId: null,
         overTop: false,
         switchPlay: false,
+        longBall: false,
+    longBall: false,
         shotKind: null,
       };
       for (let i = 0; i < players.length; i += 1) {
@@ -2657,11 +2679,11 @@ export function createSimulation(home, away, seed, options = {}) {
           startReactions(touch.player.id);
         } else if (touch) {
           noteMissedOffside(touch.player);
-          if (ball.crossTeamId === touch.player.teamId) stats[ball.overTop ? 'overTop' : ball.switchPlay ? 'switches' : 'crosses'][touch.player.teamId].won += 1;
+          if (ball.crossTeamId === touch.player.teamId) stats[ball.overTop ? 'overTop' : ball.switchPlay ? 'switches' : ball.longBall ? 'longBalls' : 'crosses'][touch.player.teamId].won += 1;
           takeControl(touch.player);
         } else {
           const settled = flight.z === 0 && flight.vz === 0;
-          ball = { ...ball, ...flight, kickCooldown: cooldown, crossTeamId: settled ? null : ball.crossTeamId, overTop: settled ? false : ball.overTop, switchPlay: settled ? false : ball.switchPlay };
+          ball = { ...ball, ...flight, kickCooldown: cooldown, crossTeamId: settled ? null : ball.crossTeamId, overTop: settled ? false : ball.overTop, switchPlay: settled ? false : ball.switchPlay, longBall: settled ? false : ball.longBall };
         }
       } else {
         ball = { ...ball, ...flight, kickCooldown: cooldown };

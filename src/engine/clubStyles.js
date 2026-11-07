@@ -22,7 +22,7 @@ export const CLUB_STYLES = Object.freeze({
     formation: '4-3-3',
     philosophy: 'seimbang',
     tactics: Object.freeze({
-      inPossession: { formation: '3-2-5', width: 'lebar', tempo: 'lambat', cross: 'jarang' },
+      inPossession: { formation: '3-2-5', width: 'lebar', tempo: 'lambat', cross: 'jarang', passing: 'pendek' },
       outOfPossession: { line: 'tinggi', press: 'tinggi' },
       onLoss: 'counterPress',
       onWin: 'bangunUlang',
@@ -45,7 +45,7 @@ export const CLUB_STYLES = Object.freeze({
     formation: '4-4-2',
     philosophy: 'cepat',
     tactics: Object.freeze({
-      inPossession: { tempo: 'cepat' },
+      inPossession: { tempo: 'cepat', passing: 'langsung' },
       outOfPossession: { formation: '4-5-1', line: 'rendah', press: 'rendah', protect: 'tengah' },
       onLoss: 'mundur',
       onWin: 'seranganBalik',
@@ -56,9 +56,10 @@ export const CLUB_STYLES = Object.freeze({
     formation: '5-4-1',
     philosophy: 'fisik',
     tactics: Object.freeze({
+      inPossession: { passing: 'langsung' },
       outOfPossession: { line: 'rendah', press: 'rendah', protect: 'tengah' },
       onLoss: 'mundur',
-      onWin: 'seimbang',
+      onWin: 'seranganBalik',
     }),
   }),
   sayap: Object.freeze({

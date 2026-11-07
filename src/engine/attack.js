@@ -308,3 +308,32 @@ export function switchTarget(holder, teammates, opponents, attacksRight) {
   const aim = clampToPitch({ x: best.r.x + dir * SWITCH.lead, y: best.r.y }, 2);
   return { aim, receiverId: best.r.id };
 }
+
+// ------------------------------------------------ bola panjang dari sepertiga sendiri (1 Nov, cabang
+// percobaan; 7 Nov dipakai hanya untuk gaya operan "langsung")
+// Saat dipaksa melepas bola di sepertiga sendiri tanpa operan aman, tim langsung menendang panjang ke
+// penyerang terdepan (duel udara), bukan memaksa operan pendek yang mudah direbut.
+export const LONG_BALL = Object.freeze({
+  ownThird: 35, // meter dari garis gawang sendiri
+  chance: 0.6, // per keputusan saat syarat terpenuhi
+  maxDistance: 60,
+  ahead: 4, // meter di depan penyerang sasaran
+  minGain: 20, // penyerang harus sejauh ini lebih depan dari pengumpan
+});
+
+// Titik tuju: di depan rekan lapangan terdepan yang onside, tidak melewati garis offside lawan.
+export function longBallTarget(holder, teammates, line, attacksRight) {
+  if (!Number.isFinite(line)) throw new RangeError('longBallTarget: garis offside tidak valid');
+  const pool = teammates.filter((p) => p.id !== holder.id && p.role !== 'GK' && forwardOf(p, attacksRight) <= line);
+  if (pool.length === 0) return null;
+  const target = [...pool].sort((a, b) => forwardOf(b, attacksRight) - forwardOf(a, attacksRight) || a.id.localeCompare(b.id))[0];
+  if (forwardOf(target, attacksRight) - forwardOf(holder, attacksRight) < LONG_BALL.minGain) return null;
+  const depth = Math.min(forwardOf(target, attacksRight) + LONG_BALL.ahead, line);
+  let aim = { x: attacksRight ? depth : PITCH.length - depth, y: target.y };
+  const d = distance(holder, aim);
+  if (d > LONG_BALL.maxDistance) {
+    const k = LONG_BALL.maxDistance / d;
+    aim = { x: holder.x + (aim.x - holder.x) * k, y: holder.y + (aim.y - holder.y) * k };
+  }
+  return { aim: clampToPitch(aim, 2), targetId: target.id };
+}
