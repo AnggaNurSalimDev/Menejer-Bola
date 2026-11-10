@@ -70,7 +70,10 @@ export const RUNNER_ROLES = Object.freeze(['ST', 'RW', 'LW', 'RM', 'LM']);
 const RUN_DEPTH = 10; // meter di belakang garis offside
 const RUN_CENTER_PULL = 0.3; // condong ke tengah saat berlari
 const RUN_GOAL_MARGIN = 7; // jangan lari lebih dekat dari ini ke garis gawang
-const MAX_DISTANCE_BEHIND_LINE = 4; // lari dimulai dari "bahu" bek terakhir, bukan jauh di belakangnya
+// 10 Nov (studi garis tinggi): 4 → 12. Dengan 4 m hanya ±3 lari per babak per tim (median penyerang 21 m
+// di belakang garis), jadi ruang di belakang garis tinggi hampir tak pernah dihukum. Lari kini juga dari
+// sedikit di belakang garis (datang terlambat), tetap onside.
+const MAX_DISTANCE_BEHIND_LINE = 12;
 const MIN_SPACE = 5; // meter: ruang minimal di titik tuju (jarak ke bek terdekat)
 const HOLDER_MIN_DEPTH = PITCH.length * 0.35; // pemegang bola sudah melewati area sendiri
 const DEEP_SPACE_RUN = 45; // meter ruang di belakang garis lawan: lari boleh dimulai dari mana saja
