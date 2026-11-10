@@ -517,6 +517,46 @@ function assignBoxRuns(players, teamId, ball, attacksRight, excluded, scheme = '
 // Keputusan pemegang bola:
 //   { type: 'clear' } | { type: 'shoot', shot } | { type: 'cross', aim } | { type: 'pass', option }
 //   | null (terus menggiring)
+// Lemparan ke dalam. Jangkauan dari stat Kekuatan: 14 m (lemah) – 28 m (pelempar jauh). Laju
+// maksimal lemparan jauh di bawah tendangan (±16 m/s vs 26 m/s), jadi bola lebih mudah dijangkau lawan.
+export const THROW_IN = Object.freeze({ minRange: 14, maxRange: 28, maxSpeed: 16, minDistance: 4 });
+
+export function throwRange(holder) {
+  const k = holder.stats?.kekuatan;
+  const t = Number.isFinite(k) ? Math.min(1, Math.max(0, (k - 1) / 19)) : 0.5;
+  return THROW_IN.minRange + t * (THROW_IN.maxRange - THROW_IN.minRange);
+}
+
+function throwInDecision(holder, ball, players, opponents, rng, context) {
+  const range = throwRange(holder);
+  const mates = players.filter((p) => p.teamId === holder.teamId);
+  const capped = (o) => {
+    const d = distance(ball, o.target);
+    return { ...o, speed: Math.min(THROW_IN.maxSpeed, passSpeedForDistance(d)) };
+  };
+  const options = evaluatePassOptions({ holder, origin: ball, teammates: mates, opponents, attacksRight: holder.attacksRight, previousOwnerId: null, rng, directness: 1 })
+    .filter((o) => !o.through && distance(ball, o.target) <= range)
+    .map(capped);
+  const pick = options.find((o) => o.safe) ?? options[0];
+  if (pick) return { type: 'pass', option: pick, context, throwIn: true };
+  // Tidak ada pilihan biasa: lempar ke rekan terdekat (dibatasi jangkauan), apa pun risikonya.
+  const near = mates
+    .filter((p) => p.id !== holder.id && p.role !== 'GK' && distance(ball, p) >= THROW_IN.minDistance)
+    .sort((a, b) => distance(ball, a) - distance(ball, b) || a.id.localeCompare(b.id))[0];
+  if (!near) return null;
+  const d = distance(ball, near);
+  const k = Math.min(1, range / d);
+  const target = clampToPitch({ x: ball.x + (near.x - ball.x) * k, y: ball.y + (near.y - ball.y) * k }, 0.5);
+  const td = distance(ball, target);
+  if (!(td > 0)) return null;
+  return {
+    type: 'pass',
+    option: { receiver: near, target, speed: Math.min(THROW_IN.maxSpeed, passSpeedForDistance(td)), margin: 0, trueMargin: 0, score: 0, safe: false, offside: false, through: false },
+    context,
+    throwIn: true,
+  };
+}
+
 function decideHolder(holder, ball, players, rng, match) {
   const opponents = players.filter((p) => p.teamId !== holder.teamId);
   const context = conditionContext(holder, players, match);
@@ -544,6 +584,11 @@ function decideHolder(holder, ball, players, rng, match) {
       }
     }
   }
+
+  // Lemparan ke dalam (10 Nov, masukan pengguna: pelempar sempat "menendang" bola jauh ke kotak):
+  // hanya operan tangan ke rekan dalam jangkauan lemparan, laju lemparan terbatas. Tidak ada tembakan,
+  // umpan silang, lambungan, bola panjang, giring, atau perintah skema.
+  if (ball.setPieceKind === 'throwIn') return throwInDecision(holder, ball, players, opponents, rng, context);
 
   // Strategi detil: perintah skrip untuk pemegang bola ini (keputusan dipaksa, hasil tetap fisika).
   const order = match.scriptOrders?.[holder.teamId];
@@ -1889,7 +1934,7 @@ export function createSimulation(home, away, seed, options = {}) {
       // Pemain yang sudah dikartu kuning lebih jarang mencoba tekel (fouls.js: cautionScale).
       // Eksekutor tendangan bebas yang sedang bersiap tidak boleh ditekel.
       const freeKickSetup =
-        (ball.setPieceKind === 'freeKick' && ball.heldTicks < FREE_KICK.holdTicks) || ball.setPieceKind === 'penalty';
+        (ball.setPieceKind === 'freeKick' && ball.heldTicks < FREE_KICK.holdTicks) || ball.setPieceKind === 'penalty' || ball.setPieceKind === 'throwIn';
       const tackler =
         isKeeperHandling(holder, ball) || freeKickSetup
           ? null
@@ -2081,6 +2126,9 @@ export function createSimulation(home, away, seed, options = {}) {
           ball = releaseBall(ball, holder, { vx: v.vx, vy: v.vy }, { vz: v.vz, crossTeamId: holder.teamId });
           ballReleasedBy = holder.id;
         } else if (decision?.type === 'pass') {
+          if (ball.setPieceKind === 'throwIn' && !(decision.throwIn && decision.option.speed <= THROW_IN.maxSpeed + 1e-9)) {
+            throw new Error(`lemparan ke dalam bukan lemparan tangan oleh ${holder.id}`);
+          }
           stats.passes[holder.teamId].attempted += 1;
           const g = match.groupOf?.[holder.teamId];
           if (g) {

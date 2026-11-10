@@ -45,6 +45,7 @@ import { parryVelocity } from '../src/engine/keeper.js';
 import { boxRunSpots } from '../src/engine/simulation.js';
 import { reshape, outfieldSlots, tacticsErrors, defaultTactics, teamStyle, TRANSITION, coachTactics, pressAllowedAt, LINE_OPTIONS, laneSlot, LANES, effectiveSlot, clampCustomSlot, CUSTOM_SLOT, minCostAssignment, baseSlots, ZONES, zoneWeights, toTeamFrame, zonedSlot, zoneCenter, mirrorZone, mirrorGroups } from '../src/engine/tactics.js';
 import { slotForPoint } from '../src/engine/shape.js';
+import { THROW_IN, throwRange } from '../src/engine/simulation.js';
 import { createLeague, leagueErrors, buildMatchTeams, completeWeek, standings, parseLeague, newSeason, buyPlayer, sellPlayer, setStarter, playerValue, clubById } from '../src/engine/league.js';
 import { CLUB_STYLES, STYLE_KEYS, styleTactics, styleErrors, randomStyle } from '../src/engine/clubStyles.js';
 import { GROUP_ZONES, groupErrors, activeGroup, groupPassBonus, renameInGroups } from '../src/engine/groups.js';
@@ -860,6 +861,32 @@ console.log('Strategi detil: engine skrip (2 Nov)');
   let gkErr = false;
   try { sim2.setTactics('home', { scripts: [{ ...ok, holderId: gk.id, playerIds: [], steps: [{ trigger: { type: 'mulai' }, actions: [{ type: 'tembak' }] }] }] }); } catch { gkErr = true; }
   check('kiper tidak bisa jadi bagian skrip', gkErr ? [] : ['diterima']);
+}
+
+console.log('Lemparan ke dalam (10 Nov)');
+{
+  const t = createDemoTeams(2026);
+  let n = 0;
+  let maxSpeed = 0;
+  let aerial = 0;
+  const errs = [];
+  for (const seed of [1, 2]) {
+    const sim = createSimulation(t.home, t.away, seed);
+    let st = sim.getState();
+    while (st.period === 'first') {
+      const prev = st;
+      st = sim.step();
+      if (st.tick % 60 === 0) errs.push(...validateMatchState(st));
+      if (prev.ball.ownerId && prev.ball.setPieceKind === 'throwIn' && st.ball.ownerId === null) {
+        n += 1;
+        maxSpeed = Math.max(maxSpeed, Math.hypot(st.ball.vx, st.ball.vy));
+        if (st.ball.vz > 0.1 || st.ball.crossTeamId) aerial += 1;
+      }
+    }
+  }
+  check(`lemparan hanya dengan tangan: ${n} lemparan, laju maks ${maxSpeed.toFixed(1)} m/s (≤ ${THROW_IN.maxSpeed}), tanpa umpan silang/lambungan`, n > 5 && maxSpeed <= THROW_IN.maxSpeed + 0.5 && aerial === 0 ? [] : [`${n} ${maxSpeed} ${aerial}`]);
+  check('jangkauan lemparan dari stat Kekuatan: 14–28 m, naik dengan kekuatan', throwRange({ stats: { kekuatan: 1 } }) === 14 && throwRange({ stats: { kekuatan: 20 } }) === 28 && throwRange({ stats: { kekuatan: 12 } }) > throwRange({ stats: { kekuatan: 8 } }) ? [] : ['salah']);
+  check('state valid dengan lemparan', errs.slice(0, 5));
 }
 
 console.log('Liga (10 Nov)');

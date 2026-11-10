@@ -30,7 +30,8 @@ export const LEAGUE = Object.freeze({
   weeklyIncome: 2,
   // Hasil cepat (Poisson): λ = base · e^(k·selisih kekuatan) · (kandang ? homeEdge : 1).
   // k dari kalibrasi engine: 13 vs 11 → gol 1,92 vs 0,84 (rasio ±2,3 untuk selisih 2 → k ≈ 0,21).
-  quick: Object.freeze({ base: 1.24, k: 0.21, homeEdge: 1.1, maxGoals: 9 }),
+  // base disetel agar rata-rata gol ≈ engine (10 Nov setelah lemparan tangan: 2,40/laga).
+  quick: Object.freeze({ base: 1.05, k: 0.21, homeEdge: 1.1, maxGoals: 9 }),
 });
 
 // Klub karangan. Kualitas = rata-rata stat dasar (1–20); gaya dari clubStyles.js.
