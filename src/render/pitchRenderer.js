@@ -1,6 +1,7 @@
 // Renderer canvas. Hanya membaca state engine, tidak pernah mengubahnya.
 // Semua ukuran di sini ditulis dalam meter, lalu dikonversi lewat viewport.
 
+import { t } from '../i18n.js';
 import { PITCH } from '../engine/pitch.js';
 import { CONDITION } from '../engine/condition.js';
 
@@ -519,7 +520,7 @@ function drawOfficials(ctx, vp, state) {
     const body = drawOfficialBody(ctx, vp, a, 0.8, null);
     drawFlag(ctx, body.cx, body.cy, body.w, a.half === flagHalf);
   }
-  drawOfficialBody(ctx, vp, officials.referee, 1, 'Wasit');
+  drawOfficialBody(ctx, vp, officials.referee, 1, t('Wasit'));
 }
 
 export function renderMatch(ctx, state, cssWidth, cssHeight) {

@@ -2,13 +2,14 @@ import { useRef, useState } from 'react';
 import { PITCH } from '../engine/pitch.js';
 import { computeAnchor, slotForPoint } from '../engine/shape.js';
 import { teamStyle, effectiveSlot, clampCustomSlot, CUSTOM_SLOT, baseSlots } from '../engine/tactics.js';
+import { t, tk } from '../i18n.js';
 
 // Gambar & layer taktik (1 Nov, ide pengguna): lapangan dilihat dari arah serang tim (selalu ke kanan),
 // jalur kiri di atas. Posisi dihitung dengan rumus jangkar engine (bola di tengah lapangan).
 // Layer "Dengan bola" & "Tanpa bola": seret bulatan → titik patokan pribadi pemain itu. Pemain tetap
 // bergeser mengikuti bola, menjaga lawan & berlari — titik ini bobot besar, bukan rel kaku.
 
-const LANE_NAMES = ['Kiri', 'Half-space kiri', 'Tengah', 'Half-space kanan', 'Kanan'];
+const LANE_NAMES = [tk('Kiri'), tk('Half-space kiri'), tk('Tengah'), tk('Half-space kanan'), tk('Kanan')];
 const W = PITCH.length;
 const H = PITCH.width;
 const BAND = H / 5;
@@ -69,8 +70,8 @@ export function LayerPitch({ title, phase, players, tactics, color, highlightId,
   const items = positions(players, tactics, phase);
   const otherPhase = phase === 'attack' ? 'defend' : 'attack';
   const ghostDefs = [
-    { key: `${phase}:dasar`, label: 'Formasi dasar', cls: 'ghost--base', items: () => basePositions(players, tactics, phase) },
-    { key: `${phase}:lain`, label: otherPhase === 'attack' ? 'Dengan bola' : 'Tanpa bola', cls: `ghost--${otherPhase}`, items: () => positions(players, tactics, otherPhase) },
+    { key: `${phase}:dasar`, label: tk('Formasi dasar'), cls: 'ghost--base', items: () => basePositions(players, tactics, phase) },
+    { key: `${phase}:lain`, label: otherPhase === 'attack' ? tk('Dengan bola') : tk('Tanpa bola'), cls: `ghost--${otherPhase}`, items: () => positions(players, tactics, otherPhase) },
   ];
   const ghosts = ghostDefs.filter((g) => ghostOn[g.key]).map((g) => ({ ...g, list: g.items() }));
   const here = new Map(items.map((it) => [it.p.id, it]));
@@ -118,24 +119,24 @@ export function LayerPitch({ title, phase, players, tactics, color, highlightId,
   return (
     <figure className="lane-fig">
       <figcaption>
-        <span>{title}</span>
+        <span>{t(title)}</span>
         {anyCustom && (
           <button type="button" className="lane-reset" onClick={onReset} disabled={locked}>
-            Kembali ke formasi
+            {t('Kembali ke formasi')}
           </button>
         )}
       </figcaption>
-      <div className="ghost-toggles" role="group" aria-label="Bayangan posisi">
-        <span>Bayangan:</span>
+      <div className="ghost-toggles" role="group" aria-label={t('Bayangan posisi')}>
+        <span>{t('Bayangan')}:</span>
         {ghostDefs.map((g) => (
           <label key={g.key} className={`ghost-toggle ${g.cls}`}>
             <input type="checkbox" checked={Boolean(ghostOn[g.key])} onChange={() => toggleGhost(g.key)} />
             <span className="ghost-swatch" aria-hidden="true" />
-            {g.label}
+            {t(g.label)}
           </label>
         ))}
       </div>
-      <svg ref={svgRef} viewBox={`-1 -1 ${W + 2} ${H + 2}`} role="img" aria-label={title} onPointerMove={move} onPointerUp={end} onPointerCancel={() => setDrag(null)}>
+      <svg ref={svgRef} viewBox={`-1 -1 ${W + 2} ${H + 2}`} role="img" aria-label={t(title)} onPointerMove={move} onPointerUp={end} onPointerCancel={() => setDrag(null)}>
         <rect x="0" y="0" width={W} height={H} className="lane-pitch" />
         {[0, 1, 2, 3, 4].map((i) => (
           <rect key={i} x="0" y={i * BAND} width={W} height={BAND} className={i % 2 ? 'lane-band lane-band--alt' : 'lane-band'} />
@@ -150,11 +151,11 @@ export function LayerPitch({ title, phase, players, tactics, color, highlightId,
         {showLaneNames &&
           LANE_NAMES.map((n, i) => (
             <text key={n} x={W / 2 + 1.5} y={i * BAND + 3.2} className="lane-name">
-              {n}
+              {t(n)}
             </text>
           ))}
         <text x={W - 2} y={H - 1.5} className="lane-arrow" textAnchor="end">
-          arah serang →
+          {t('arah serang')} →
         </text>
         {ghosts.map((g) =>
           g.list.map(({ p, x, y }) => {

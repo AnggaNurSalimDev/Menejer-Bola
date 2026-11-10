@@ -1771,3 +1771,25 @@ details.fold {
     justify-self: start;
   }
 }
+
+/* Pilih bahasa (10 Nov) */
+.lang-switch {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin: 0 0 6px;
+}
+.lang-switch button {
+  padding: 2px 10px;
+  font-size: 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: #adb5bd;
+  cursor: pointer;
+}
+.lang-switch button.is-active {
+  background: #1f4fbf;
+  border-color: #1f4fbf;
+  color: #fff;
+}

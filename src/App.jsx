@@ -8,6 +8,7 @@ import { getPhilosophy } from './engine/philosophy.js';
 import { CLUB_STYLES, STYLE_KEYS, styleTactics, randomStyle } from './engine/clubStyles.js';
 import { createLeague, parseLeague, buildMatchTeams, completeWeek, seasonOver, clubById } from './engine/league.js';
 import LeagueTab from './components/LeagueTab.jsx';
+import { t, tk, readLang, setLang, LANGS } from './i18n.js';
 
 const TEAM_SEED = 2026;
 const SPEEDS = [1, 2, 4, 8];
@@ -40,7 +41,7 @@ function loadLeague() {
     const raw = window.localStorage.getItem(LEAGUE_KEY);
     const parsed = parseLeague(raw);
     if (parsed) return { league: parsed, notice: null };
-    return { league: createLeague(randomSeed()), notice: raw ? 'Data liga lama tidak terbaca — liga baru dibuat.' : null };
+    return { league: createLeague(randomSeed()), notice: raw ? tk('Data liga lama tidak terbaca — liga baru dibuat.') : null };
   } catch {
     return { league: createLeague(randomSeed()), notice: null };
   }
@@ -92,8 +93,8 @@ function initialSeed() {
 
 // Jam pertandingan: 0'–45' di babak 1, 45'–90' di babak 2 (dipercepat).
 function formatClock(state) {
-  if (state.period === 'halftime') return 'Jeda';
-  if (state.period === 'fulltime') return 'Selesai';
+  if (state.period === 'halftime') return t('Jeda');
+  if (state.period === 'fulltime') return t('Selesai');
   return `${gameClock(state).minute}'`;
 }
 
@@ -105,25 +106,34 @@ function percent(part, whole) {
 const WHISTLE_SHOW_TICKS = 15; // 1,5 detik
 
 const STAT_ROWS = [
-  { key: 'shots', label: 'Tembakan (tepat sasaran)', read: (s, id) => `${s.shots[id].total} (${s.shots[id].onTarget})` },
-  { key: 'passes', label: 'Operan sukses / dicoba', read: (s, id) => `${s.passes[id].completed}/${s.passes[id].attempted}` },
-  { key: 'tackles', label: 'Tekel berhasil / dicoba', read: (s, id) => `${s.tackles[id].won}/${s.tackles[id].attempted}` },
-  { key: 'offsides', label: 'Offside', read: (s, id) => `${s.offsides[id]}` },
-  { key: 'fouls', label: 'Pelanggaran', read: (s, id) => `${s.fouls[id]}` },
-  { key: 'yellows', label: 'Kartu kuning', read: (s, id) => `${s.yellows[id]}` },
-  { key: 'reds', label: 'Kartu merah', read: (s, id) => `${s.reds[id]}` },
-  { key: 'crosses', label: 'Umpan silang (sampai)', read: (s, id) => `${s.crosses[id].attempted} (${s.crosses[id].won})` },
-  { key: 'headers', label: 'Sundulan ke gawang', read: (s, id) => `${s.headers[id].shots}` },
-  { key: 'longShots', label: 'Tembakan luar kotak', read: (s, id) => `${s.longShots[id].shots}` },
-  { key: 'clearances', label: 'Sapuan panik', read: (s, id) => `${s.clearances[id]}` },
+  { key: 'shots', label: tk('Tembakan (tepat sasaran)'), read: (s, id) => `${s.shots[id].total} (${s.shots[id].onTarget})` },
+  { key: 'passes', label: tk('Operan sukses / dicoba'), read: (s, id) => `${s.passes[id].completed}/${s.passes[id].attempted}` },
+  { key: 'tackles', label: tk('Tekel berhasil / dicoba'), read: (s, id) => `${s.tackles[id].won}/${s.tackles[id].attempted}` },
+  { key: 'offsides', label: tk('Offside'), read: (s, id) => `${s.offsides[id]}` },
+  { key: 'fouls', label: tk('Jumlah pelanggaran'), read: (s, id) => `${s.fouls[id]}` },
+  { key: 'yellows', label: tk('Kartu kuning'), read: (s, id) => `${s.yellows[id]}` },
+  { key: 'reds', label: tk('Kartu merah'), read: (s, id) => `${s.reds[id]}` },
+  { key: 'crosses', label: tk('Umpan silang (sampai)'), read: (s, id) => `${s.crosses[id].attempted} (${s.crosses[id].won})` },
+  { key: 'headers', label: tk('Sundulan ke gawang'), read: (s, id) => `${s.headers[id].shots}` },
+  { key: 'longShots', label: tk('Tembakan luar kotak'), read: (s, id) => `${s.longShots[id].shots}` },
+  { key: 'clearances', label: tk('Sapuan panik'), read: (s, id) => `${s.clearances[id]}` },
   {
     key: 'saves',
-    label: 'Penyelamatan kiper',
+    label: tk('Penyelamatan kiper'),
     read: (s, id) => `${s.saves[id].caught + s.saves[id].parried}`,
   },
 ];
 
 export default function App() {
+  const [lang, setLangState] = useState(() => {
+    const l = readLang();
+    setLang(l);
+    return l;
+  });
+  function chooseLang(l) {
+    setLang(l);
+    setLangState(l);
+  }
   const [matchSeed, setMatchSeed] = useState(initialSeed);
   const [styleChoice, setStyleChoice] = useState(readStyleChoice);
   const [leagueBoot] = useState(loadLeague);
@@ -191,7 +201,7 @@ export default function App() {
 
   function setLeague(next) {
     setLeagueState(next);
-    if (!storeLeague(next)) setLeagueNotice('Penyimpanan perangkat tidak tersedia — progres liga hilang bila halaman ditutup.');
+    if (!storeLeague(next)) setLeagueNotice(tk('Penyimpanan perangkat tidak tersedia — progres liga hilang bila halaman ditutup.'));
   }
 
   // Laga liga selesai → catat hasil + taktik pengguna, tutup pekan (laga lain dihitung cepat). Sekali per laga.
@@ -263,7 +273,7 @@ export default function App() {
               const team = n.teamId === home.id ? home.name : away.name;
               return n.status === 'masuk'
                 ? `🔁 ${team}: ${namesById.get(n.outId) ?? n.outId} ➜ ${namesById.get(n.inId) ?? n.inId}`
-                : `⚠️ ${team}: pergantian ${namesById.get(n.outId) ?? n.outId} dibatalkan`;
+                : `⚠️ ${team}: ${t('pergantian {p} dibatalkan', { p: namesById.get(n.outId) ?? n.outId })}`;
             })
             .join('   '),
         );
@@ -275,7 +285,7 @@ export default function App() {
         const run = state.teams[USER_TEAM]?.script;
         const sc = run ? (state.teams[USER_TEAM].activeTactics?.scripts ?? []).find((x) => x.id === run.id) : null;
         chip.hidden = !sc;
-        set(chip, sc ? `🧩 Skema "${sc.name}" · langkah ${Math.min(run.step, sc.steps.length)}/${sc.steps.length}` : '');
+        set(chip, sc ? `🧩 ${t('Skema "{n}" · langkah {a}/{b}', { n: sc.name, a: Math.min(run.step, sc.steps.length), b: sc.steps.length })}` : '');
       }
 
       if (state.period === 'halftime' || state.period === 'fulltime') {
@@ -311,7 +321,7 @@ export default function App() {
         const players = state.players.filter((p) => p.teamId === team.id).length;
         const low = tac?.outOfPossession.line === 'rendah';
         el.hidden = players >= 11 && !low;
-        set(el, `${low ? 'Garis rendah' : ''}${low && players < 11 ? ' · ' : ''}${players < 11 ? `${players} pemain` : ''}`);
+        set(el, `${low ? t('Garis rendah') : ''}${low && players < 11 ? ' · ' : ''}${players < 11 ? t('{n} pemain', { n: players }) : ''}`);
       }
 
       // Peluit (tahap 7a) & insiden di jeda setelah pelanggaran (tahap 7b-2).
@@ -326,7 +336,7 @@ export default function App() {
         if (showing) {
           const name = (id) => (id ? (namesById.get(id) ?? '') : '');
           const cardIcon = (c) =>
-            c === 'yellow' ? ' 🟨' : c === 'secondYellow' ? ' 🟨🟨→🟥 KARTU MERAH' : c === 'red' ? ' 🟥 KARTU MERAH' : '';
+            c === 'yellow' ? ' 🟨' : c === 'secondYellow' ? ` 🟨🟨→🟥 ${t('KARTU MERAH')}` : c === 'red' ? ` 🟥 ${t('KARTU MERAH')}` : '';
           let text;
           if (showingIncident) {
             // Hanya satu baris singkat di LUAR lapangan (masukan 29 Okt: tulisan besar menutupi drama).
@@ -337,25 +347,25 @@ export default function App() {
               incident.kind === 'restart'
                 ? ''
                 : otherRed
-                  ? `${otherRed.card === 'red' ? '🟥' : '🟨🟨→🟥'} KARTU MERAH — ${name(otherRed.id)} (${otherRed.reason === 'protest' ? 'protes' : 'pertikaian'})`
+                  ? `${otherRed.card === 'red' ? '🟥' : '🟨🟨→🟥'} ${t('KARTU MERAH')} — ${name(otherRed.id)} (${otherRed.reason === 'protest' ? t('protes') : t('pertikaian')})`
                   : incident.kind === 'offside'
-                    ? `🚩 Offside — ${name(incident.offenderId)}`
-                    : `PRIIIT! ${incident.penalty ? 'PENALTI' : 'Pelanggaran'} — ${name(incident.offenderId)}${cardIcon2}`;
+                    ? `🚩 ${t('Offside')} — ${name(incident.offenderId)}`
+                    : `${t('PRIIIT!')} ${incident.penalty ? t('PENALTI') : t('Pelanggaran')} — ${name(incident.offenderId)}${cardIcon2}`;
           } else {
             const offender = name(w.playerId);
             const card = cardIcon(w.card);
             text =
               w.kind === 'offside'
-                ? `🚩 PRIIIT! Offside${offender ? ` — ${offender}` : ''}`
+                ? `🚩 ${t('PRIIIT!')} ${t('Offside')}${offender ? ` — ${offender}` : ''}`
                 : w.kind === 'foul'
-                  ? `PRIIIT! ${w.penalty ? 'PENALTI' : 'Pelanggaran'} — ${offender}${card}`
+                  ? `${t('PRIIIT!')} ${w.penalty ? t('PENALTI') : t('Pelanggaran')} — ${offender}${card}`
                   : w.kind === 'penalty'
-                    ? 'PRIIIT! Tendangan penalti'
+                    ? `${t('PRIIIT!')} ${t('Tendangan penalti')}`
                     : w.kind === 'freeKick'
-                      ? 'PRIIIT! Tendangan bebas'
+                      ? `${t('PRIIIT!')} ${t('Tendangan bebas')}`
                       : w.kind === 'advantage'
-                        ? `Keuntungan! Pelanggaran ${offender}${card}`
-                        : 'PRIIIT! Kick-off';
+                        ? `${t('Keuntungan! Pelanggaran')} ${offender}${card}`
+                        : `${t('PRIIIT!')} ${t('Kick-off')}`;
           }
           whistleEl.hidden = !text;
           set(whistleEl, text || '');
@@ -372,8 +382,8 @@ export default function App() {
           const team = goal.teamId === home.id ? home : away;
           const scorer = goal.scorerId ? namesById.get(goal.scorerId) : null;
           const who = goal.ownGoal
-            ? 'gol bunuh diri'
-            : `${scorer ?? team.name}${goal.header ? ' (sundulan)' : goal.penalty ? ' (penalti)' : goal.freeKick ? ' (tendangan bebas)' : goal.longShot ? ' (dari luar kotak)' : ''}`;
+            ? t('gol bunuh diri')
+            : `${scorer ?? team.name}${goal.header ? ` (${t('sundulan')})` : goal.penalty ? ` (${t('penalti')})` : goal.freeKick ? ` (${t('tendangan bebas')})` : goal.longShot ? ` (${t('dari luar kotak')})` : ''}`;
           set(banner.querySelector('.goal-banner__detail'), `${who} · ${team.name}`);
           banner.style.setProperty('--goal-color', team.colors.shirt);
         }
@@ -435,40 +445,40 @@ export default function App() {
 
       {leagueNotice && (
         <p className="zone-notice" role="status">
-          {leagueNotice}{' '}
+          {t(leagueNotice)}{' '}
           <button type="button" className="link-btn" onClick={() => setLeagueNotice(null)}>
-            tutup
+            {t('tutup')}
           </button>
         </p>
       )}
       {leagueMatch ? (
         <div className="scout-bar">
           <span>
-            🏆 Liga · musim {leagueMatch.season} · pekan {leagueMatch.week + 1} · {leagueMatch.userIsHome ? 'kandang' : 'tandang'} · lawan:{' '}
-            <b>{CLUB_STYLES[awayStyle].label}</b> · {CLUB_STYLES[awayStyle].formation}
+            🏆 {t('Liga · musim {s} · pekan {w}', { s: leagueMatch.season, w: leagueMatch.week + 1 })} · {leagueMatch.userIsHome ? t('kandang') : t('tandang')} · {t('lawan:')}{' '}
+            <b>{t(CLUB_STYLES[awayStyle].label)}</b> · {CLUB_STYLES[awayStyle].formation}
           </span>
-          <button type="button" className="link-btn" disabled={leagueInProgress} onClick={toFriendly} title={leagueInProgress ? 'Selesaikan laga liga dulu' : undefined}>
-            Laga persahabatan
+          <button type="button" className="link-btn" disabled={leagueInProgress} onClick={toFriendly} title={leagueInProgress ? t('Selesaikan laga liga dulu') : undefined}>
+            {t('Laga persahabatan')}
           </button>
         </div>
       ) : (
       <div className="scout-bar">
         <span>
-          Persahabatan · lawan: <b>{CLUB_STYLES[awayStyle].label}</b> · {CLUB_STYLES[awayStyle].formation} · filosofi{' '}
-          {getPhilosophy(CLUB_STYLES[awayStyle].philosophy).label.toLowerCase()}
+          {t('Persahabatan')} · {t('lawan:')} <b>{t(CLUB_STYLES[awayStyle].label)}</b> · {CLUB_STYLES[awayStyle].formation} · {t('filosofi')}{' '}
+          {t(getPhilosophy(CLUB_STYLES[awayStyle].philosophy).label).toLowerCase()}
         </span>
         {!seasonOver(league) && (
           <button type="button" className="link-btn" onClick={toLeague}>
-            Kembali ke liga
+            {t('Kembali ke liga')}
           </button>
         )}
         <label>
-          Gaya lawan{' '}
+          {t('Gaya lawan')}{' '}
           <select value={styleChoice} onChange={(e) => chooseStyle(e.target.value)}>
-            <option value="acak">Acak</option>
+            <option value="acak">{t('Acak')}</option>
             {STYLE_KEYS.map((k) => (
               <option key={k} value={k}>
-                {CLUB_STYLES[k].label}
+                {t(CLUB_STYLES[k].label)}
               </option>
             ))}
           </select>
@@ -476,7 +486,15 @@ export default function App() {
       </div>
       )}
 
-      <nav className="tabs" role="tablist" aria-label="Tampilan">
+      <div className="lang-switch" role="group" aria-label="Bahasa / Language">
+        {LANGS.map((l) => (
+          <button key={l} type="button" className={l === lang ? 'is-active' : undefined} onClick={() => chooseLang(l)} aria-pressed={l === lang}>
+            {l === 'id' ? 'ID' : 'EN'}
+          </button>
+        ))}
+      </div>
+
+      <nav className="tabs" role="tablist" aria-label={t('Tampilan')}>
         <button
           type="button"
           role="tab"
@@ -484,7 +502,7 @@ export default function App() {
           className={tab === 'league' ? 'is-active' : undefined}
           onClick={() => setTab('league')}
         >
-          Liga
+          {t('Liga')}
         </button>
         <button
           type="button"
@@ -493,7 +511,7 @@ export default function App() {
           className={tab === 'match' ? 'is-active' : undefined}
           onClick={() => setTab('match')}
         >
-          Pertandingan
+          {t('Pertandingan')}
         </button>
         <button
           type="button"
@@ -505,7 +523,7 @@ export default function App() {
             setTab('team');
           }}
         >
-          Tim · {home.name}
+          {t('Tim')} · {home.name}
         </button>
       </nav>
 
@@ -536,9 +554,9 @@ export default function App() {
         <TeamTab state={teamView} teamId={USER_TEAM} simulation={simulation} onChange={setTeamView} namesById={namesById} />
         {breakState?.period === 'halftime' && (
           <div className="team-break">
-            <span>Turun minum. Antrian pergantian dijalankan saat babak 2 dimulai.</span>
+            <span>{t('Turun minum. Antrian pergantian dijalankan saat babak 2 dimulai.')}</span>
             <button type="button" className="break-button" onClick={startSecondHalf}>
-              Lanjut babak 2
+              {t('Lanjut babak 2')}
             </button>
           </div>
         )}
@@ -549,7 +567,7 @@ export default function App() {
         <div className="pitch-wrap">
           <MatchView simulation={simulation} running={running} speed={speed} onTick={handleTick} />
           <div ref={goalBannerRef} className="goal-banner" hidden aria-live="polite">
-            <span className="goal-banner__title">GOL!</span>
+            <span className="goal-banner__title">{t('GOL!')}</span>
             <span className="goal-banner__detail" />
           </div>
           {breakState && (
@@ -558,17 +576,17 @@ export default function App() {
               home={home}
               away={away}
               onContinue={breakState.period === 'halftime' ? startSecondHalf : restart}
-              continueLabel={breakState.period === 'fulltime' && leagueMatch ? 'Hasil tersimpan · ke tab Liga' : null}
+              continueLabel={breakState.period === 'fulltime' && leagueMatch ? t('Hasil tersimpan · ke tab Liga') : null}
             />
           )}
         </div>
 
-        <section className="match-stats" aria-label="Statistik pertandingan">
+        <section className="match-stats" aria-label={t('Statistik pertandingan')}>
           <div className="stat-row">
             <span ref={possessionRefs.home} className="stat-value">
               0%
             </span>
-            <span className="stat-label">Penguasaan bola</span>
+            <span className="stat-label">{t('Penguasaan bola')}</span>
             <span ref={possessionRefs.away} className="stat-value stat-value--away">
               0%
             </span>
@@ -581,7 +599,7 @@ export default function App() {
               <span ref={(el) => (rowRefs.current[`${row.key}-home`] = el)} className="stat-value">
                 –
               </span>
-              <span className="stat-label">{row.label}</span>
+              <span className="stat-label">{t(row.label)}</span>
               <span ref={(el) => (rowRefs.current[`${row.key}-away`] = el)} className="stat-value stat-value--away">
                 –
               </span>
@@ -592,9 +610,9 @@ export default function App() {
 
       <div className="controls">
         <button type="button" onClick={() => setRunning((r) => !r)}>
-          {running ? 'Jeda' : 'Lanjut'}
+          {running ? t('Jeda') : t('Lanjut')}
         </button>
-        <div className="speed-group" role="group" aria-label="Kecepatan">
+        <div className="speed-group" role="group" aria-label={t('Kecepatan')}>
           {SPEEDS.map((s) => (
             <button key={s} type="button" className={s === speed ? 'is-active' : undefined} onClick={() => setSpeed(s)}>
               {s}×
@@ -603,13 +621,11 @@ export default function App() {
         </div>
         {!leagueMatch && (
           <button type="button" onClick={restart}>
-            Ulang (seed baru)
+            {t('Ulang (seed baru)')}
           </button>
         )}
         <span className="stage-note">
-          Taktik empat kotak + ball boy + kartu merah + pelanggaran, protes & pertikaian + wasit & hakim garis + filosofi pelatih + bola
-          udara (bayangan = bola melambung; bar = tenaga menipis, titik merah = kurang percaya diri, titik oranye = on fire). Seed:{' '}
-          {matchSeed}
+          {t('Bayangan = bola melambung · bar = tenaga menipis · titik merah = kurang percaya diri · titik oranye = on fire.')} Seed: {matchSeed}
         </span>
       </div>
     </main>
@@ -624,14 +640,14 @@ function BreakScreen({ state, home, away, onContinue, continueLabel }) {
   const total = stats.possessionTicks[home.id] + stats.possessionTicks[away.id];
   const homeShare = percent(stats.possessionTicks[home.id], total);
   const rows = [
-    { label: 'Penguasaan bola', home: `${homeShare}%`, away: `${100 - homeShare}%` },
-    ...STAT_ROWS.map((row) => ({ label: row.label, home: row.read(stats, home.id), away: row.read(stats, away.id) })),
+    { label: t('Penguasaan bola'), home: `${homeShare}%`, away: `${100 - homeShare}%` },
+    ...STAT_ROWS.map((row) => ({ label: t(row.label), home: row.read(stats, home.id), away: row.read(stats, away.id) })),
   ];
 
   return (
-    <div className="break-screen" role="dialog" aria-label={isHalftime ? 'Jeda babak' : 'Pertandingan selesai'}>
+    <div className="break-screen" role="dialog" aria-label={isHalftime ? t('Jeda babak') : t('Pertandingan selesai')}>
       <div className="break-card">
-        <p className="break-title">{isHalftime ? 'Turun minum' : 'Pertandingan selesai'}</p>
+        <p className="break-title">{isHalftime ? t('Turun minum') : t('Pertandingan selesai')}</p>
         <p className="break-score">
           <span>{home.name}</span>
           <strong>
@@ -648,9 +664,9 @@ function BreakScreen({ state, home, away, onContinue, continueLabel }) {
             </div>
           ))}
         </dl>
-        {isHalftime && <p className="break-note">Pengaturan taktik akan tersedia di sini setelah layer manager dibuat.</p>}
+        {isHalftime && <p className="break-note">{t('Atur taktik dan pergantian di tab Tim sebelum babak 2.')}</p>}
         <button type="button" className="break-button" onClick={onContinue} autoFocus>
-          {isHalftime ? 'Lanjut babak 2' : (continueLabel ?? 'Main lagi (seed baru)')}
+          {isHalftime ? t('Lanjut babak 2') : (continueLabel ?? t('Main lagi (seed baru)'))}
         </button>
       </div>
     </div>
@@ -665,11 +681,11 @@ function TeamLabel({ team, align, mentalityRef, formationRef }) {
       <span ref={formationRef} className="team-formation">
         {team.formation}
       </span>
-      <span className="team-philosophy" title="Filosofi pelatih">
-        {getPhilosophy(team.philosophy ?? 'seimbang').label}
+      <span className="team-philosophy" title={t('Filosofi pelatih')}>
+        {t(getPhilosophy(team.philosophy ?? 'seimbang').label)}
       </span>
       {/* Mentalitas dari AI pelatih: hanya tampil bila bukan "Seimbang" (mis. bertahan saat 10 orang). */}
-      <span ref={mentalityRef} className="team-mentality" title="Keadaan tim" hidden />
+      <span ref={mentalityRef} className="team-mentality" title={t('Keadaan tim')} hidden />
     </div>
   );
 }

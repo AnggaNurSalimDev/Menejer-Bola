@@ -15,6 +15,7 @@ import {
   ZONES,
 } from '../engine/tactics.js';
 import { GROUP } from '../engine/groups.js';
+import { t, tk } from '../i18n.js';
 
 // Detail 8 zona (2 Nov, layer 3 — ide pengguna): SATU lapangan khusus. Pilih dengan/tanpa bola dan satu
 // dari 4 zona bola; zona lain digelapkan (latar saja — semua pemain tetap terang & bisa diseret, karena
@@ -25,7 +26,8 @@ const W = PITCH.length;
 const H = PITCH.width;
 const BOX_W = 40.32;
 const PREF_KEY = 'menejer-bola:zona';
-const ZONE_LABEL = { sendiriKiri: 'Sendiri · kiri', sendiriKanan: 'Sendiri · kanan', lawanKiri: 'Lawan · kiri', lawanKanan: 'Lawan · kanan' };
+const ZONE_LABEL = { sendiriKiri: tk('Sendiri · kiri'), sendiriKanan: tk('Sendiri · kanan'), lawanKiri: tk('Lawan · kiri'), lawanKanan: tk('Lawan · kanan') };
+const zl = (z) => t(ZONE_LABEL[z]);
 
 function readPref() {
   try {
@@ -161,15 +163,15 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
     const slot = clampCustomSlot(slotForPoint({ x: drag.x, y: drag.y }, phase, style, CUSTOM_SLOT, ball));
     const id = drag.id;
     setDrag(null);
-    onSetTactics({ [key]: { [zone]: { [id]: slot } } }, `${nameOf(id)}: posisi zona ${ZONE_LABEL[zone].toLowerCase()} (${phase === 'attack' ? 'dengan' : 'tanpa'} bola)`);
+    onSetTactics({ [key]: { [zone]: { [id]: slot } } }, `${nameOf(id)}: ${t('posisi zona')} ${zl(zone).toLowerCase()} (${phase === 'attack' ? t('dengan bola') : t('tanpa bola')})`);
   }
   function clearZone() {
-    onSetTactics({ [key]: { [zone]: null } }, `Zona ${ZONE_LABEL[zone].toLowerCase()} dikosongkan`);
+    onSetTactics({ [key]: { [zone]: null } }, t('Zona {z} dikosongkan', { z: zl(zone).toLowerCase() }));
   }
   function mirror() {
     const m = mirrorZone(players, tactics, layer, zone);
     const clearOld = Object.fromEntries(outfieldIds.map((id) => [id, null]));
-    onSetTactics({ [key]: { [m.zone]: { ...clearOld, ...m.map } } }, `Zona ${ZONE_LABEL[zone].toLowerCase()} dicerminkan ke ${ZONE_LABEL[m.zone].toLowerCase()}`);
+    onSetTactics({ [key]: { [m.zone]: { ...clearOld, ...m.map } } }, t('Zona {a} dicerminkan ke {b}', { a: zl(zone).toLowerCase(), b: zl(m.zone).toLowerCase() }));
   }
 
   const count = zoneCount(tactics, key, zone);
@@ -178,7 +180,7 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
   const numberOf = (id) => players.find((q) => q.id === id)?.number ?? '?';
   function saveDraft(d) {
     const next = [...scripts.filter((x) => x.id !== d.id), { ...d, zone }];
-    onSetTactics({ scripts: next }, `Skema "${d.name}" disimpan (${ZONE_LABEL[zone].toLowerCase()})`);
+    onSetTactics({ scripts: next }, t('Skema "{n}" disimpan ({z})', { n: d.name, z: zl(zone).toLowerCase() }));
     setDraft(null);
     setPicking(null);
     setViewId(d.id);
@@ -198,7 +200,7 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
       return at.x >= q.x && at.x <= q.x + q.w && at.y >= q.y && at.y <= q.y + q.h;
     });
     const n = players.find((q) => q.id === draft.holderId)?.number;
-    return `Pemegang bola #${n} biasanya tidak berada di zona ${ZONE_LABEL[zone].toLowerCase()} (zona = tempat bola saat skema mulai), jadi skema ini mungkin jarang atau tidak pernah aktif.${own ? ` Mungkin maksudmu zona ${ZONE_LABEL[own].toLowerCase()}?` : ''}`;
+    return `${t('Pemegang bola #{n} biasanya tidak berada di zona {z} (zona = tempat bola saat skema mulai), jadi skema ini mungkin jarang atau tidak pernah aktif.', { n, z: zl(zone).toLowerCase() })}${own ? ` ${t('Mungkin maksudmu zona {z}?', { z: zl(own).toLowerCase() })}` : ''}`;
   }
 
   const groups = tactics.groups ?? [];
@@ -206,43 +208,43 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
   function saveGroup() {
     if (!gdraft || gdraft.memberIds.length < GROUP.minMembers) return;
     const next = [...groups.filter((g) => g.id !== gdraft.id), { ...gdraft, zone }];
-    onSetTactics({ groups: next }, `Kelompok ${gdraft.memberIds.map((id) => `#${numberOf(id)}`).join('-')} disimpan (${ZONE_LABEL[zone].toLowerCase()})`);
+    onSetTactics({ groups: next }, t('Kelompok {m} disimpan ({z})', { m: gdraft.memberIds.map((id) => `#${numberOf(id)}`).join('-'), z: zl(zone).toLowerCase() }));
     setGdraft(null);
   }
   function mirrorGroupsToOther() {
     const stamp = Date.now().toString(36);
     const m = mirrorGroups(players, tactics, zone, (i) => `g${stamp}${i}`);
-    onSetTactics({ groups: m.groups }, `Kelompok ${ZONE_LABEL[zone].toLowerCase()} dicerminkan ke ${ZONE_LABEL[m.zone].toLowerCase()}`);
+    onSetTactics({ groups: m.groups }, t('Kelompok {a} dicerminkan ke {b}', { a: zl(zone).toLowerCase(), b: zl(m.zone).toLowerCase() }));
   }
   function removeGroup(id) {
-    onSetTactics({ groups: groups.filter((g) => g.id !== id) }, 'Kelompok dihapus');
+    onSetTactics({ groups: groups.filter((g) => g.id !== id) }, t('Kelompok dihapus'));
   }
   // Garis kelompok: semua pasangan anggota dihubungkan; kelompok yang diedit digambar tebal.
   const groupLines = [...zoneGroups.filter((g) => g.id !== gdraft?.id).map((g, i) => ({ g, cls: `grp grp--${i % 4}` })), ...(gdraft ? [{ g: gdraft, cls: 'grp grp--edit' }] : [])];
 
   function removeScript(id) {
     const s0 = scripts.find((x) => x.id === id);
-    onSetTactics({ scripts: scripts.filter((x) => x.id !== id) }, `Skema "${s0?.name ?? ''}" dihapus`);
+    onSetTactics({ scripts: scripts.filter((x) => x.id !== id) }, t('Skema "{n}" dihapus', { n: s0?.name ?? '' }));
     if (viewId === id) setViewId(null);
   }
 
   return (
     <div className="zone-board">
       <div className="zone-bar">
-        <div className="tac-options" role="group" aria-label="Layer zona">
-          <button type="button" className={phase === 'defend' ? 'is-active' : undefined} disabled={Boolean(draft || gdraft)} title={draft || gdraft ? 'Simpan atau batalkan dulu' : undefined} onClick={() => pickPhase('defend')}>
-            Tanpa bola
+        <div className="tac-options" role="group" aria-label={t('Layer zona')}>
+          <button type="button" className={phase === 'defend' ? 'is-active' : undefined} disabled={Boolean(draft || gdraft)} title={draft || gdraft ? t('Simpan atau batalkan dulu') : undefined} onClick={() => pickPhase('defend')}>
+            {t('Tanpa bola')}
           </button>
-          <button type="button" className={phase === 'attack' ? 'is-active' : undefined} disabled={Boolean(draft || gdraft)} title={draft || gdraft ? 'Simpan atau batalkan dulu' : undefined} onClick={() => pickPhase('attack')}>
-            Dengan bola
+          <button type="button" className={phase === 'attack' ? 'is-active' : undefined} disabled={Boolean(draft || gdraft)} title={draft || gdraft ? t('Simpan atau batalkan dulu') : undefined} onClick={() => pickPhase('attack')}>
+            {t('Dengan bola')}
           </button>
         </div>
-        <div className="tac-options zone-picker" role="group" aria-label="Zona bola">
+        <div className="tac-options zone-picker" role="group" aria-label={t('Zona bola')}>
           {ZONES.map((z) => {
             const n = zoneCount(tactics, key, z);
             return (
-              <button key={z} type="button" className={z === zone ? 'is-active' : undefined} disabled={Boolean(draft || gdraft) && z !== zone} title={draft ? 'Papan terkunci di zona skema selama mengedit — ganti zona skema dari editor di bawah' : undefined} onClick={() => pickZone(z)}>
-                {ZONE_LABEL[z]}
+              <button key={z} type="button" className={z === zone ? 'is-active' : undefined} disabled={Boolean(draft || gdraft) && z !== zone} title={draft ? t('Papan terkunci di zona skema selama mengedit — ganti zona skema dari editor di bawah') : undefined} onClick={() => pickZone(z)}>
+                {zl(z)}
                 {n > 0 && <span className="zone-count">{n}</span>}
               </button>
             );
@@ -253,14 +255,14 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
         <label className="ghost-toggle ghost--base">
           <input type="checkbox" checked={ghostOn} onChange={toggleGhost} />
           <span className="ghost-swatch" aria-hidden="true" />
-          Bayangan posisi layer biasa
+          {t('Bayangan posisi layer biasa')}
         </label>
         <span className="zone-actions">
-          <button type="button" className="lane-reset" onClick={mirror} disabled={locked || count === 0} title="Pemain dipetakan ke pasangannya di sisi lain (bek kiri ↔ bek kanan)">
-            Cermin ke {ZONE_LABEL[mirrored].toLowerCase()}
+          <button type="button" className="lane-reset" onClick={mirror} disabled={locked || count === 0} title={t('Pemain dipetakan ke pasangannya di sisi lain (bek kiri ↔ bek kanan)')}>
+            {t('Cermin ke {z}', { z: zl(mirrored).toLowerCase() })}
           </button>
           <button type="button" className="lane-reset" onClick={clearZone} disabled={locked || count === 0}>
-            Kosongkan zona
+            {t('Kosongkan zona')}
           </button>
         </span>
       </div>
@@ -268,15 +270,14 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
         <p className="zone-notice" role="status">
           {picking ? (
             <>
-              Klik lapangan untuk memilih titik.{' '}
+              {t('Klik lapangan untuk memilih titik.')}{' '}
               <button type="button" className="link-btn" onClick={() => setPicking(null)}>
-                Batal (Esc)
+                {t('Batal (Esc)')}
               </button>
             </>
           ) : (
             <>
-              Mengedit skema "{draft.name}" — papan terkunci di zona {ZONE_LABEL[zone].toLowerCase()} supaya bentuk formasi tetap. Titik boleh di mana saja di lapangan (pakai "Pilih titik"). Editor ada di bawah
-              lapangan.
+              {t('Mengedit skema "{n}" — papan terkunci di zona {z} supaya bentuk formasi tetap. Titik boleh di mana saja di lapangan (pakai "Pilih titik"). Editor ada di bawah lapangan.', { n: draft.name, z: zl(zone).toLowerCase() })}
             </>
           )}
         </p>
@@ -286,7 +287,7 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
         className="zone-svg"
         viewBox={`-1 -1 ${W + 2} ${H + 2}`}
         role="img"
-        aria-label={`Detail zona ${ZONE_LABEL[zone]}, ${phase === 'attack' ? 'dengan' : 'tanpa'} bola`}
+        aria-label={`${t('Detail zona')} ${zl(zone)}, ${phase === 'attack' ? t('dengan bola') : t('tanpa bola')}`}
         onPointerMove={move}
         onPointerUp={end}
         onPointerCancel={() => setDrag(null)}
@@ -311,14 +312,14 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
             <g key={z} onClick={() => pickZone(z)} className="zone-cell">
               <rect x={r.x} y={r.y} width={r.w} height={r.h} className={z === zone ? 'zone-shade zone-shade--on' : 'zone-shade'} />
               <text x={r.x + 2} y={r.y + 4} className="zone-label">
-                {ZONE_LABEL[z]}
+                {zl(z)}
                 {zoneCount(tactics, key, z) > 0 ? ` · ${zoneCount(tactics, key, z)}` : ''}
               </text>
             </g>
           );
         })}
         <text x={W - 2} y={H - 1.5} className="lane-arrow" textAnchor="end">
-          arah serang →
+          {t('arah serang')} →
         </text>
         {ghosts.map(({ p, x, y }) => {
           const cur = here.get(p.id);
@@ -368,18 +369,18 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
         })}
       </svg>
       {phase === 'attack' && (
-        <section className="scripts groups" aria-label="Kelompok">
+        <section className="scripts groups" aria-label={t('Kelompok')}>
           <div className="scripts__head">
-            <h5>Kelompok · {ZONE_LABEL[zone].toLowerCase()}</h5>
+            <h5>{t('Kelompok')} · {zl(zone).toLowerCase()}</h5>
             {!gdraft && zoneGroups.length > 0 && (
               <button
                 type="button"
                 className="lane-reset"
                 disabled={locked || Boolean(draft)}
                 onClick={mirrorGroupsToOther}
-                title={`Kelompok zona ini disalin ke ${ZONE_LABEL[mirrored].toLowerCase()} dengan pemain pasangannya (bek kiri ↔ bek kanan). Kelompok yang sudah ada di sana diganti.`}
+                title={t('Kelompok zona ini disalin ke {z} dengan pemain pasangannya (bek kiri ↔ bek kanan). Kelompok yang sudah ada di sana diganti.', { z: zl(mirrored).toLowerCase() })}
               >
-                Cermin ke {ZONE_LABEL[mirrored].toLowerCase()}
+                {t('Cermin ke {z}', { z: zl(mirrored).toLowerCase() })}
               </button>
             )}
             {!gdraft && (
@@ -389,20 +390,19 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
                 disabled={locked || Boolean(draft) || zoneGroups.length >= GROUP.maxPerZone || groups.length >= GROUP.maxGroups}
                 onClick={() => setGdraft({ id: `g${Date.now().toString(36)}`, zone, memberIds: [] })}
               >
-                + Kelompok baru
+                + {t('Kelompok baru')}
               </button>
             )}
           </div>
           {!gdraft && zoneGroups.length === 0 && (
             <p className="tac-note">
-              Kelompok = 2–4 pemain yang saling terhubung (garis). Saat bola di zona ini dipegang salah satu anggota, mereka lebih suka saling mengoper, dan bola dari
-              rekan sekelompok cenderung diteruskan ke anggota lain (pemain ketiga). Ini kecenderungan, bukan paksaan — operan berbahaya tetap dihindari.
+              {t('Kelompok = 2–4 pemain yang saling terhubung (garis). Saat bola di zona ini dipegang salah satu anggota, mereka lebih suka saling mengoper, dan bola dari rekan sekelompok cenderung diteruskan ke anggota lain (pemain ketiga). Ini kecenderungan, bukan paksaan — operan berbahaya tetap dihindari.')}
             </p>
           )}
           {groups.length > 0 && groupStats && (
             <p className="scripts__stats">
-              laga ini (semua zona): operan saat kelompok aktif {groupStats.passes} · ke rekan sekelompok {groupStats.toMember}
-              {groupStats.passes > 0 ? ` (${Math.round((100 * groupStats.toMember) / groupStats.passes)}%)` : ''} · pemain ketiga {groupStats.thirdMan}
+              {t('laga ini (semua zona): operan saat kelompok aktif {a} · ke rekan sekelompok {b}', { a: groupStats.passes, b: groupStats.toMember })}
+              {groupStats.passes > 0 ? ` (${Math.round((100 * groupStats.toMember) / groupStats.passes)}%)` : ''} · {t('pemain ketiga')} {groupStats.thirdMan}
             </p>
           )}
           {!gdraft && zoneGroups.length > 0 && (
@@ -412,10 +412,10 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
                   <span className={`grp-swatch grp--${i % 4}`} aria-hidden="true" />
                   <span className="scripts__name">{g.memberIds.map((id) => `#${numberOf(id)}`).join(' · ')}</span>
                   <button type="button" className="link-btn" disabled={locked || Boolean(draft)} onClick={() => setGdraft({ ...g, memberIds: [...g.memberIds] })}>
-                    ubah
+                    {t('ubah')}
                   </button>
                   <button type="button" className="link-btn" disabled={locked} onClick={() => removeGroup(g.id)}>
-                    hapus
+                    {t('hapus')}
                   </button>
                 </li>
               ))}
@@ -424,15 +424,15 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
           {gdraft && (
             <div className="group-editor">
               <p className="zone-notice" role="status">
-                Klik pemain di lapangan untuk memasukkan / mengeluarkannya dari kelompok ({GROUP.minMembers}–{GROUP.maxMembers} pemain). Anggota:{' '}
-                <b>{gdraft.memberIds.length ? gdraft.memberIds.map((id) => `#${numberOf(id)}`).join(' · ') : 'belum ada'}</b>
+                {t('Klik pemain di lapangan untuk memasukkan / mengeluarkannya dari kelompok ({a}–{b} pemain). Anggota:', { a: GROUP.minMembers, b: GROUP.maxMembers })}{' '}
+                <b>{gdraft.memberIds.length ? gdraft.memberIds.map((id) => `#${numberOf(id)}`).join(' · ') : t('belum ada')}</b>
               </p>
               <div className="script-actions">
                 <button type="button" className="lane-reset" onClick={() => setGdraft(null)}>
-                  Batal
+                  {t('Batal')}
                 </button>
                 <button type="button" className="break-button script-save" disabled={locked || gdraft.memberIds.length < GROUP.minMembers} onClick={saveGroup}>
-                  Simpan kelompok
+                  {t('Simpan kelompok')}
                 </button>
               </div>
             </div>
@@ -440,9 +440,9 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
         </section>
       )}
       {phase === 'attack' ? (
-        <section className="scripts" aria-label="Strategi detil">
+        <section className="scripts" aria-label={t('Strategi detil')}>
           <div className="scripts__head">
-            <h5>Strategi detil · {ZONE_LABEL[zone].toLowerCase()}</h5>
+            <h5>{t('Strategi detil')} · {zl(zone).toLowerCase()}</h5>
             {!draft && (
               <button
                 type="button"
@@ -450,12 +450,12 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
                 disabled={locked || scripts.length >= 16 || Boolean(gdraft)}
                 onClick={() => setDraft(blankScript(zone, players.find((q) => q.role !== 'GK')?.id))}
               >
-                + Skema baru
+                + {t('Skema baru')}
               </button>
             )}
           </div>
           {!draft && zoneScripts.length === 0 && (
-            <p className="tac-note">Belum ada skema di zona ini. Skema dijalankan saat bola dipegang pemain yang ditentukan di zona ini dan pemain skema sudah di posisi zonanya.</p>
+            <p className="tac-note">{t('Belum ada skema di zona ini. Skema dijalankan saat bola dipegang pemain yang ditentukan di zona ini dan pemain skema sudah di posisi zonanya.')}</p>
           )}
           {!draft && zoneScripts.length > 0 && (
             <ul className="scripts__list">
@@ -465,23 +465,23 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
                     {x.name}
                     <span className="tac-note">
                       {' '}
-                      · bola di #{numberOf(x.holderId)} · {x.steps.length} langkah ·{' '}
+                      · {t('bola di #{n}', { n: numberOf(x.holderId) })} · {t('{n} langkah', { n: x.steps.length })} ·{' '}
                       {x.steps
-                        .flatMap((st) => st.actions.map((a) => ACTION_LABEL[a.type].toLowerCase().split(' ')[0]))
+                        .flatMap((st) => st.actions.map((a) => t(ACTION_LABEL[a.type]).toLowerCase().split(' ')[0]))
                         .slice(0, 4)
                         .join(' → ')}
                     </span>
                     <span className="scripts__stats">
-                      laga ini: aktif {scriptStats[x.id]?.started ?? 0} · selesai {scriptStats[x.id]?.completed ?? 0}
-                      {(scriptStats[x.id]?.started ?? 0) > 0 ? ` (${Math.round((100 * (scriptStats[x.id]?.completed ?? 0)) / scriptStats[x.id].started)}%)` : ''} · batal {scriptStats[x.id]?.aborted ?? 0} · tembakan{' '}
+                      {t('laga ini: aktif {a} · selesai {b}', { a: scriptStats[x.id]?.started ?? 0, b: scriptStats[x.id]?.completed ?? 0 })}
+                      {(scriptStats[x.id]?.started ?? 0) > 0 ? ` (${Math.round((100 * (scriptStats[x.id]?.completed ?? 0)) / scriptStats[x.id].started)}%)` : ''} · {t('batal')} {scriptStats[x.id]?.aborted ?? 0} · {t('tembakan')}{' '}
                       {scriptStats[x.id]?.shots ?? 0}
                     </span>
                   </button>
                   <button type="button" className="link-btn" disabled={locked} onClick={() => setDraft(JSON.parse(JSON.stringify(x)))}>
-                    ubah
+                    {t('ubah')}
                   </button>
                   <button type="button" className="link-btn" disabled={locked} onClick={() => removeScript(x.id)}>
-                    hapus
+                    {t('hapus')}
                   </button>
                 </li>
               ))}
@@ -501,25 +501,24 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
               }}
               onSave={saveDraft}
               zoneWarning={holderZoneWarning()}
-              zones={ZONES.map((z) => ({ id: z, label: ZONE_LABEL[z] }))}
+              zones={ZONES.map((z) => ({ id: z, label: zl(z) }))}
               onZone={moveDraftZone}
             />
           )}
         </section>
       ) : (
-        <section className="scripts" aria-label="Strategi detil">
+        <section className="scripts" aria-label={t('Strategi detil')}>
           <div className="scripts__head">
-            <h5>Strategi detil</h5>
+            <h5>{t('Strategi detil')}</h5>
             <button type="button" className="lane-reset" onClick={() => pickPhase('attack')}>
-              Buat skema (pindah ke Dengan bola)
+              {t('Buat skema (pindah ke Dengan bola)')}
             </button>
           </div>
-          <p className="tac-note">Skema oper, lari, dan tembak dibuat untuk saat tim memegang bola.</p>
+          <p className="tac-note">{t('Skema oper, lari, dan tembak dibuat untuk saat tim memegang bola.')}</p>
         </section>
       )}
       <p className="lane-legend">
-        Pilih zona (klik kotaknya atau tombol di atas), lalu seret pemain: itu posisinya saat bola ada di zona tersebut. Zona yang tidak diatur memakai
-        posisi layer biasa; saat bola berpindah zona, pemain bergeser halus di antara skema. Cincin kuning = posisi zona ini · ⚪ = bola contoh.
+        {t('Pilih zona (klik kotaknya atau tombol di atas), lalu seret pemain: itu posisinya saat bola ada di zona tersebut. Zona yang tidak diatur memakai posisi layer biasa; saat bola berpindah zona, pemain bergeser halus di antara skema. Cincin kuning = posisi zona ini · ⚪ = bola contoh.')}
       </p>
     </div>
   );

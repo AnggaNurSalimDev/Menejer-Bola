@@ -14,6 +14,16 @@ import {
   setStarter,
   newSeason,
 } from '../engine/league.js';
+import { t, getLang } from '../i18n.js';
+
+const FORM_EN = { M: 'W', S: 'D', K: 'L' };
+const ERR_EN = [
+  [/^Anggaran kurang \(butuh (\d+) jt, ada (\d+) jt\)$/, 'Not enough budget (need $1 M, have $2 M)'],
+  [/^Skuad penuh \(maks (\d+)\)$/, 'Squad full (max $1)'],
+  [/^Pemain inti tidak bisa dijual — ganti dulu dari susunan$/, 'Starters cannot be sold — take them out of the line-up first'],
+  [/^Skuad minimal (\d+) pemain$/, 'Squad needs at least $1 players'],
+];
+const errText = (m) => (getLang() === 'en' ? ERR_EN.reduce((s, [re, en]) => s.replace(re, en), m) : m);
 
 // Tab Liga (10 Nov): klasemen, jadwal, skuad & bursa "seadanya". Semua perubahan lewat fungsi murni
 // league.js; App yang menyimpan ke perangkat. `locked` = laga liga sedang berjalan (skuad dikunci).
@@ -52,51 +62,51 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch, onReset
       <section className="league-head">
         <div>
           <h3>
-            Musim {league.season} · Pekan {Math.min(league.week + 1, total)}/{total}
+            {t('Musim {s} · Pekan {w}/{n}', { s: league.season, w: Math.min(league.week + 1, total), n: total })}
           </h3>
           <p className="league-sub">
-            {user.name} · anggaran <b>{league.budget} jt</b> · pemasukan {LEAGUE.weeklyIncome} jt/pekan
+            {user.name} · {t('anggaran')} <b>{t('{n} jt', { n: league.budget })}</b> · {t('pemasukan {n} jt/pekan', { n: LEAGUE.weeklyIncome })}
           </p>
         </div>
         {!over && fx && (
           <div className="league-next">
             <span>
-              Laga berikutnya: <b>{name(fx.home)}</b> vs <b>{name(fx.away)}</b> ({fx.home === user.id ? 'kandang' : 'tandang'}) · lawan bergaya{' '}
-              {CLUB_STYLES[clubById(league, fx.home === user.id ? fx.away : fx.home).style].label.toLowerCase()}
+              {t('Laga berikutnya')}: <b>{name(fx.home)}</b> vs <b>{name(fx.away)}</b> ({fx.home === user.id ? t('kandang') : t('tandang')}) · {t('lawan bergaya')}{' '}
+              {t(CLUB_STYLES[clubById(league, fx.home === user.id ? fx.away : fx.home).style].label).toLowerCase()}
             </span>
             <button type="button" className="break-button" onClick={onGoMatch}>
-              Ke laga
+              {t('Ke laga')}
             </button>
           </div>
         )}
         {over && (
           <div className="league-next">
             <span>
-              🏆 Juara musim {league.season}: <b>{table[0].name}</b> · {user.name} finis ke-{table.findIndex((r) => r.id === user.id) + 1}
+              🏆 {t('Juara musim {s}', { s: league.season })}: <b>{table[0].name}</b> · {t('{c} finis ke-{p}', { c: user.name, p: table.findIndex((r) => r.id === user.id) + 1 })}
             </span>
             <button type="button" className="break-button" onClick={() => onChange(newSeason(league))}>
-              Mulai musim {league.season + 1}
+              {t('Mulai musim {s}', { s: league.season + 1 })}
             </button>
           </div>
         )}
       </section>
 
-      <section aria-label="Klasemen">
-        <h4>Klasemen</h4>
+      <section aria-label={t('Klasemen')}>
+        <h4>{t('Klasemen')}</h4>
         <div className="table-wrap">
           <table className="league-table">
             <thead>
               <tr>
                 <th>#</th>
-                <th className="l">Klub</th>
-                <th>Main</th>
-                <th>M</th>
-                <th>S</th>
-                <th>K</th>
-                <th>Gol</th>
-                <th>SG</th>
-                <th>Poin</th>
-                <th className="l">5 terakhir</th>
+                <th className="l">{t('Klub')}</th>
+                <th>{t('Main')}</th>
+                <th>{t('M')}</th>
+                <th>{t('S')}</th>
+                <th>{t('K')}</th>
+                <th>{t('Gol')}</th>
+                <th>{t('SG')}</th>
+                <th>{t('Poin')}</th>
+                <th className="l">{t('5 terakhir')}</th>
               </tr>
             </thead>
             <tbody>
@@ -122,7 +132,7 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch, onReset
                     <td className="l form">
                       {r.form.map((f, k) => (
                         <span key={k} className={`form-${f}`}>
-                          {f}
+                          {getLang() === 'en' ? FORM_EN[f] : f}
                         </span>
                       ))}
                     </td>
@@ -137,7 +147,7 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch, onReset
       <section className="league-weeks">
         {lastWeek && (
           <div>
-            <h4>Hasil pekan {league.week}</h4>
+            <h4>{t('Hasil pekan {n}', { n: league.week })}</h4>
             <ul className="fixture-list">
               {lastWeek.map((f) => (
                 <li key={`${f.home}-${f.away}`} className={f.home === user.id || f.away === user.id ? 'is-user' : undefined}>
@@ -153,7 +163,7 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch, onReset
         )}
         {thisWeek && (
           <div>
-            <h4>Jadwal pekan {league.week + 1}</h4>
+            <h4>{t('Jadwal pekan {n}', { n: league.week + 1 })}</h4>
             <ul className="fixture-list">
               {thisWeek.map((f) => (
                 <li key={`${f.home}-${f.away}`} className={f.home === user.id || f.away === user.id ? 'is-user' : undefined}>
@@ -163,21 +173,21 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch, onReset
                 </li>
               ))}
             </ul>
-            <p className="tac-note">Laga klub lain dihitung cepat dari kekuatan skuad saat pekan ditutup.</p>
+            <p className="tac-note">{t('Laga klub lain dihitung cepat dari kekuatan skuad saat pekan ditutup.')}</p>
           </div>
         )}
       </section>
 
       {msg && (
         <p className="script-warn" role="status">
-          ⚠️ {msg}
+          ⚠️ {errText(msg)}
         </p>
       )}
-      {locked && <p className="zone-notice">Laga liga sedang berjalan — skuad & bursa terkunci sampai peluit akhir.</p>}
+      {locked && <p className="zone-notice">{t('Laga liga sedang berjalan — skuad & bursa terkunci sampai peluit akhir.')}</p>}
 
-      <section aria-label="Skuad">
+      <section aria-label={t('Skuad')}>
         <h4>
-          Skuad ({user.players.length}/{LEAGUE.squadMax}) · nilai = rata-rata stat
+          {t('Skuad')} ({user.players.length}/{LEAGUE.squadMax}) · {t('nilai = rata-rata stat')}
         </h4>
         <ul className="squad-list">
           {slots.map((s) => {
@@ -191,12 +201,12 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch, onReset
                 </span>
                 <span className="squad-val">{fmt(overall(p))}</span>
                 <select
-                  aria-label={`Ganti pemain nomor ${s.number}`}
+                  aria-label={t('Ganti pemain nomor {n}', { n: s.number })}
                   value=""
                   disabled={locked}
                   onChange={(e) => e.target.value && onChange(setStarter(league, s.number, e.target.value))}
                 >
-                  <option value="">ganti…</option>
+                  <option value="">{t('ganti…')}</option>
                   {bench.map((b) => (
                     <option key={b.uid} value={b.uid}>
                       {b.shortName} ({b.role}, {fmt(overall(b))})
@@ -207,7 +217,7 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch, onReset
             );
           })}
         </ul>
-        <h5>Cadangan (7 teratas ikut ke laga)</h5>
+        <h5>{t('Cadangan (7 teratas ikut ke laga)')}</h5>
         <ul className="squad-list">
           {bench.map((p, i) => (
             <li key={p.uid} className={i >= LEAGUE.benchInMatch ? 'is-out' : undefined}>
@@ -216,15 +226,15 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch, onReset
               <span className="squad-name">{p.fullName}</span>
               <span className="squad-val">{fmt(overall(p))}</span>
               <button type="button" className="link-btn" disabled={locked} onClick={() => act(() => sellPlayer(league, p.uid))}>
-                jual {Math.round(playerValue(p) * LEAGUE.sellRate)} jt
+                {t('jual {n} jt', { n: Math.round(playerValue(p) * LEAGUE.sellRate) })}
               </button>
             </li>
           ))}
         </ul>
       </section>
 
-      <section aria-label="Bursa">
-        <h4>Bursa pemain bebas (berganti sebagian tiap pekan)</h4>
+      <section aria-label={t('Bursa')}>
+        <h4>{t('Bursa pemain bebas (berganti sebagian tiap pekan)')}</h4>
         <ul className="squad-list">
           {[...league.market.players]
             .sort((a, b) => overall(b) - overall(a))
@@ -240,7 +250,7 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch, onReset
                   disabled={locked || playerValue(p) > league.budget}
                   onClick={() => act(() => buyPlayer(league, p.uid))}
                 >
-                  beli {playerValue(p)} jt
+                  {t('beli {n} jt', { n: playerValue(p) })}
                 </button>
               </li>
             ))}
@@ -248,20 +258,20 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch, onReset
       </section>
 
       <p className="tac-note">
-        Progres liga disimpan di perangkat ini.{' '}
+        {t('Progres liga disimpan di perangkat ini.')}{' '}
         {confirmReset ? (
           <>
-            Hapus liga ini?{' '}
+            {t('Hapus liga ini?')}{' '}
             <button type="button" className="link-btn" onClick={() => (setConfirmReset(false), onReset())}>
-              ya, mulai baru
+              {t('ya, mulai baru')}
             </button>{' '}
             <button type="button" className="link-btn" onClick={() => setConfirmReset(false)}>
-              batal
+              {t('batal')}
             </button>
           </>
         ) : (
           <button type="button" className="link-btn" disabled={locked} onClick={() => setConfirmReset(true)}>
-            Mulai liga baru
+            {t('Mulai liga baru')}
           </button>
         )}
       </p>
