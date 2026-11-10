@@ -1636,3 +1636,138 @@ details.fold {
 .scout-bar select {
   margin-left: 4px;
 }
+
+/* Liga (10 Nov) */
+.league {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 0 16px;
+}
+.league h3,
+.league h4,
+.league h5 {
+  margin: 0 0 6px;
+}
+.league-sub {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #adb5bd;
+}
+.league-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.league-next {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.table-wrap {
+  overflow-x: auto;
+}
+.league-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+.league-table th,
+.league-table td {
+  padding: 4px 6px;
+  text-align: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+}
+.league-table .l {
+  text-align: left;
+}
+.league-table tr.is-user td {
+  background: rgba(31, 79, 191, 0.25);
+}
+.league-table .team-swatch {
+  display: inline-block;
+  vertical-align: middle;
+}
+.form span {
+  display: inline-block;
+  width: 1.2em;
+  margin-right: 2px;
+  border-radius: 3px;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.form-M { background: #2f9e44; }
+.form-S { background: #868e96; }
+.form-K { background: #c92a2a; }
+.league-weeks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+.fixture-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.85rem;
+}
+.fixture-list li {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.fixture-list li span:first-child {
+  text-align: right;
+}
+.fixture-list li.is-user {
+  color: #74c0fc;
+}
+.squad-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  font-size: 0.85rem;
+}
+.squad-list li {
+  display: grid;
+  grid-template-columns: 2em 3em 1fr 3em auto;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.squad-list li.is-out {
+  opacity: 0.55;
+}
+.squad-num,
+.squad-role {
+  color: #adb5bd;
+}
+.squad-val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.squad-name small {
+  color: #868e96;
+}
+.squad-list select {
+  max-width: 9.5rem;
+}
+@media (max-width: 480px) {
+  .squad-list li {
+    grid-template-columns: 1.6em 2.6em 1fr 2.6em;
+  }
+  .squad-list li > :last-child {
+    grid-column: 2 / -1;
+    justify-self: start;
+  }
+}

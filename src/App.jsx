@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useRef } from 'react';
+import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import MatchView from './components/MatchView.jsx';
 import TeamTab from './components/TeamTab.jsx';
 import { createDemoTeams } from './engine/teams.js';
@@ -6,6 +6,8 @@ import { createSimulation } from './engine/simulation.js';
 import { gameClock } from './engine/state.js';
 import { getPhilosophy } from './engine/philosophy.js';
 import { CLUB_STYLES, STYLE_KEYS, styleTactics, randomStyle } from './engine/clubStyles.js';
+import { createLeague, parseLeague, buildMatchTeams, completeWeek, seasonOver, clubById } from './engine/league.js';
+import LeagueTab from './components/LeagueTab.jsx';
 
 const TEAM_SEED = 2026;
 const SPEEDS = [1, 2, 4, 8];
@@ -31,6 +33,43 @@ function saveStyleChoice(v) {
     // penyimpanan tidak tersedia: abaikan
   }
 }
+// Liga (10 Nov): disimpan di perangkat. Data rusak / versi lama → liga baru (pengguna diberi tahu).
+const LEAGUE_KEY = 'menejer-bola:liga:v1';
+function loadLeague() {
+  try {
+    const raw = window.localStorage.getItem(LEAGUE_KEY);
+    const parsed = parseLeague(raw);
+    if (parsed) return { league: parsed, notice: null };
+    return { league: createLeague(randomSeed()), notice: raw ? 'Data liga lama tidak terbaca — liga baru dibuat.' : null };
+  } catch {
+    return { league: createLeague(randomSeed()), notice: null };
+  }
+}
+function storeLeague(league) {
+  try {
+    window.localStorage.setItem(LEAGUE_KEY, JSON.stringify(league));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Taktik pengguna tersimpan dipasang lagi; bila merujuk pemain yang sudah tidak ada, pakai pilihan
+// tim saja (formasi, garis, pressing, ...) tanpa instruksi per pemain.
+function applyUserTactics(sim, saved) {
+  if (!saved) return;
+  try {
+    sim.setTactics('home', saved);
+  } catch {
+    try {
+      const { inPossession, outOfPossession, onLoss, onWin, corner, freeKick, baseFormation } = saved;
+      sim.setTactics('home', { baseFormation, inPossession, outOfPossession, onLoss, onWin, corner, freeKick });
+    } catch {
+      // taktik lama tidak cocok sama sekali: pakai bawaan
+    }
+  }
+}
+
 function seededUnit(seed) {
   const x = Math.imul(seed >>> 0, 2654435761) >>> 0;
   return x / 4294967296;
@@ -87,13 +126,22 @@ const STAT_ROWS = [
 export default function App() {
   const [matchSeed, setMatchSeed] = useState(initialSeed);
   const [styleChoice, setStyleChoice] = useState(readStyleChoice);
-  const [running, setRunning] = useState(true);
+  const [leagueBoot] = useState(loadLeague);
+  const [league, setLeagueState] = useState(leagueBoot.league);
+  const [leagueNotice, setLeagueNotice] = useState(leagueBoot.notice);
+  const leagueRef = useRef(league);
+  leagueRef.current = league;
+  // 'liga' = laga liga pengguna; 'bebas' = laga persahabatan (gaya lawan dipilih, hasil tidak dicatat).
+  const [matchKind, setMatchKind] = useState(() => (seasonOver(leagueBoot.league) ? 'bebas' : 'liga'));
+  const [leagueMatchId, setLeagueMatchId] = useState(0); // naik = bangun laga liga baru dari data liga terkini
+  const recordedRef = useRef(null);
+  const [running, setRunning] = useState(() => seasonOver(leagueBoot.league));
   const [speed, setSpeed] = useState(1);
   // Snapshot state saat jeda babak / peluit akhir (null = sedang bermain).
   // Hanya berubah dua kali per pertandingan, jadi aman memakai state React.
   const [breakState, setBreakState] = useState(null);
   // Dua tab (29 Okt): keduanya hidup; simulasi tetap berjalan saat tab Tim dibuka.
-  const [tab, setTab] = useState('match');
+  const [tab, setTab] = useState('league');
   const [teamView, setTeamView] = useState(null);
   const tabRef = useRef(tab);
   tabRef.current = tab;
@@ -109,7 +157,24 @@ export default function App() {
   const possessionRefs = { home: useRef(null), away: useRef(null), bar: useRef(null) };
   const rowRefs = useRef({});
 
-  const { home, away, simulation, namesById, awayStyle } = useMemo(() => {
+  const { home, away, simulation, namesById, awayStyle, leagueMatch } = useMemo(() => {
+    const lg = leagueRef.current;
+    if (matchKind === 'liga' && lg && !seasonOver(lg)) {
+      const m = buildMatchTeams(lg);
+      const names = new Map([...m.home.players, ...m.home.bench, ...m.away.players, ...m.away.bench].map((p) => [p.id, p.shortName]));
+      const sim = createSimulation(m.home, m.away, matchSeed, { aiTeams: ['away'] });
+      const st = sim.getState();
+      sim.setTactics('away', styleTactics(m.opponent.style, st.players.filter((p) => p.teamId === 'away'), st.teams.away.tactics));
+      applyUserTactics(sim, lg.userTactics);
+      return {
+        home: m.home,
+        away: m.away,
+        namesById: names,
+        simulation: sim,
+        awayStyle: m.opponent.style,
+        leagueMatch: { key: `${lg.season}-${lg.week}-${leagueMatchId}`, season: lg.season, week: lg.week, userIsHome: m.userIsHome, opponentId: m.opponent.id },
+      };
+    }
     const styleKey = styleChoice === 'acak' ? randomStyle(() => seededUnit(matchSeed)) : styleChoice;
     const style = CLUB_STYLES[styleKey];
     const teams = createDemoTeams(TEAM_SEED, { awayFormation: style.formation, awayPhilosophy: style.philosophy });
@@ -119,8 +184,62 @@ export default function App() {
     const sim = createSimulation(teams.home, teams.away, matchSeed, { aiTeams: ['away'] });
     const st = sim.getState();
     sim.setTactics('away', styleTactics(styleKey, st.players.filter((p) => p.teamId === 'away'), st.teams.away.tactics));
-    return { ...teams, namesById: names, simulation: sim, awayStyle: styleKey };
-  }, [matchSeed, styleChoice]);
+    return { ...teams, namesById: names, simulation: sim, awayStyle: styleKey, leagueMatch: null };
+    // leagueRef dibaca saat laga dibangun; laga liga baru hanya lewat leagueMatchId (bukan tiap perubahan liga)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchSeed, styleChoice, matchKind, leagueMatchId]);
+
+  function setLeague(next) {
+    setLeagueState(next);
+    if (!storeLeague(next)) setLeagueNotice('Penyimpanan perangkat tidak tersedia — progres liga hilang bila halaman ditutup.');
+  }
+
+  // Laga liga selesai → catat hasil + taktik pengguna, tutup pekan (laga lain dihitung cepat). Sekali per laga.
+  useEffect(() => {
+    if (!leagueMatch || breakState?.period !== 'fulltime' || recordedRef.current === leagueMatch.key) return;
+    const lg = leagueRef.current;
+    if (lg.season !== leagueMatch.season || lg.week !== leagueMatch.week) return; // liga berubah di tengah jalan: jangan catat
+    recordedRef.current = leagueMatch.key;
+    const g = breakState.stats.goals;
+    setLeague(completeWeek(lg, g.home, g.away, simulation.getState().teams.home.tactics));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [breakState, leagueMatch]);
+
+  // Laga liga dianggap berjalan sejak mulai diputar (atau sudah lewat menit 0) sampai peluit akhir.
+  const leagueInProgress = Boolean(leagueMatch) && breakState?.period !== 'fulltime' && (running || simulation.getState().tick > 0);
+
+  // Skuad liga berubah sebelum kick-off → bangun ulang laga liga dengan susunan baru.
+  function changeLeague(next) {
+    setLeague(next);
+    if (leagueMatch && simulation.getState().tick === 0) {
+      leagueRef.current = next;
+      setLeagueMatchId((n) => n + 1);
+    }
+  }
+
+  function nextLeagueMatch() {
+    resetBoard();
+    setMatchKind(seasonOver(leagueRef.current) ? 'bebas' : 'liga');
+    setLeagueMatchId((n) => n + 1);
+    setMatchSeed(randomSeed());
+    setRunning(false);
+    setTab('league');
+  }
+
+  function toFriendly() {
+    resetBoard();
+    setMatchKind('bebas');
+    setMatchSeed(randomSeed());
+    setRunning(true);
+  }
+
+  function toLeague() {
+    resetBoard();
+    setMatchKind('liga');
+    setLeagueMatchId((n) => n + 1);
+    setMatchSeed(randomSeed());
+    setRunning(false);
+  }
 
   // Semua angka diperbarui langsung di DOM, tanpa render ulang React setiap tick.
   const handleTick = useCallback(
@@ -265,7 +384,17 @@ export default function App() {
     [home, away, namesById],
   );
 
+  function resetBoard() {
+    if (clockRef.current) clockRef.current.textContent = "0'";
+    if (scoreRef.current) scoreRef.current.textContent = '0 – 0';
+    if (goalBannerRef.current) goalBannerRef.current.hidden = true;
+    if (whistleRef.current) whistleRef.current.hidden = true;
+    setBreakState(null);
+    setTeamView(null);
+  }
+
   function restart() {
+    if (leagueMatch) return nextLeagueMatch(); // laga liga tidak bisa diulang (hasil sudah / akan dicatat)
     if (clockRef.current) clockRef.current.textContent = "0'";
     if (scoreRef.current) scoreRef.current.textContent = '0 – 0';
     if (goalBannerRef.current) goalBannerRef.current.hidden = true;
@@ -304,10 +433,35 @@ export default function App() {
         <TeamLabel team={away} align="left" mentalityRef={mentalityRefs.away} formationRef={formationRefs.away} />
       </header>
 
+      {leagueNotice && (
+        <p className="zone-notice" role="status">
+          {leagueNotice}{' '}
+          <button type="button" className="link-btn" onClick={() => setLeagueNotice(null)}>
+            tutup
+          </button>
+        </p>
+      )}
+      {leagueMatch ? (
+        <div className="scout-bar">
+          <span>
+            🏆 Liga · musim {leagueMatch.season} · pekan {leagueMatch.week + 1} · {leagueMatch.userIsHome ? 'kandang' : 'tandang'} · lawan:{' '}
+            <b>{CLUB_STYLES[awayStyle].label}</b> · {CLUB_STYLES[awayStyle].formation}
+          </span>
+          <button type="button" className="link-btn" disabled={leagueInProgress} onClick={toFriendly} title={leagueInProgress ? 'Selesaikan laga liga dulu' : undefined}>
+            Laga persahabatan
+          </button>
+        </div>
+      ) : (
       <div className="scout-bar">
         <span>
-          Lawan: <b>{CLUB_STYLES[awayStyle].label}</b> · {CLUB_STYLES[awayStyle].formation} · filosofi {getPhilosophy(CLUB_STYLES[awayStyle].philosophy).label.toLowerCase()}
+          Persahabatan · lawan: <b>{CLUB_STYLES[awayStyle].label}</b> · {CLUB_STYLES[awayStyle].formation} · filosofi{' '}
+          {getPhilosophy(CLUB_STYLES[awayStyle].philosophy).label.toLowerCase()}
         </span>
+        {!seasonOver(league) && (
+          <button type="button" className="link-btn" onClick={toLeague}>
+            Kembali ke liga
+          </button>
+        )}
         <label>
           Gaya lawan{' '}
           <select value={styleChoice} onChange={(e) => chooseStyle(e.target.value)}>
@@ -320,8 +474,18 @@ export default function App() {
           </select>
         </label>
       </div>
+      )}
 
       <nav className="tabs" role="tablist" aria-label="Tampilan">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'league'}
+          className={tab === 'league' ? 'is-active' : undefined}
+          onClick={() => setTab('league')}
+        >
+          Liga
+        </button>
         <button
           type="button"
           role="tab"
@@ -348,6 +512,24 @@ export default function App() {
       <div ref={whistleRef} className="whistle-banner" hidden aria-live="polite" />
       <div ref={subToastRef} className="sub-toast" hidden aria-live="polite" />
       <div ref={scriptChipRef} className="script-chip" hidden aria-live="polite" />
+
+      <div hidden={tab !== 'league'}>
+        <LeagueTab
+          league={league}
+          onChange={changeLeague}
+          locked={leagueInProgress}
+          onGoMatch={() => {
+            if (!leagueMatch) toLeague();
+            setTab('match');
+          }}
+          onReset={() => {
+            const fresh = createLeague(randomSeed());
+            leagueRef.current = fresh;
+            setLeague(fresh);
+            nextLeagueMatch();
+          }}
+        />
+      </div>
 
       {/* Tab Tim: simulasi tetap berjalan di belakang. */}
       <div hidden={tab !== 'team'}>
@@ -376,6 +558,7 @@ export default function App() {
               home={home}
               away={away}
               onContinue={breakState.period === 'halftime' ? startSecondHalf : restart}
+              continueLabel={breakState.period === 'fulltime' && leagueMatch ? 'Hasil tersimpan · ke tab Liga' : null}
             />
           )}
         </div>
@@ -418,9 +601,11 @@ export default function App() {
             </button>
           ))}
         </div>
-        <button type="button" onClick={restart}>
-          Ulang (seed baru)
-        </button>
+        {!leagueMatch && (
+          <button type="button" onClick={restart}>
+            Ulang (seed baru)
+          </button>
+        )}
         <span className="stage-note">
           Taktik empat kotak + ball boy + kartu merah + pelanggaran, protes & pertikaian + wasit & hakim garis + filosofi pelatih + bola
           udara (bayangan = bola melambung; bar = tenaga menipis, titik merah = kurang percaya diri, titik oranye = on fire). Seed:{' '}
@@ -433,7 +618,7 @@ export default function App() {
 
 // Layar jeda babak dan layar akhir pertandingan. Di tahap layer manager,
 // layar jeda ini menjadi tempat mengubah taktik dan formasi.
-function BreakScreen({ state, home, away, onContinue }) {
+function BreakScreen({ state, home, away, onContinue, continueLabel }) {
   const isHalftime = state.period === 'halftime';
   const { stats } = state;
   const total = stats.possessionTicks[home.id] + stats.possessionTicks[away.id];
@@ -465,7 +650,7 @@ function BreakScreen({ state, home, away, onContinue }) {
         </dl>
         {isHalftime && <p className="break-note">Pengaturan taktik akan tersedia di sini setelah layer manager dibuat.</p>}
         <button type="button" className="break-button" onClick={onContinue} autoFocus>
-          {isHalftime ? 'Lanjut babak 2' : 'Main lagi (seed baru)'}
+          {isHalftime ? 'Lanjut babak 2' : (continueLabel ?? 'Main lagi (seed baru)')}
         </button>
       </div>
     </div>

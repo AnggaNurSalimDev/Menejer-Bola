@@ -45,6 +45,7 @@ import { parryVelocity } from '../src/engine/keeper.js';
 import { boxRunSpots } from '../src/engine/simulation.js';
 import { reshape, outfieldSlots, tacticsErrors, defaultTactics, teamStyle, TRANSITION, coachTactics, pressAllowedAt, LINE_OPTIONS, laneSlot, LANES, effectiveSlot, clampCustomSlot, CUSTOM_SLOT, minCostAssignment, baseSlots, ZONES, zoneWeights, toTeamFrame, zonedSlot, zoneCenter, mirrorZone, mirrorGroups } from '../src/engine/tactics.js';
 import { slotForPoint } from '../src/engine/shape.js';
+import { createLeague, leagueErrors, buildMatchTeams, completeWeek, standings, parseLeague, newSeason, buyPlayer, sellPlayer, setStarter, playerValue, clubById } from '../src/engine/league.js';
 import { CLUB_STYLES, STYLE_KEYS, styleTactics, styleErrors, randomStyle } from '../src/engine/clubStyles.js';
 import { GROUP_ZONES, groupErrors, activeGroup, groupPassBonus, renameInGroups } from '../src/engine/groups.js';
 import { scriptErrors, renameInScripts, SCRIPT_ZONES, triggerMet, advanceScript } from '../src/engine/scripts.js';
@@ -859,6 +860,47 @@ console.log('Strategi detil: engine skrip (2 Nov)');
   let gkErr = false;
   try { sim2.setTactics('home', { scripts: [{ ...ok, holderId: gk.id, playerIds: [], steps: [{ trigger: { type: 'mulai' }, actions: [{ type: 'tembak' }] }] }] }); } catch { gkErr = true; }
   check('kiper tidak bisa jadi bagian skrip', gkErr ? [] : ['diterima']);
+}
+
+console.log('Liga (10 Nov)');
+{
+  let lg = createLeague(2026);
+  check('liga baru valid (10 klub, 18 pekan, skuad & susunan)', leagueErrors(lg));
+  const meets = new Map();
+  for (const w of lg.fixtures) for (const f of w) meets.set(`${f.home}>${f.away}`, (meets.get(`${f.home}>${f.away}`) ?? 0) + 1);
+  check('jadwal kandang-tandang: tiap pasangan bertemu tepat sekali di kandang masing-masing (90 laga)', meets.size === 90 && [...meets.values()].every((n) => n === 1) ? [] : [`${meets.size}`]);
+  const m = buildMatchTeams(lg);
+  const sim = createSimulation(m.home, m.away, 3, { aiTeams: ['away'] });
+  let st = sim.setTactics('away', styleTactics(m.opponent.style, sim.getState().players.filter((q) => q.teamId === 'away'), sim.getState().teams.away.tactics));
+  const errs = [];
+  for (let i = 0; i < 300; i += 1) {
+    st = sim.step();
+    if (i % 100 === 0) errs.push(...validateMatchState(st));
+  }
+  check('laga liga dari data liga berjalan valid (nama punggung unik)', errs.slice(0, 5));
+  for (let w = 0; w < 18; w += 1) lg = completeWeek(lg, 1, 1);
+  const table = standings(lg);
+  check('musim penuh: 18 laga per klub, poin = 3M + S, total gol = gol kebobolan', table.every((r) => r.p === 18 && r.pts === 3 * r.w + r.d) && table.reduce((a, r) => a + r.gf - r.ga, 0) === 0 ? [] : ['salah']);
+  let g = 0;
+  let n = 0;
+  for (const w of lg.fixtures) for (const f of w) if (f.home !== lg.userClubId && f.away !== lg.userClubId) ((g += f.result.home + f.result.away), (n += 1));
+  check(`hasil cepat: gol/laga wajar (${(g / n).toFixed(2)}, target 2,0–3,4)`, g / n >= 2.0 && g / n <= 3.4 ? [] : ['di luar']);
+  check('simpan & muat: hasil sama; teks rusak → null', JSON.stringify(parseLeague(JSON.stringify(lg))) === JSON.stringify(lg) && parseLeague('{x') === null && parseLeague(JSON.stringify({ ...lg, week: 99 })) === null ? [] : ['salah']);
+  let threw = false;
+  try { completeWeek(lg, 0, 0); } catch { threw = true; }
+  check('musim selesai: tidak bisa main lagi; musim baru mulai pekan 1 dengan hadiah', threw && newSeason(lg).week === 0 && newSeason(lg).budget > lg.budget ? [] : ['salah']);
+  const lg2 = newSeason(lg);
+  const cheap = [...lg2.market.players].sort((x, y) => playerValue(x) - playerValue(y))[0];
+  const bought = buyPlayer(lg2, cheap.uid);
+  const u = clubById(bought.league, lg2.userClubId);
+  check('beli: anggaran berkurang sesuai harga, pemain masuk skuad, hilang dari bursa', !bought.error && bought.league.budget === lg2.budget - playerValue(cheap) && u.players.length === clubById(lg2, lg2.userClubId).players.length + 1 && !bought.league.market.players.some((x) => x.uid === cheap.uid) ? [] : [bought.error ?? 'salah']);
+  const starter = Object.values(u.lineup)[0];
+  check('pemain inti tidak bisa dijual', sellPlayer(bought.league, starter).error ? [] : ['terjual']);
+  const newcomer = u.players[u.players.length - 1].uid;
+  const swapped = setStarter(bought.league, 9, newcomer);
+  check('ganti starter: pemain baru di nomor 9, susunan tetap 11 unik', clubById(swapped, lg2.userClubId).lineup[9] === newcomer && leagueErrors(swapped).length === 0 ? [] : ['salah']);
+  const poor = { ...lg2, budget: 0 };
+  check('anggaran kurang → ditolak, liga tidak berubah', buyPlayer(poor, cheap.uid).error && buyPlayer(poor, cheap.uid).league === poor ? [] : ['diterima']);
 }
 
 console.log('Gaya klub AI (7 Nov)');
