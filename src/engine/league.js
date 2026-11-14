@@ -663,6 +663,34 @@ export function seasonLine(league, uid) {
   return { apps, goals, assists, rating: apps ? rsum / 10 / apps : null };
 }
 
+// Pembanding kecocokan per pemain (15 Nov): rata-rata stat pemain INTI di satu kasta per jenis posisi
+// (GK, CB, FB, WB, DM, CM, W, ST — dari peran slot formasi klubnya). Disimpan per objek liga.
+const refCache = new WeakMap();
+const KIND_OF_ROLE = { GK: 'GK', CB: 'CB', RB: 'FB', LB: 'FB', RWB: 'WB', LWB: 'WB', DM: 'DM', CM: 'CM', AM: 'CM', RM: 'W', LM: 'W', RW: 'W', LW: 'W', ST: 'ST' };
+export function roleReference(league, tier) {
+  if (!TIERS.includes(tier)) throw new RangeError(`roleReference: kasta ${tier} tidak ada`);
+  let byTier = refCache.get(league);
+  if (!byTier) refCache.set(league, (byTier = {}));
+  if (byTier[tier]) return byTier[tier];
+  const sums = {};
+  for (const c of league.clubs.filter((x) => x.tier === tier)) {
+    const slots = getFormation(getStyle(c.style).formation);
+    for (const s of slots) {
+      const p = c.players.find((q) => q.uid === c.lineup[s.number]);
+      if (!p) continue;
+      const kinds = [KIND_OF_ROLE[s.role] ?? 'CM'];
+      if (kinds[0] === 'FB') kinds.push('WB'); // wing-back dibandingkan dengan bek sayap
+      for (const kind of kinds) {
+        const acc = (sums[kind] ??= { n: 0, s: {} });
+        acc.n += 1;
+        for (const [k, v] of Object.entries(p.stats)) acc.s[k] = (acc.s[k] ?? 0) + v;
+      }
+    }
+  }
+  byTier[tier] = Object.fromEntries(Object.entries(sums).map(([kind, { n, s }]) => [kind, Object.fromEntries(Object.entries(s).map(([k, v]) => [k, v / n]))]));
+  return byTier[tier];
+}
+
 // ---------------------------------------------------------------- pemahaman taktik (15 Nov)
 
 export const familiarityOf = (league, key = league.tactic.template) => league.tactic.fam?.[key] ?? FAMILIARITY.base;

@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { getStyle } from '../engine/clubStyles.js';
 import { getFormation } from '../engine/formations.js';
-import { LEAGUE, clubById, overall, playerValue, buyPlayer, sellPlayer, setStarter, roleGroup, isAvailable, effectiveLineup, matchBench, wageBill, wageFor, renewContract, renewWage, restTired, setTraining, seasonLine } from '../engine/league.js';
+import { LEAGUE, clubById, overall, playerValue, buyPlayer, sellPlayer, setStarter, roleGroup, isAvailable, effectiveLineup, matchBench, wageBill, wageFor, renewContract, renewWage, restTired, setTraining, seasonLine, roleReference } from '../engine/league.js';
 import { potentialRange, DEV, TRAINING_FOCUS, TRAINING_INTENSITY } from '../engine/development.js';
 import { AbsenceBadge, PotentialStars, FitBar } from './Status.jsx';
+import FitChip from './FitChip.jsx';
+import { getTemplate } from '../engine/tacticTemplates.js';
 import { MARKET_GROUPS, MARKET_SORTS, BLOCK, marketRows, squadCounts, strengths } from '../engine/market.js';
 import { t, tk, getLang } from '../i18n.js';
 
@@ -53,11 +55,11 @@ const FOCUS_LABEL = { seimbang: tk('Seimbang'), serang: tk('Menyerang'), bertaha
 const INTENSITY_LABEL = { ringan: tk('Ringan'), normal: tk('Normal'), berat: tk('Berat') };
 
 // Baris kecil di bawah nama pemain: umur · potensi · kondisi · statistik musim ini.
-function PlayerMeta({ league, p, withStats = true }) {
+function PlayerMeta({ league, p, withStats = true, fitKey = null, reference = null }) {
   const line = withStats ? seasonLine(league, p.uid) : null;
   return (
     <span className="player-meta">
-      {t('{a} th', { a: p.age })} · <PotentialStars range={potentialRange(p)} /> <FitBar fit={p.fit} />
+      {t('{a} th', { a: p.age })} · <PotentialStars range={potentialRange(p)} /> <FitBar fit={p.fit} /> <FitChip templateKey={fitKey} player={p} reference={reference} />
       {line && line.apps > 0 && (
         <small>
           {' '}
@@ -77,7 +79,7 @@ function DeltaChip({ delta }) {
 
 // part (14 Nov malam): 'squad' = tab Skuad (susunan, cadangan, kontrak), 'market' = tab Bursa — dipisah atas
 // permintaan pengguna; kepala (anggaran, gaji, jumlah skuad) tampil di keduanya.
-export default function SquadMarketTab({ league, onChange, locked, part = 'squad' }) {
+export default function SquadMarketTab({ league, onChange, locked, part = 'squad', fitKey = null }) {
   if (part !== 'squad' && part !== 'market') throw new RangeError(`SquadMarketTab: bagian tidak dikenal ${part}`);
   const [msg, setMsg] = useState(null);
   const [group, setGroup] = useState('semua');
@@ -109,6 +111,7 @@ export default function SquadMarketTab({ league, onChange, locked, part = 'squad
     }
   }
   const asking = (kind, uid) => confirm?.kind === kind && confirm.uid === uid;
+  const reference = roleReference(league, user.tier);
   const tired = slots.map((s) => byUid.get(user.lineup[s.number])).filter((p) => p && isAvailable(p) && (p.fit ?? 100) < DEV.tiredBelow);
 
   return (
@@ -123,6 +126,14 @@ export default function SquadMarketTab({ league, onChange, locked, part = 'squad
         </span>
       </header>
       {locked && <p className="zone-notice">{t('Laga liga sedang berjalan — skuad & bursa terkunci sampai peluit akhir.')}</p>}
+      {fitKey && fitKey !== 'kustom' ? (
+        <p className="tac-note">
+          {t('Kecocokan dihitung untuk template: {n}', { n: t(getTemplate(fitKey).label) })}
+          {fitKey !== league.tactic.template && ` (${t('pratinjau dari tab Taktik')})`}
+        </p>
+      ) : (
+        <p className="tac-note">{t('Pilih template di tab Taktik untuk melihat kecocokan tiap pemain.')}</p>
+      )}
       {msg && (
         <p className="script-warn" role="status">
           ⚠️ {errText(msg)}
@@ -176,7 +187,7 @@ export default function SquadMarketTab({ league, onChange, locked, part = 'squad
                   <span className="squad-name">
                     {p.fullName} {roleGroup(p.role) !== roleGroup(s.role) && <small className="sub-warn">({p.role})</small>} <AbsenceBadge absence={p.absence} />
                     {autoIn.has(s.number) && <small className="auto-in">→ {t('diganti {p} otomatis', { p: autoIn.get(s.number).shortName })}</small>}
-                    <PlayerMeta league={league} p={p} />
+                    <PlayerMeta league={league} p={p} fitKey={fitKey} reference={reference} />
                   </span>
                   <span className="squad-val">{fmt(overall(p))}</span>
                   <select
@@ -207,7 +218,7 @@ export default function SquadMarketTab({ league, onChange, locked, part = 'squad
                   <span className="squad-role">{p.role}</span>
                   <span className="squad-name">
                     {p.fullName} <AbsenceBadge absence={p.absence} />
-                    <PlayerMeta league={league} p={p} />
+                    <PlayerMeta league={league} p={p} fitKey={fitKey} reference={reference} />
                   </span>
                   <span className="squad-val">{fmt(overall(p))}</span>
                   {asking('sell', p.uid) ? (
@@ -301,7 +312,7 @@ export default function SquadMarketTab({ league, onChange, locked, part = 'squad
                   <div className="market-row__meta">
                     <DeltaChip delta={r.delta} />
                     <span className="market-row__stats">
-                      {t('{a} th', { a: r.player.age })} · <PotentialStars range={potentialRange(r.player)} />
+                      {t('{a} th', { a: r.player.age })} · <PotentialStars range={potentialRange(r.player)} /> <FitChip templateKey={fitKey} player={r.player} reference={reference} />
                     </span>
                     <span className="market-row__stats">{strengthText(r.player)}</span>
                     <span className="market-row__stats">{t('gaji {n} jt/pekan', { n: wageFor(r.player) })}</span>

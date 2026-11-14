@@ -9,12 +9,12 @@
 import { FORMATIONS, validateFormation } from '../src/engine/formations.js';
 import { createDemoTeams } from '../src/engine/teams.js';
 import { createMatchState, validateMatchState, gameClock } from '../src/engine/state.js';
-import { createSimulation } from '../src/engine/simulation.js';
+import { createSimulation, HIGH_LINE } from '../src/engine/simulation.js';
 import { createRng } from '../src/engine/rng.js';
 import { matchInjuries } from '../src/engine/injury.js';
 import { koWinner, roundDates } from '../src/engine/calendar.js';
 import { matchRatings } from '../src/engine/playerStats.js';
-import { TEMPLATE_KEYS, templateErrors, templateComplexity, templateBase, templateDetails, complexityOf, effectiveUnderstanding, rankTemplates, weakSpots } from '../src/engine/tacticTemplates.js';
+import { TEMPLATE_KEYS, templateErrors, templateComplexity, templateBase, templateDetails, complexityOf, effectiveUnderstanding, rankTemplates, weakSpots, fitDetail, bestRoleFor, betterTemplatesFor } from '../src/engine/tacticTemplates.js';
 import { recover, developMonth, overall, retireChance, potentialRange, toStars } from '../src/engine/development.js';
 import { AMATEUR_IDS } from '../src/engine/clubs.js';
 import { marketRows, weakestStarters, squadCounts, strengths, BLOCK } from '../src/engine/market.js';
@@ -56,7 +56,7 @@ import { THROW_IN, throwRange } from '../src/engine/simulation.js';
 import { logoErrors, initials, cleanLogoText, contrastColor, defaultLogo } from '../src/engine/logo.js';
 import { readSaves, writeSlot, deleteSlot, slotSummary, SLOTS, SAVE_KEY } from '../src/saves.js';
 import { updateProfile, colorDistance } from '../src/engine/league.js';
-import { createLeague, leagueErrors, buildMatchTeams, completeWeek, standings, parseLeague, newSeason, buyPlayer, sellPlayer, setStarter, playerValue, clubById, roleGroup, clubLogo, setActiveTemplate, understandingFor, familiarityOf, statKey, currentRound, topPlayers, restTired, setTraining, clubStrength, simulateToUserMatch, TIERS, isKnockout, userFixture, packLeague, migrateLeague, matchReportFromState, effectiveLineup, isAvailable, wageBill, renewContract, seasonOver, absentPlayers, LEAGUE } from '../src/engine/league.js';
+import { createLeague, leagueErrors, buildMatchTeams, completeWeek, standings, parseLeague, newSeason, buyPlayer, sellPlayer, setStarter, playerValue, clubById, roleGroup, clubLogo, roleReference, setActiveTemplate, understandingFor, familiarityOf, statKey, currentRound, topPlayers, restTired, setTraining, clubStrength, simulateToUserMatch, TIERS, isKnockout, userFixture, packLeague, migrateLeague, matchReportFromState, effectiveLineup, isAvailable, wageBill, renewContract, seasonOver, absentPlayers, LEAGUE } from '../src/engine/league.js';
 import { CLUB_STYLES, STYLE_KEYS, styleTactics, styleErrors, randomStyle } from '../src/engine/clubStyles.js';
 import { GROUP_ZONES, groupErrors, activeGroup, groupPassBonus, renameInGroups } from '../src/engine/groups.js';
 import { scriptErrors, renameInScripts, SCRIPT_ZONES, triggerMet, advanceScript } from '../src/engine/scripts.js';
@@ -1357,6 +1357,25 @@ console.log('Template taktik & pemahaman (15 Nov)');
   check('kecocokan: skuad cepat → Gegenpress di atas Posisional; skuad jago operan → sebaliknya', pos(fastSquad, 'gegenpress') < pos(fastSquad, 'posisional') && pos(passSquad, 'posisional') < pos(passSquad, 'gegenpress') ? [] : ['salah']);
   const weak = weakSpots('posisional', squad, lg.market.players);
   check('posisi lemah: terurut dari yang paling tidak cocok, saran bursa lebih cocok dari pemain sekarang', weak.length > 0 && weak.every((w, i) => i === 0 || weak[i - 1].fit <= w.fit) && weak.every((w) => w.better.every((b) => b.fit > w.fit)) ? [] : ['salah']);
+}
+
+console.log('Keseimbangan garis tinggi & kecocokan per pemain (15 Nov)');
+{
+  // Garis tinggi: saat pemegang bola lawan bebas tekanan, blok tim bergaris tinggi mundur.
+  check('garis tinggi tanpa tekanan: blok mundur 8 m (pressRadius 6 m)', HIGH_LINE.drop === 8 && HIGH_LINE.pressRadius === 6 ? [] : ['konstanta berubah']);
+  const lgF = createLeague(71);
+  const me = clubById(lgF, lgF.userClubId);
+  const ref = roleReference(lgF, me.tier);
+  check('pembanding per kasta: 8 jenis posisi, angka 1–20', ['GK', 'CB', 'FB', 'WB', 'DM', 'CM', 'W', 'ST'].every((k) => ref[k] && Object.values(ref[k]).every((v) => v >= 1 && v <= 20)) ? [] : [Object.keys(ref).join()]);
+  const rb = me.players.find((p) => p.role === 'RB');
+  check('peran terbaik: pemain tetap di posisi aslinya bila sama cocok (RB → RB)', bestRoleFor('gegenpress', rb) === 'RB' ? [] : [bestRoleFor('gegenpress', rb)]);
+  const weakRb = { ...rb, stats: { ...rb.stats, stamina: 3, kecepatan: 3 } };
+  const dW = fitDetail('gegenpress', weakRb, ref);
+  const dS = fitDetail('gegenpress', { ...rb, stats: Object.fromEntries(Object.entries(rb.stats).map(([k]) => [k, 20])) }, ref);
+  check('rincian: stat di bawah rata-rata sekasta ditandai kurang; pemain lemah merah, pemain 20 hijau', dW.stats.find((x) => x.key === 'stamina').short && dW.tone === 'down' && dS.tone === 'up' && dS.stats.every((x) => !x.short) ? [] : [dW.tone, dS.tone].join());
+  check('rincian urut bobot terbesar dulu', dW.stats.every((x, i) => i === 0 || dW.stats[i - 1].weight >= x.weight) ? [] : ['salah']);
+  const better = betterTemplatesFor(weakRb, 'gegenpress');
+  check('template lain yang lebih cocok: ≤ 2, semuanya lebih tinggi', better.length <= 2 && better.every((b) => b.fit > dW.fit) ? [] : ['salah']);
 }
 
 console.log('Gaya klub AI (7 Nov)');

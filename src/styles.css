@@ -2606,3 +2606,82 @@ details.fold {
     padding-left: 4px;
   }
 }
+
+/* ── Kecocokan pemain dengan template (15 Nov) ── */
+.fit-chip-wrap {
+  position: relative;
+  display: inline-block;
+}
+.fit-chip {
+  font: inherit;
+  font-size: 0.7rem;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid #343a40;
+  background: transparent;
+  color: #ced4da;
+  cursor: pointer;
+}
+.fit-chip--up {
+  color: #8ce99a;
+  border-color: #2b8a3e;
+}
+.fit-chip--flat {
+  color: #ffe066;
+  border-color: #5c4d00;
+}
+.fit-chip--down {
+  color: #ffa8a8;
+  border-color: #862e2e;
+}
+.fit-box {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  top: 1.6em;
+  width: 280px;
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  background: #1b2026;
+  border: 1px solid #343a40;
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  font-size: 0.75rem;
+  color: #e9ecef;
+}
+.fit-stat {
+  display: grid;
+  grid-template-columns: 6.5em 1fr 4.5em;
+  gap: 6px;
+  align-items: center;
+}
+.fit-stat.is-short {
+  color: #ffc9c9;
+}
+.fit-stat__bar {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+}
+.fit-stat__bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: #4dabf7;
+}
+.fit-stat.is-short .fit-stat__bar > span {
+  background: #ff8787;
+}
+.fit-stat__bar > i {
+  position: absolute;
+  top: -2px;
+  width: 2px;
+  height: 10px;
+  background: #fff;
+  opacity: 0.8;
+}
+.fit-box small {
+  color: #adb5bd;
+}

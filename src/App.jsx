@@ -130,6 +130,8 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
   const [league, setLeagueState] = useState(() => atRest(initialLeague));
   const [leagueNotice, setLeagueNotice] = useState(null);
   const [confirmExit, setConfirmExit] = useState(false);
+  // Template yang sedang dibuka di panel (pratinjau kecocokan di tab Skuad/Bursa), null = template aktif.
+  const [previewTemplate, setPreviewTemplate] = useState(null);
   const leagueRef = useRef(league);
   leagueRef.current = league;
   // 'liga' = laga liga pengguna; 'bebas' = laga persahabatan (gaya lawan dipilih, hasil tidak dicatat).
@@ -500,6 +502,7 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
         understand: (cx, k = active) => understandingFor(league, cx, k),
         onApply: applyTemplate,
         onCustom: customTemplate,
+        onPreview: setPreviewTemplate,
         summary: `${active === 'kustom' ? t('Taktik sendiri') : t(getTemplate(active).label)} · ${t('akrab {p}%', { p: Math.round(familiarityOf(league)) })}`,
       };
     }
@@ -644,12 +647,12 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
 
       {league && (
         <div hidden={tab !== 'squad'}>
-          <SquadMarketTab league={league} onChange={changeLeague} locked={leagueInProgress} part="squad" />
+          <SquadMarketTab league={league} onChange={changeLeague} locked={leagueInProgress} part="squad" fitKey={previewTemplate ?? league.tactic.template} />
         </div>
       )}
       {league && (
         <div hidden={tab !== 'market'}>
-          <SquadMarketTab league={league} onChange={changeLeague} locked={leagueInProgress} part="market" />
+          <SquadMarketTab league={league} onChange={changeLeague} locked={leagueInProgress} part="market" fitKey={previewTemplate ?? league.tactic.template} />
         </div>
       )}
 

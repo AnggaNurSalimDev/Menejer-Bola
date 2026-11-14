@@ -88,10 +88,9 @@ export const TEMPLATES = Object.freeze({
     formation: '3-4-3',
     tactics: {
       inPossession: { width: 'lebar', tempo: 'normal' },
-      outOfPossession: { formation: '5-4-1', line: 'normal', press: 'sedang' },
-      onWin: 'seranganBalik',
+      outOfPossession: { formation: '5-4-1', line: 'normal', press: 'tinggi' },
     },
-    lanes: { RM: 'melebar', LM: 'melebar', RW: 'halfSpace', LW: 'halfSpace' },
+    lanes: { RM: 'melebar', LW: 'halfSpace', LM: 'melebar', RW: 'halfSpace' },
     roleKind: { RM: 'WB', LM: 'WB' },
     needs: { WB: { stamina: 2 }, CB: { passing: 1 } },
   },
@@ -408,4 +407,53 @@ export function templateErrors() {
     }
   }
   return errors;
+}
+
+// ---------------------------------------------------------------- kecocokan per pemain (15 Nov)
+// Label "cocok x%" di tiap pemain + kotak rincian stat. Pembanding (keputusan pengguna, opsi a):
+// rata-rata pemain INTI di kasta yang sama untuk jenis posisi itu → "kurang" relatif terhadap
+// persaingan yang dihadapi, bukan angka tetap.
+
+export const roleKindFor = (key, role) => roleKindOf(getTemplate(key), role);
+export const ROLE_KINDS = Object.freeze(['GK', 'CB', 'FB', 'WB', 'DM', 'CM', 'W', 'ST']);
+
+// Peran template yang paling cocok untuk pemain (utamakan peran yang sesuai posisi aslinya).
+export function bestRoleFor(key, player) {
+  const roles = [...new Set(getFormation(getTemplate(key).formation).map((s) => s.role))];
+  const compatible = roles.filter((r) => roleCompatible(key, player.role, r));
+  const pool = compatible.length ? compatible : roles.filter((r) => (r === 'GK') === (player.role === 'GK'));
+  return pool.map((r) => ({ r, f: playerFit(key, r, player) })).sort((a, b) => b.f - a.f || (b.r === player.role) - (a.r === player.role) || a.r.localeCompare(b.r))[0].r;
+}
+
+// Rincian kecocokan: stat yang dipentingkan peran itu (urut bobot), nilai pemain vs pembanding.
+//   reference: { jenisPosisi: { stat: rata-rata } } (league.roleReference)
+export function fitDetail(key, player, reference) {
+  const role = bestRoleFor(key, player);
+  const kind = roleKindFor(key, role);
+  const needs = needsFor(key, role);
+  const ref = reference?.[kind] ?? {};
+  let w = 0;
+  let refSum = 0;
+  const stats = Object.entries(needs)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([k, weight]) => {
+      const value = player.stats[k] ?? 8;
+      const r = Number.isFinite(ref[k]) ? ref[k] : 10;
+      w += weight;
+      refSum += r * weight;
+      return { key: k, weight, value, ref: Math.round(r * 10) / 10, short: value < r - 0.5 };
+    });
+  const fit = playerFit(key, role, player);
+  const refFit = refSum / w / 20;
+  return { role, kind, fit, refFit, tone: fit >= refFit + 0.03 ? 'up' : fit >= refFit - 0.03 ? 'flat' : 'down', stats };
+}
+
+// Template lain yang lebih cocok untuk pemain ini (≥ +2 poin), paling banyak n.
+export function betterTemplatesFor(player, key, n = 2) {
+  const cur = playerFit(key, bestRoleFor(key, player), player);
+  return TEMPLATE_KEYS.filter((k) => k !== key)
+    .map((k) => ({ key: k, fit: playerFit(k, bestRoleFor(k, player), player) }))
+    .filter((x) => x.fit > cur + 0.02)
+    .sort((a, b) => b.fit - a.fit)
+    .slice(0, n);
 }

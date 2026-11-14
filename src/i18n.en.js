@@ -597,4 +597,13 @@ export const EN = Object.freeze({
   'Operan pendek & sabar, tiap zona terisi (lebar, half-space, tengah). Trio di sisi lawan dan skema "pemain ketiga": gelandang → penyerang turun → sayap lari di belakang bek.': 'Short, patient passing with every zone occupied (width, half-spaces, centre). Trios on the flanks and a "third man" routine: midfielder → dropping striker → winger running in behind.',
   'Umpan Pancingan': 'Bait Build-up',
   'Membangun serangan dari belakang dengan sengaja memancing tekanan lawan ke bek, lalu operan vertikal cepat melewati garis tekanan ke penyerang yang turun, dan sayap berlari.': 'Build from the back, deliberately inviting the press onto the centre-backs, then a quick vertical pass through the pressing line to a dropping striker while the winger runs.',
+  // Kecocokan pemain (15 Nov)
+  'Kecocokan dengan template {n}': 'Fit with template {n}',
+  'Rata-rata pemain inti sekasta: {n}': 'Average starter in this tier: {n}',
+  'kurang': 'short',
+  'Garis tipis = rata-rata pemain inti sekasta. ⚠ = di bawah rata-rata itu.': 'Thin line = average starter in this tier. ⚠ = below that average.',
+  'lebih cocok di': 'better fit in',
+  'Kecocokan dihitung untuk template: {n}': 'Fit is calculated for template: {n}',
+  'pratinjau dari tab Taktik': 'preview from the Tactics tab',
+  'Pilih template di tab Taktik untuk melihat kecocokan tiap pemain.': 'Pick a template in the Tactics tab to see each player\'s fit.',
 });

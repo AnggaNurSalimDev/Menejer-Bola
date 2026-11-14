@@ -1478,6 +1478,9 @@ export function kickoffTargets(players, kickOffTeamId) {
 // options.startSentOff: daftar id pemain yang sudah dikartu merah sejak awal laga (untuk uji &
 // kalibrasi "bermain dengan 10 orang"; tidak dipakai di laga biasa).
 // Pemahaman taktik (15 Nov). Besaran pada kekurangan pemahaman penuh (d = 1); efek linear terhadap d.
+// Garis tinggi tanpa tekanan ke pemegang bola: blok mundur (meter) — lihat gaya tim per tick.
+export const HIGH_LINE = Object.freeze({ pressRadius: 6, drop: 8 });
+
 export const UNDERSTANDING = Object.freeze({
   drift: 1.5, // meter: titik bentuk pemain lapangan melenceng paling jauh (kiper tidak; d = 1 → menang 20% vs 33%)
   driftTicks: 100,
@@ -1929,6 +1932,15 @@ export function createSimulation(home, away, seed, options = {}) {
       const since = (at) => (at === null || at === undefined ? Infinity : tick - at);
       styles[id] = teamStyle(teams[id].activeTactics, since(teams[id].lostAt), since(teams[id].wonAt));
       if (gap(id) > 0) styles[id] = looseStyle(styles[id], gap(id));
+      // Garis tinggi (15 Nov, keseimbangan Gegenpress): bola lawan TIDAK ditekan → blok mundur sementara
+      // supaya tidak mudah dilewati bola lambung ke belakang (prinsip "bola bebas → turun").
+      // Uji 40 laga vs 4-3-3 cepat: Gegenpress M9/K24 (kebobolan 2,95) → M18/K15 (2,35).
+      if (styles[id].blockShift > 0) {
+        const holder = prev.ball.ownerId !== null ? prev.players.find((p) => p.id === prev.ball.ownerId) : null;
+        if (holder && holder.teamId !== id && !prev.players.some((p) => p.teamId === id && distance(p, holder) < HIGH_LINE.pressRadius)) {
+          styles[id] = { ...styles[id], blockShift: styles[id].blockShift - HIGH_LINE.drop };
+        }
+      }
       teams[id].runScale = styles[id].runScale;
     }
     match.styles = styles;

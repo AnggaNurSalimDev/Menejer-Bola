@@ -14,8 +14,14 @@ import { t } from '../i18n.js';
 const pct = (x) => `${Math.round(x * 100)}%`;
 const gapText = (gap) => (gap <= 0 ? t('rencana berjalan') : gap < 0.35 ? t('sebagian rencana tidak jalan') : t('rencana sering tidak jalan'));
 
-export default function TemplatePanel({ squad, market = [], active, famOf, understand, currentComplexity, onApply, onCustom, disabled }) {
-  const [open, setOpen] = useState(null);
+export default function TemplatePanel({ squad, market = [], active, famOf, understand, currentComplexity, onApply, onCustom, onPreview = () => {}, disabled }) {
+  const [openKey, setOpenKey] = useState(null);
+  // Membuka template = pratinjau kecocokan pemain di tab Skuad & Bursa.
+  const open = openKey;
+  const setOpen = (k) => {
+    setOpenKey(k);
+    onPreview(k);
+  };
   if (!squad || squad.length < 11) return <p className="tac-note">{t('Skuad belum cukup untuk menilai template.')}</p>;
   const ranked = rankTemplates(squad);
   const fitOf = new Map(ranked.map((r) => [r.key, r.fit]));
