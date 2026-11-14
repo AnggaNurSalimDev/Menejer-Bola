@@ -41,10 +41,34 @@ export function initials(name) {
   return cleanLogoText(words.map((w) => w[0]).join('')) || 'FC';
 }
 
+// Logo bawaan klub liga (14 Nov, masukan pengguna: lawan masih tampil warna polos). Warna tetap dari
+// jersey klub; preset hanya memilih bentuk, pola, dan (kadang) warna kedua. Klub tanpa preset
+// (mis. tim laga persahabatan) mendapat bentuk & pola dari hash namanya — selalu sama untuk nama sama.
+const LOGO_PRESETS = Object.freeze({
+  persada: { shape: 'perisai', pattern: 'tengah' },
+  garuda: { shape: 'perisai', pattern: 'diagonal', secondary: '#ffd43b' },
+  bintang: { shape: 'bintang', pattern: 'polos' },
+  rajawali: { shape: 'berlian', pattern: 'setengah' },
+  benteng: { shape: 'kotak', pattern: 'garis' },
+  angin: { shape: 'bulat', pattern: 'diagonal' },
+  elang: { shape: 'perisai', pattern: 'cincin', secondary: '#ffd43b' },
+  ombak: { shape: 'bulat', pattern: 'garis', secondary: '#ffffff' },
+  batu: { shape: 'kotak', pattern: 'tengah', secondary: '#fab005' },
+  api: { shape: 'berlian', pattern: 'polos', secondary: '#ffd43b' },
+});
+
+function hashText(text) {
+  let h = 2166136261;
+  for (const ch of String(text ?? '')) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  return h;
+}
+
 export function defaultLogo(club) {
   const primary = HEX.test(club?.colors?.shirt ?? '') ? club.colors.shirt.toLowerCase() : '#1f4fbf';
-  const secondary = HEX.test(club?.colors?.number ?? '') ? club.colors.number.toLowerCase() : '#ffffff';
-  const logo = { shape: 'perisai', pattern: 'tengah', primary, secondary, text: initials(club?.name) };
+  const number = HEX.test(club?.colors?.number ?? '') ? club.colors.number.toLowerCase() : '#ffffff';
+  const h = hashText(club?.name);
+  const preset = LOGO_PRESETS[club?.id] ?? { shape: LOGO_SHAPES[h % LOGO_SHAPES.length], pattern: LOGO_PATTERNS[1 + ((h >>> 8) % (LOGO_PATTERNS.length - 1))] };
+  const logo = { shape: preset.shape, pattern: preset.pattern, primary, secondary: (preset.secondary ?? number).toLowerCase(), text: initials(club?.name) };
   const e = logoErrors(logo);
   if (e.length) throw new Error(`defaultLogo: ${e[0]}`);
   return logo;

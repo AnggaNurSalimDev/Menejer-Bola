@@ -252,6 +252,12 @@ export const clubById = (league, id) => {
   return c;
 };
 
+// Logo yang ditampilkan untuk klub mana pun: klub pengguna = logo buatannya, klub AI = logo bawaan.
+export function clubLogo(league, id) {
+  if (id === league.userClubId) return league.profile.logo;
+  return defaultLogo(clubById(league, id));
+}
+
 export function clubStrength(club) {
   const starters = Object.values(club.lineup).map((uid) => club.players.find((p) => p.uid === uid));
   return starters.reduce((s, p) => s + overall(p), 0) / starters.length;

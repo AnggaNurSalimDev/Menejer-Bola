@@ -6,7 +6,8 @@ import { createSimulation } from './engine/simulation.js';
 import { gameClock } from './engine/state.js';
 import { getPhilosophy } from './engine/philosophy.js';
 import { CLUB_STYLES, STYLE_KEYS, styleTactics, randomStyle } from './engine/clubStyles.js';
-import { buildMatchTeams, completeWeek, seasonOver } from './engine/league.js';
+import { buildMatchTeams, completeWeek, seasonOver, clubLogo } from './engine/league.js';
+import { defaultLogo } from './engine/logo.js';
 import ClubLogo from './components/ClubLogo.jsx';
 import LeagueTab from './components/LeagueTab.jsx';
 import SquadMarketTab from './components/SquadMarketTab.jsx';
@@ -419,14 +420,14 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
   return (
     <main className="app">
       <header className="scoreboard">
-        <TeamLabel team={home} align="right" mentalityRef={mentalityRefs.home} formationRef={formationRefs.home} logo={leagueMatch ? league?.profile.logo : null} />
+        <TeamLabel team={home} align="right" mentalityRef={mentalityRefs.home} formationRef={formationRefs.home} logo={leagueMatch && league ? league.profile.logo : defaultLogo(home)} />
         <div className="score">
           <span ref={scoreRef}>0 – 0</span>
           <span ref={clockRef} className="clock">
             0'
           </span>
         </div>
-        <TeamLabel team={away} align="left" mentalityRef={mentalityRefs.away} formationRef={formationRefs.away} />
+        <TeamLabel team={away} align="left" mentalityRef={mentalityRefs.away} formationRef={formationRefs.away} logo={leagueMatch && league ? clubLogo(league, leagueMatch.opponentId) : defaultLogo(away)} />
       </header>
 
       {leagueNotice && (

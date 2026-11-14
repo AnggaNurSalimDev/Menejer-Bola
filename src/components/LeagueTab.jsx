@@ -8,6 +8,7 @@ import {
   seasonOver,
   newSeason,
   updateProfile,
+  clubLogo,
 } from '../engine/league.js';
 import ClubLogo from './ClubLogo.jsx';
 import ProfileEditor from './ProfileEditor.jsx';
@@ -110,11 +111,7 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch }) {
                   <tr key={r.id} className={r.id === user.id ? 'is-user' : undefined}>
                     <td>{i + 1}</td>
                     <td className="l">
-                      {c.id === user.id ? (
-                        <ClubLogo logo={league.profile.logo} size={16} title={r.name} />
-                      ) : (
-                        <span className="team-swatch" style={{ background: c.colors.shirt }} />
-                      )}{' '}
+                      <ClubLogo logo={clubLogo(league, c.id)} size={16} title={r.name} />{' '}
                       {r.name}
                     </td>
                     <td>{r.p}</td>
@@ -150,11 +147,15 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch }) {
             <ul className="fixture-list">
               {lastWeek.map((f) => (
                 <li key={`${f.home}-${f.away}`} className={f.home === user.id || f.away === user.id ? 'is-user' : undefined}>
-                  <span>{name(f.home)}</span>
+                  <span>
+                    {name(f.home)} <ClubLogo logo={clubLogo(league, f.home)} size={14} />
+                  </span>
                   <b>
                     {f.result.home} – {f.result.away}
                   </b>
-                  <span>{name(f.away)}</span>
+                  <span>
+                    <ClubLogo logo={clubLogo(league, f.away)} size={14} /> {name(f.away)}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -166,9 +167,13 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch }) {
             <ul className="fixture-list">
               {thisWeek.map((f) => (
                 <li key={`${f.home}-${f.away}`} className={f.home === user.id || f.away === user.id ? 'is-user' : undefined}>
-                  <span>{name(f.home)}</span>
+                  <span>
+                    {name(f.home)} <ClubLogo logo={clubLogo(league, f.home)} size={14} />
+                  </span>
                   <b>vs</b>
-                  <span>{name(f.away)}</span>
+                  <span>
+                    <ClubLogo logo={clubLogo(league, f.away)} size={14} /> {name(f.away)}
+                  </span>
                 </li>
               ))}
             </ul>

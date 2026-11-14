@@ -47,10 +47,10 @@ import { boxRunSpots } from '../src/engine/simulation.js';
 import { reshape, outfieldSlots, tacticsErrors, defaultTactics, teamStyle, TRANSITION, coachTactics, pressAllowedAt, LINE_OPTIONS, laneSlot, LANES, effectiveSlot, clampCustomSlot, CUSTOM_SLOT, minCostAssignment, baseSlots, ZONES, zoneWeights, toTeamFrame, zonedSlot, zoneCenter, mirrorZone, mirrorGroups } from '../src/engine/tactics.js';
 import { slotForPoint } from '../src/engine/shape.js';
 import { THROW_IN, throwRange } from '../src/engine/simulation.js';
-import { logoErrors, initials, cleanLogoText, contrastColor } from '../src/engine/logo.js';
+import { logoErrors, initials, cleanLogoText, contrastColor, defaultLogo } from '../src/engine/logo.js';
 import { readSaves, writeSlot, deleteSlot, slotSummary, SLOTS, SAVE_KEY } from '../src/saves.js';
 import { updateProfile, colorDistance } from '../src/engine/league.js';
-import { createLeague, leagueErrors, buildMatchTeams, completeWeek, standings, parseLeague, newSeason, buyPlayer, sellPlayer, setStarter, playerValue, clubById, roleGroup } from '../src/engine/league.js';
+import { createLeague, leagueErrors, buildMatchTeams, completeWeek, standings, parseLeague, newSeason, buyPlayer, sellPlayer, setStarter, playerValue, clubById, roleGroup, clubLogo } from '../src/engine/league.js';
 import { CLUB_STYLES, STYLE_KEYS, styleTactics, styleErrors, randomStyle } from '../src/engine/clubStyles.js';
 import { GROUP_ZONES, groupErrors, activeGroup, groupPassBonus, renameInGroups } from '../src/engine/groups.js';
 import { scriptErrors, renameInScripts, SCRIPT_ZONES, triggerMet, advanceScript } from '../src/engine/scripts.js';
@@ -979,6 +979,17 @@ console.log('Tab skuad & bursa (14 Nov)');
   check('kekuatan kiper dari stat kiper; tanpa kecerobohan', st.length === 3 && st.every(([k]) => ['refleks', 'penempatan', 'tangkapan', 'posisi', 'antisipasi'].includes(k)) ? [] : [JSON.stringify(st)]);
   const c = squadCounts(lg);
   check('hitung skuad per kelompok = jumlah skuad', c.GK + c.DF + c.MF + c.FW === clubById(lg, lg.userClubId).players.length ? [] : [JSON.stringify(c)]);
+}
+
+console.log('Logo klub lawan (14 Nov)');
+{
+  const lg = createLeague(21, { clubId: 'garuda' });
+  const logos = lg.clubs.map((c) => clubLogo(lg, c.id));
+  check('semua klub liga punya logo sah', logos.every((l) => logoErrors(l).length === 0) ? [] : ['ada logo rusak']);
+  const designs = new Set(logos.map((l) => `${l.shape}/${l.pattern}/${l.primary}/${l.secondary}`));
+  check('10 logo klub berbeda satu sama lain', designs.size === lg.clubs.length ? [] : [`${designs.size} berbeda`]);
+  check('logo klub pengguna = logo profil; klub AI = warna jersey-nya', clubLogo(lg, 'garuda') === lg.profile.logo && lg.clubs.filter((c) => c.id !== 'garuda').every((c) => clubLogo(lg, c.id).primary === c.colors.shirt.toLowerCase()) ? [] : ['salah']);
+  check('logo tim tanpa preset tetap sama untuk nama yang sama', JSON.stringify(defaultLogo({ name: 'Tim X', colors: { shirt: '#123456', number: '#ffffff' } })) === JSON.stringify(defaultLogo({ name: 'Tim X', colors: { shirt: '#123456', number: '#ffffff' } })) ? [] : ['berubah']);
 }
 
 console.log('Liga (10 Nov)');
