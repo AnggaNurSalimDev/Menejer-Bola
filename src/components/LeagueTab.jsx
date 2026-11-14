@@ -13,7 +13,10 @@ import {
   sellPlayer,
   setStarter,
   newSeason,
+  updateProfile,
 } from '../engine/league.js';
+import ClubLogo from './ClubLogo.jsx';
+import ProfileEditor from './ProfileEditor.jsx';
 import { t, getLang } from '../i18n.js';
 
 const FORM_EN = { M: 'W', S: 'D', K: 'L' };
@@ -23,6 +26,16 @@ const ERR_EN = [
   [/^Pemain inti tidak bisa dijual — ganti dulu dari susunan$/, 'Starters cannot be sold — take them out of the line-up first'],
   [/^Skuad minimal (\d+) pemain$/, 'Squad needs at least $1 players'],
 ];
+const PROFILE_ERR = [
+  [/nama klub kosong/, ['Nama klub belum diisi', 'Club name is empty']],
+  [/nama manajer kosong/, ['Nama manajer belum diisi', 'Manager name is empty']],
+  [/nama klub sudah dipakai/, ['Nama klub sudah dipakai klub lain di liga', 'Another club in the league already uses that name']],
+  [/logo|teks|warna|bentuk|pola/, ['Logo belum lengkap', 'The logo is incomplete']],
+];
+const profileErrText = (m) => {
+  const hit = PROFILE_ERR.find(([re]) => re.test(m));
+  return hit ? hit[1][getLang() === 'en' ? 1 : 0] : m;
+};
 const errText = (m) => (getLang() === 'en' ? ERR_EN.reduce((s, [re, en]) => s.replace(re, en), m) : m);
 
 // Tab Liga (10 Nov): klasemen, jadwal, skuad & bursa "seadanya". Semua perubahan lewat fungsi murni
@@ -30,9 +43,10 @@ const errText = (m) => (getLang() === 'en' ? ERR_EN.reduce((s, [re, en]) => s.re
 
 const fmt = (n) => (Math.round(n * 10) / 10).toFixed(1);
 
-export default function LeagueTab({ league, onChange, locked, onGoMatch, onReset }) {
+export default function LeagueTab({ league, onChange, locked, onGoMatch }) {
   const [msg, setMsg] = useState(null);
-  const [confirmReset, setConfirmReset] = useState(false);
+  const [editing, setEditing] = useState(null); // profil yang sedang diubah | null
+  const [profileError, setProfileError] = useState(null);
   if (!league) return null;
   const table = standings(league);
   const user = clubById(league, league.userClubId);
@@ -42,6 +56,16 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch, onReset
   const lastWeek = league.week > 0 ? league.fixtures[league.week - 1] : null;
   const thisWeek = !over ? league.fixtures[league.week] : null;
   const name = (id) => clubById(league, id).name;
+
+  function saveProfile() {
+    try {
+      onChange(updateProfile(league, editing));
+      setEditing(null);
+      setProfileError(null);
+    } catch (e) {
+      setProfileError(profileErrText(e.message));
+    }
+  }
 
   function act(fn) {
     const r = fn();
@@ -65,7 +89,7 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch, onReset
             {t('Musim {s} · Pekan {w}/{n}', { s: league.season, w: Math.min(league.week + 1, total), n: total })}
           </h3>
           <p className="league-sub">
-            {user.name} · {t('anggaran')} <b>{t('{n} jt', { n: league.budget })}</b> · {t('pemasukan {n} jt/pekan', { n: LEAGUE.weeklyIncome })}
+            <ClubLogo logo={league.profile.logo} size={18} title={user.name} /> {user.name} · {t('Manajer')}: {league.profile.managerName} · {t('anggaran')} <b>{t('{n} jt', { n: league.budget })}</b> · {t('pemasukan {n} jt/pekan', { n: LEAGUE.weeklyIncome })}
           </p>
         </div>
         {!over && fx && (
@@ -116,7 +140,12 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch, onReset
                   <tr key={r.id} className={r.id === user.id ? 'is-user' : undefined}>
                     <td>{i + 1}</td>
                     <td className="l">
-                      <span className="team-swatch" style={{ background: c.colors.shirt }} /> {r.name}
+                      {c.id === user.id ? (
+                        <ClubLogo logo={league.profile.logo} size={16} title={r.name} />
+                      ) : (
+                        <span className="team-swatch" style={{ background: c.colors.shirt }} />
+                      )}{' '}
+                      {r.name}
                     </td>
                     <td>{r.p}</td>
                     <td>{r.w}</td>
@@ -257,24 +286,42 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch, onReset
         </ul>
       </section>
 
-      <p className="tac-note">
-        {t('Progres liga disimpan di perangkat ini.')}{' '}
-        {confirmReset ? (
+      <section aria-label={t('Profil klub')}>
+        <h4>{t('Profil klub')}</h4>
+        {editing ? (
           <>
-            {t('Hapus liga ini?')}{' '}
-            <button type="button" className="link-btn" onClick={() => (setConfirmReset(false), onReset())}>
-              {t('ya, mulai baru')}
-            </button>{' '}
-            <button type="button" className="link-btn" onClick={() => setConfirmReset(false)}>
-              {t('batal')}
-            </button>
+            <ProfileEditor value={editing} onChange={setEditing} disabled={locked} />
+            {profileError && <p className="script-warn">⚠️ {profileError}</p>}
+            <div className="script-actions">
+              <button type="button" className="lane-reset" onClick={() => (setEditing(null), setProfileError(null))}>
+                {t('Batal')}
+              </button>
+              <button type="button" className="break-button" disabled={locked} onClick={saveProfile}>
+                {t('Simpan profil')}
+              </button>
+            </div>
           </>
         ) : (
-          <button type="button" className="link-btn" disabled={locked} onClick={() => setConfirmReset(true)}>
-            {t('Mulai liga baru')}
-          </button>
+          <div className="profile-row">
+            <ClubLogo logo={league.profile.logo} size={48} title={user.name} />
+            <div>
+              <b>{user.name}</b>
+              <div className="league-sub">
+                {t('Manajer')}: {league.profile.managerName}
+              </div>
+            </div>
+            <button
+              type="button"
+              className="link-btn"
+              disabled={locked}
+              onClick={() => setEditing({ clubName: user.name, managerName: league.profile.managerName, logo: league.profile.logo })}
+            >
+              {t('ubah nama, manajer & logo')}
+            </button>
+          </div>
         )}
-      </p>
+        <p className="tac-note">{t('Progres karier disimpan otomatis di perangkat ini. Karier baru atau slot lain: lewat Menu utama.')}</p>
+      </section>
     </div>
   );
 }

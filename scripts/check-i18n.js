@@ -27,6 +27,15 @@ for (const f of files) {
 for (const s of Object.values(CLUB_STYLES)) keys.add(s.label);
 for (const p of Object.values(PHILOSOPHIES)) keys.add(p.label);
 
+// Kunci ganda di kamus (objek JS diam-diam memakai yang terakhir) — dicari dari teks berkas.
+const enSrc = readFileSync('src/i18n.en.js', 'utf8');
+const seenKeys = new Map();
+for (const m of enSrc.matchAll(/^\s{2}(?:'((?:[^'\\]|\\.)*)'|"((?:[^"\\]|\\.)*)"|([A-Za-z_][\w]*)):/gm)) {
+  const k = m[1] ?? m[2] ?? m[3];
+  seenKeys.set(k, (seenKeys.get(k) ?? 0) + 1);
+}
+const dupes = [...seenKeys].filter(([, n]) => n > 1).map(([k]) => k);
+if (dupes.length) console.log(`KUNCI GANDA (${dupes.length}):\n` + dupes.map((k) => `  ${JSON.stringify(k)}`).join('\n'));
 const missing = [...keys].filter((k) => !(k in EN));
 const unused = Object.keys(EN).filter((k) => !keys.has(k));
 const badVars = [...keys].filter((k) => k in EN && [...k.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join() !== [...EN[k].matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join());
@@ -34,5 +43,5 @@ console.log(`teks: ${keys.size} · terjemahan: ${Object.keys(EN).length}`);
 if (missing.length) console.log(`BELUM DITERJEMAHKAN (${missing.length}):\n` + missing.map((k) => `  ${JSON.stringify(k)}`).join('\n'));
 if (unused.length) console.log(`TIDAK DIPAKAI (${unused.length}):\n` + unused.map((k) => `  ${JSON.stringify(k)}`).join('\n'));
 if (badVars.length) console.log(`VARIABEL {…} BEDA (${badVars.length}):\n` + badVars.map((k) => `  ${JSON.stringify(k)}`).join('\n'));
-if (missing.length || unused.length || badVars.length) process.exit(1);
+if (missing.length || unused.length || badVars.length || dupes.length) process.exit(1);
 console.log('Kamus lengkap.');

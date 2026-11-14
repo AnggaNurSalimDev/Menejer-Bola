@@ -14,8 +14,13 @@ import { createTeam, addBench } from './teams.js';
 import { getFormation } from './formations.js';
 import { CLUB_STYLES, getStyle } from './clubStyles.js';
 import { TECHNICAL_STATS, GOALKEEPER_STATS, STAT_MIN, STAT_MAX } from './stats.js';
+import { logoErrors, defaultLogo, contrastColor } from './logo.js';
 
-export const LEAGUE_VERSION = 1;
+export const NAME_MAX = 28;
+const cleanName = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX);
+
+// v2 (14 Nov): profil karier — klub pilihan, nama klub, nama manajer, logo. v1 dimigrasi saat dimuat.
+export const LEAGUE_VERSION = 2;
 export const USER_CLUB = 'persada';
 
 export const LEAGUE = Object.freeze({
@@ -47,6 +52,9 @@ const CLUB_DEFS = Object.freeze([
   { id: 'batu', name: 'Batu Hitam', colors: { shirt: '#212529', number: '#ffffff', goalkeeper: '#fab005' }, style: 'bertahan', quality: 10 },
   { id: 'api', name: 'Api Nusantara', colors: { shirt: '#e8590c', number: '#ffffff', goalkeeper: '#1971c2' }, style: 'pressing', quality: 11 },
 ]);
+
+// Pilihan klub untuk karier baru (tanpa skuad — skuad dibuat createLeague).
+export const CLUB_CHOICES = Object.freeze(CLUB_DEFS.map((d) => Object.freeze({ id: d.id, name: d.name, style: d.style, quality: d.quality, colors: d.colors })));
 
 const ROLE_GROUP = { GK: 'GK', CB: 'DF', LB: 'DF', RB: 'DF', LWB: 'DF', RWB: 'DF', DM: 'MF', CM: 'MF', AM: 'MF', LM: 'MF', RM: 'MF', LW: 'FW', RW: 'FW', ST: 'FW' };
 export const roleGroup = (role) => ROLE_GROUP[role] ?? 'MF';
@@ -114,8 +122,12 @@ function makeFreeAgent(rng, n, usedNames) {
   return { uid: `fa${n}`, fullName: src.fullName, shortName: src.shortName, role: src.role, stats: { ...src.stats } };
 }
 
-export function createLeague(seed = 2026) {
+// profile = { clubId, clubName, managerName, logo } — semuanya opsional (bawaan: Persada Bandung).
+export function createLeague(seed = 2026, profile = {}) {
   if (!Number.isInteger(seed)) throw new TypeError('createLeague: seed harus bilangan bulat');
+  const clubId = profile.clubId ?? USER_CLUB;
+  const def = CLUB_DEFS.find((d) => d.id === clubId);
+  if (!def) throw new RangeError(`createLeague: klub tidak dikenal ${clubId}`);
   const rng = createRng(seed);
   const used = new Set();
   // Nama punggung boleh sama antar-klub (hanya 40 nama belakang); keunikan dijaga per laga (buildMatchTeams).
@@ -125,9 +137,35 @@ export function createLeague(seed = 2026) {
   });
   const fixtures = roundRobin(clubs.map((c) => c.id), rng);
   const market = { nextId: LEAGUE.marketSize, players: Array.from({ length: LEAGUE.marketSize }, (_, i) => makeFreeAgent(rng, i, used)) };
-  const league = { version: LEAGUE_VERSION, seed, season: 1, week: 0, userClubId: USER_CLUB, clubs, fixtures, budget: LEAGUE.startBudget, market, userTactics: null, rngState: rng.int(1, 1e9) };
+  const base = { version: LEAGUE_VERSION, seed, season: 1, week: 0, userClubId: clubId, clubs, fixtures, budget: LEAGUE.startBudget, market, userTactics: null, rngState: rng.int(1, 1e9) };
+  const name = cleanName(profile.clubName) || def.name;
+  const league = updateProfile(
+    { ...base, profile: { managerName: 'Manajer', logo: defaultLogo({ name, colors: def.colors }) } },
+    { clubName: name, managerName: profile.managerName ?? 'Manajer', logo: profile.logo ?? defaultLogo({ name, colors: def.colors }) },
+  );
   assertLeague(league);
   return league;
+}
+
+// Ubah profil karier: nama klub, nama manajer, logo. Warna jersey klub = warna utama logo.
+export function updateProfile(league, { clubName, managerName, logo }) {
+  const user = clubById(league, league.userClubId);
+  const name = clubName === undefined ? user.name : cleanName(clubName);
+  const manager = managerName === undefined ? league.profile.managerName : cleanName(managerName);
+  const nextLogo = logo === undefined ? league.profile.logo : { ...logo };
+  if (!name) throw new RangeError('updateProfile: nama klub kosong');
+  if (!manager) throw new RangeError('updateProfile: nama manajer kosong');
+  const le = logoErrors(nextLogo);
+  if (le.length) throw new RangeError(`updateProfile: ${le[0]}`);
+  if (league.clubs.some((c) => c.id !== user.id && c.name.toLowerCase() === name.toLowerCase())) throw new RangeError('updateProfile: nama klub sudah dipakai klub lain');
+  const colors = { ...user.colors, shirt: nextLogo.primary, number: contrastColor(nextLogo.primary) };
+  const next = {
+    ...league,
+    profile: { managerName: manager, logo: nextLogo },
+    clubs: league.clubs.map((c) => (c.id === user.id ? { ...c, name, colors } : c)),
+  };
+  if (next.version === LEAGUE_VERSION) assertLeague(next);
+  return next;
 }
 
 // ---------------------------------------------------------------- validasi
@@ -168,6 +206,14 @@ export function leagueErrors(league) {
     });
   if (!(league.week >= 0 && league.week <= 2 * (LEAGUE.clubs - 1))) e.push('pekan di luar jadwal');
   if (!(league.budget >= 0)) e.push('anggaran negatif');
+  const pr = league.profile;
+  if (!pr || typeof pr !== 'object') e.push('profil karier tidak ada');
+  else {
+    if (typeof pr.managerName !== 'string' || !pr.managerName.trim() || pr.managerName.length > NAME_MAX) e.push('nama manajer tidak valid');
+    e.push(...logoErrors(pr.logo).map((x) => `profil: ${x}`));
+  }
+  const names = league.clubs.map((c) => c.name.toLowerCase());
+  if (new Set(names).size !== names.length) e.push('nama klub ganda');
   return e;
 }
 
@@ -180,11 +226,22 @@ function assertLeague(league) {
 export function parseLeague(text) {
   if (typeof text !== 'string' || text.length === 0) return null;
   try {
-    const l = JSON.parse(text);
-    return leagueErrors(l).length === 0 ? l : null;
+    const l = migrateLeague(JSON.parse(text));
+    return l && leagueErrors(l).length === 0 ? l : null;
   } catch {
     return null;
   }
+}
+
+// v1 → v2: tambah profil (manajer "Manajer", logo dari warna klub). Versi lain dikembalikan apa adanya.
+export function migrateLeague(l) {
+  if (!l || typeof l !== 'object') return null;
+  if (l.version === 1) {
+    const user = Array.isArray(l.clubs) ? l.clubs.find((c) => c.id === l.userClubId) : null;
+    if (!user) return null;
+    return { ...l, version: 2, profile: { managerName: 'Manajer', logo: defaultLogo(user) } };
+  }
+  return l;
 }
 
 // ---------------------------------------------------------------- hasil & klasemen
@@ -370,11 +427,26 @@ export function buildMatchTeams(league) {
   const oppStyle = getStyle(opp.style);
   const userStyle = getStyle(user.style);
   const userFormation = league.userFormation ?? userStyle.formation;
+  const away = toTeam(opp, 'away', oppStyle.formation, oppStyle.philosophy);
+  // Warna jersey bertabrakan (logo pengguna bisa berwarna apa saja) → lawan memakai jersey kedua.
+  if (colorDistance(user.colors.shirt, opp.colors.shirt) < KIT_CLASH) {
+    const alt = colorDistance(user.colors.shirt, '#f1f3f5') < KIT_CLASH ? '#212529' : '#f1f3f5';
+    away.colors = { ...away.colors, shirt: alt, number: contrastColor(alt) };
+  }
   return {
     fixture: f,
     userIsHome: f.home === user.id,
     opponent: opp,
-    home: toTeam(user, 'home', userFormation, 'fisik'),
-    away: toTeam(opp, 'away', oppStyle.formation, oppStyle.philosophy),
+    home: toTeam(user, 'home', userFormation, userStyle.philosophy),
+    away,
   };
+}
+
+// Jarak warna sederhana (RGB berbobot, 0–~765) untuk mendeteksi jersey yang mirip.
+const KIT_CLASH = 120;
+export function colorDistance(a, b) {
+  const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  if (!/^#[0-9a-f]{6}$/i.test(a) || !/^#[0-9a-f]{6}$/i.test(b)) throw new RangeError('colorDistance: warna tidak valid');
+  const [x, y] = [rgb(a), rgb(b)];
+  return Math.abs(x[0] - y[0]) * 0.9 + Math.abs(x[1] - y[1]) * 1.2 + Math.abs(x[2] - y[2]) * 0.9;
 }

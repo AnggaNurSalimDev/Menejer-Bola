@@ -1793,3 +1793,274 @@ details.fold {
   border-color: #1f4fbf;
   color: #fff;
 }
+
+/* Menu utama, profil, logo (14 Nov) */
+.main-menu {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 16px;
+}
+.menu-home {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 6vh 0 24px;
+}
+.menu-title {
+  margin: 0;
+  font-size: clamp(2.4rem, 8vw, 4.2rem);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+.menu-title span {
+  color: #ffd43b;
+}
+.menu-tagline {
+  margin: 4px 0 28px;
+  color: #adb5bd;
+}
+.menu-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(420px, 100%);
+}
+.menu-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: #f1f3f5;
+  text-align: left;
+  cursor: pointer;
+}
+.menu-btn span {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.menu-btn small {
+  color: #adb5bd;
+}
+.menu-btn--primary {
+  background: #1f4fbf;
+  border-color: #1f4fbf;
+}
+.menu-btn--primary small {
+  color: #dbe4ff;
+}
+.menu-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.menu-note {
+  margin-top: 18px;
+}
+.menu-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-bottom: 32px;
+}
+.menu-panel h4 {
+  margin: 0 0 8px;
+}
+.menu-panel__head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.menu-panel__head h2 {
+  margin: 0;
+}
+.menu-panel__foot {
+  display: flex;
+  justify-content: flex-end;
+}
+.club-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 8px;
+}
+.club-card {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  grid-template-rows: auto auto auto;
+  column-gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #f1f3f5;
+  text-align: left;
+  cursor: pointer;
+}
+.club-card svg {
+  grid-row: 1 / 4;
+}
+.club-card.is-active {
+  border-color: #ffd43b;
+  background: rgba(255, 212, 59, 0.1);
+}
+.club-card__name {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.club-card__meta {
+  font-size: 0.75rem;
+  color: #adb5bd;
+}
+.club-card__stars {
+  font-size: 0.75rem;
+  color: #ffd43b;
+}
+.slot-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+}
+.slot-card.is-empty {
+  opacity: 0.6;
+}
+.slot-card__num {
+  font-weight: 900;
+  color: #868e96;
+  width: 1.2em;
+}
+.slot-card__info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 160px;
+}
+.slot-card__info span,
+.slot-card__info small {
+  color: #adb5bd;
+  font-size: 0.85rem;
+}
+.slot-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.profile-editor {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) 1fr;
+  gap: 16px;
+}
+@media (max-width: 640px) {
+  .profile-editor {
+    grid-template-columns: 1fr;
+  }
+}
+.profile-editor__preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  text-align: center;
+}
+.profile-editor__club {
+  margin: 0;
+  font-weight: 800;
+  font-size: 1.05rem;
+}
+.profile-editor__manager {
+  margin: 0;
+  color: #adb5bd;
+  font-size: 0.85rem;
+}
+.profile-editor__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.field input[type='text'] {
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.25);
+  color: #f1f3f5;
+  font-size: 0.95rem;
+  max-width: 320px;
+}
+.color-pick__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  padding: 0;
+}
+.swatch.is-active {
+  border-color: #ffd43b;
+  box-shadow: 0 0 0 2px rgba(255, 212, 59, 0.4);
+}
+.color-pick input[type='color'] {
+  width: 30px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: none;
+}
+.profile-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.club-logo {
+  vertical-align: middle;
+  flex: none;
+}
+.menu-link,
+.exit-confirm button {
+  padding: 2px 10px;
+  font-size: 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: #dee2e6;
+  cursor: pointer;
+  margin-right: auto;
+}
+.exit-confirm {
+  margin-right: auto;
+  font-size: 0.8rem;
+  color: #ffd43b;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.manager-chip {
+  font-size: 0.75rem;
+  color: #adb5bd;
+  margin-right: 8px;
+  align-self: center;
+}

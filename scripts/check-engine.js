@@ -46,6 +46,9 @@ import { boxRunSpots } from '../src/engine/simulation.js';
 import { reshape, outfieldSlots, tacticsErrors, defaultTactics, teamStyle, TRANSITION, coachTactics, pressAllowedAt, LINE_OPTIONS, laneSlot, LANES, effectiveSlot, clampCustomSlot, CUSTOM_SLOT, minCostAssignment, baseSlots, ZONES, zoneWeights, toTeamFrame, zonedSlot, zoneCenter, mirrorZone, mirrorGroups } from '../src/engine/tactics.js';
 import { slotForPoint } from '../src/engine/shape.js';
 import { THROW_IN, throwRange } from '../src/engine/simulation.js';
+import { logoErrors, initials, cleanLogoText, contrastColor } from '../src/engine/logo.js';
+import { readSaves, writeSlot, deleteSlot, slotSummary, SLOTS, SAVE_KEY } from '../src/saves.js';
+import { updateProfile, colorDistance } from '../src/engine/league.js';
 import { createLeague, leagueErrors, buildMatchTeams, completeWeek, standings, parseLeague, newSeason, buyPlayer, sellPlayer, setStarter, playerValue, clubById } from '../src/engine/league.js';
 import { CLUB_STYLES, STYLE_KEYS, styleTactics, styleErrors, randomStyle } from '../src/engine/clubStyles.js';
 import { GROUP_ZONES, groupErrors, activeGroup, groupPassBonus, renameInGroups } from '../src/engine/groups.js';
@@ -887,6 +890,65 @@ console.log('Lemparan ke dalam (10 Nov)');
   check(`lemparan hanya dengan tangan: ${n} lemparan, laju maks ${maxSpeed.toFixed(1)} m/s (≤ ${THROW_IN.maxSpeed}), tanpa umpan silang/lambungan`, n > 5 && maxSpeed <= THROW_IN.maxSpeed + 0.5 && aerial === 0 ? [] : [`${n} ${maxSpeed} ${aerial}`]);
   check('jangkauan lemparan dari stat Kekuatan: 14–28 m, naik dengan kekuatan', throwRange({ stats: { kekuatan: 1 } }) === 14 && throwRange({ stats: { kekuatan: 20 } }) === 28 && throwRange({ stats: { kekuatan: 12 } }) > throwRange({ stats: { kekuatan: 8 } }) ? [] : ['salah']);
   check('state valid dengan lemparan', errs.slice(0, 5));
+}
+
+console.log('Profil karier, logo & simpanan (14 Nov)');
+{
+  const logo = { shape: 'bulat', pattern: 'diagonal', primary: '#c92a2a', secondary: '#ffd43b', text: 'MP' };
+  check('logo sah diterima; bentuk/pola/warna/teks salah ditolak', logoErrors(logo).length === 0 && [{ ...logo, shape: 'segitiga' }, { ...logo, pattern: 'x' }, { ...logo, primary: 'merah' }, { ...logo, text: 'abcd' }, { ...logo, text: 'ab' }].every((l) => logoErrors(l).length > 0) ? [] : ['salah']);
+  check('inisial & pembersih teks logo', initials('Persada Bandung') === 'PB' && initials('Macan Priangan Raya FC') === 'MPR' && cleanLogoText('a-b c!d') === 'ABC' ? [] : ['salah']);
+  check('warna kontras: putih di atas gelap, hitam di atas terang', contrastColor('#1f4fbf') === '#ffffff' && contrastColor('#ffd43b') === '#111111' ? [] : ['salah']);
+  const lg = createLeague(5, { clubId: 'garuda', clubName: '  Macan   Priangan ', managerName: 'Angga', logo });
+  const me = clubById(lg, 'garuda');
+  check('karier baru: klub pilihan, nama dirapikan, manajer, jersey = warna logo, nomor kontras', leagueErrors(lg).length === 0 && lg.userClubId === 'garuda' && me.name === 'Macan Priangan' && lg.profile.managerName === 'Angga' && me.colors.shirt === '#c92a2a' && me.colors.number === '#ffffff' ? [] : [JSON.stringify(leagueErrors(lg))]);
+  let threw = 0;
+  for (const bad of [{ clubName: '   ' }, { managerName: '' }, { clubName: 'Bintang Samudra' }, { logo: { ...logo, text: 'abcd' } }]) {
+    try {
+      updateProfile(lg, bad);
+    } catch {
+      threw += 1;
+    }
+  }
+  check('ubah profil: nama kosong, manajer kosong, nama klub lain, logo rusak → ditolak', threw === 4 ? [] : [`${threw}/4`]);
+  const lg2 = updateProfile(lg, { managerName: 'Coach A', logo: { ...logo, primary: '#ffffff' } });
+  check('ubah profil: tersimpan & jersey ikut warna logo', lg2.profile.managerName === 'Coach A' && clubById(lg2, 'garuda').colors.shirt === '#ffffff' && clubById(lg2, 'garuda').colors.number === '#111111' ? [] : ['salah']);
+  const m = buildMatchTeams(lg2);
+  check('jersey lawan diganti bila mirip jersey pengguna', colorDistance(m.home.colors.shirt, m.away.colors.shirt) >= 120 ? [] : [`${m.home.colors.shirt} vs ${m.away.colors.shirt}`]);
+  const v1 = { ...createLeague(3), version: 1 };
+  delete v1.profile;
+  const mig = parseLeague(JSON.stringify(v1));
+  check('liga v1 (sebelum menu utama) dimigrasi: profil bawaan, valid', mig && mig.version === 2 && mig.profile.managerName === 'Manajer' && logoErrors(mig.profile.logo).length === 0 ? [] : ['gagal']);
+
+  // Simpanan dengan penyimpanan tiruan.
+  const mem = () => {
+    const m2 = new Map();
+    return { getItem: (k) => (m2.has(k) ? m2.get(k) : null), setItem: (k, v) => m2.set(k, String(v)), removeItem: (k) => m2.delete(k), map: m2 };
+  };
+  const st = mem();
+  check('simpanan kosong: 3 slot kosong', readSaves(st).slots.length === SLOTS && readSaves(st).slots.every((x) => x === null) ? [] : ['salah']);
+  writeSlot(1, lg2, st);
+  const r1 = readSaves(st);
+  check('tulis slot 2: terbaca lagi utuh, jadi slot terakhir', r1.last === 1 && JSON.stringify(r1.slots[1].league) === JSON.stringify(lg2) && r1.slots[0] === null ? [] : ['salah']);
+  check('ringkasan slot: klub, manajer, musim/pekan', slotSummary(r1.slots[1]).clubName === 'Macan Priangan' && slotSummary(r1.slots[1]).managerName === 'Coach A' && slotSummary(r1.slots[1]).week === 1 ? [] : ['salah']);
+  deleteSlot(1, st);
+  check('hapus slot', readSaves(st).slots[1] === null && readSaves(st).last === null ? [] : ['salah']);
+  const st2 = mem();
+  st2.setItem('menejer-bola:liga:v1', JSON.stringify(v1));
+  const r2 = readSaves(st2);
+  check('liga lama dipindah ke slot 1 sekali, kunci lama dihapus', r2.slots[0] && r2.last === 0 && st2.getItem('menejer-bola:liga:v1') === null ? [] : ['gagal']);
+  const st3 = mem();
+  st3.setItem(SAVE_KEY, JSON.stringify({ version: 1, last: 0, slots: [{ savedAt: 1, league: { rusak: true } }, null, null] }));
+  const r3 = readSaves(st3);
+  check('slot rusak dikosongkan & dilaporkan, tidak melempar', r3.slots[0] === null && r3.broken.includes(0) && r3.last === null ? [] : ['salah']);
+  let wthrow = false;
+  try {
+    writeSlot(5, lg2, mem());
+  } catch {
+    wthrow = true;
+  }
+  check('nomor slot di luar 1–3 ditolak', wthrow ? [] : ['diterima']);
+  const full = { getItem: () => null, setItem: () => { throw new Error('QuotaExceeded'); }, removeItem: () => {} };
+  check('penyimpanan penuh → writeSlot mengembalikan false (tidak melempar)', writeSlot(0, lg2, full) === false ? [] : ['salah']);
 }
 
 console.log('Liga (10 Nov)');
