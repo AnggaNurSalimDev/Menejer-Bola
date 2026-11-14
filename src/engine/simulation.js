@@ -13,6 +13,7 @@
 
 import { createRng } from './rng.js';
 import { INJURY, injuryChance, rollSeverity } from './injury.js';
+import { bumpPlayerStat, ASSIST_TICKS } from './playerStats.js';
 import {
   createMatchState,
   createInitialBall,
@@ -68,6 +69,7 @@ import {
   driftConfidence,
   recoverAtHalftime,
   applyConfidenceEvent,
+  CONFIDENCE_EVENTS,
   blunderScale,
   effectiveProfile,
   progressWeightScale,
@@ -1480,7 +1482,10 @@ export function createSimulation(home, away, seed, options = {}) {
   const rng = createRng(seed);
   let state = createMatchState(home, away);
   const teamIds = Object.keys(state.teams);
-  state = { ...state, players: state.players.map((p) => ({ ...p, condition: initialCondition(p.skills, rng) })) };
+  // Kondisi antar-laga (15 Nov): options.startEnergy { idPemain: 0,2–1 } = tenaga awal (inti & cadangan).
+  const startEnergy = options.startEnergy ?? {};
+  for (const [id, e] of Object.entries(startEnergy)) if (!(e >= 0.2 && e <= 1)) throw new RangeError(`createSimulation: tenaga awal ${id} di luar 0,2–1 (${e})`);
+  state = { ...state, startEnergy, players: state.players.map((p) => ({ ...p, condition: { ...initialCondition(p.skills, rng), energy: startEnergy[p.id] ?? 1 } })) };
   state = { ...state, officials: createOfficials(rng) };
   const aiTeams = new Set(options.aiTeams ?? teamIds);
   // Cedera (14 Nov): RNG sendiri supaya urutan acak laga tidak bergeser; options.injuries = false mematikan.
@@ -2115,6 +2120,7 @@ export function createSimulation(home, away, seed, options = {}) {
             blunder(holder, 'shotSpread') * blunderScale(holder, { ...decision.context, bigChance }) * rangeSpreadScale(decision.shot.distance);
           const velocity = shotVelocity(ball, decision.shot.aim, holder.attacksRight, rng, spread, decision.shot.speed);
           stats.shots[holder.teamId].total += 1;
+          note(holder.id, 'shot');
           const long = !inOpponentBox(ball, holder.attacksRight);
           if (long) stats.longShots[holder.teamId].shots += 1;
           ball = releaseBall(ball, holder, velocity, { shotTeamId: holder.teamId, shotKind: long ? 'long' : 'foot', fromCorner: cornerShot(holder.teamId) });
@@ -2128,6 +2134,7 @@ export function createSimulation(home, away, seed, options = {}) {
           if (ball.setPieceKind !== 'penalty') throw new Error(`penalti tanpa bola mati penalti oleh ${holder.id}`);
           const shot = penaltyShot(ball, holder, rng, blunderScale(holder, { ...decision.context, bigChance: true }));
           stats.shots[holder.teamId].total += 1;
+          note(holder.id, 'shot');
           ball = releaseBall(ball, holder, { vx: shot.velocity.vx, vy: shot.velocity.vy }, { shotTeamId: holder.teamId, shotKind: 'penalty', fromCorner: cornerShot(holder.teamId) });
           ballReleasedBy = holder.id;
           const keeper = prev.players.find((p) => p.role === 'GK' && p.teamId !== holder.teamId);
@@ -2138,6 +2145,7 @@ export function createSimulation(home, away, seed, options = {}) {
           const keeper = prev.players.find((p) => p.role === 'GK' && p.teamId !== holder.teamId) ?? null;
           const v = freeKickShotVelocity(ball, holder, keeper, rng, blunderScale(holder, { ...decision.context, bigChance: false }));
           stats.shots[holder.teamId].total += 1;
+          note(holder.id, 'shot');
           stats.freeKicks[holder.teamId].shots += 1;
           ball = releaseBall(ball, holder, { vx: v.vx, vy: v.vy }, { vz: v.vz, shotTeamId: holder.teamId, shotKind: 'freeKick', fromCorner: cornerShot(holder.teamId) });
           ballReleasedBy = holder.id;
@@ -2565,6 +2573,7 @@ export function createSimulation(home, away, seed, options = {}) {
         const scale = blunderScale(w, conditionContext(w, players, match, { bigChance: true }));
         const v = headerShotVelocity(contact, w.attacksRight, keeper, rng, scale, w);
         stats.shots[w.teamId].total += 1;
+        note(w.id, 'shot');
         stats.headers[w.teamId].shots += 1;
         ball = releaseBall({ ...ball, ...contact }, w, { vx: v.vx, vy: v.vy }, { shotTeamId: w.teamId, shotKind: 'header', fromCorner: cornerShot(w.teamId) });
       } else if (forwardOf(contact, w.attacksRight) < PITCH.length / 2) {
@@ -2904,7 +2913,28 @@ export function createSimulation(home, away, seed, options = {}) {
     stats.possessionTicks[creditTeamId] += 1;
 
     // Peristiwa percaya diri (sukses & blunder) diterapkan sekaligus di akhir tick.
+    // Statistik per pemain (15 Nov): peristiwa yang sama dicatat ke pstats; assist = pengoper terakhir
+    // yang sukses ke tim pencetak gol (≤ 8 dtk, belum direbut lawan).
+    let pstats = prev.pstats ?? {};
+    let lastPass = prev.lastPass ?? {};
+    if (events.length > 0) {
+      pstats = { ...pstats };
+      lastPass = { ...lastPass };
+      for (const [playerId, event] of events) {
+        const who = players.find((p) => p.id === playerId);
+        if (!who) continue;
+        pstats[playerId] = bumpPlayerStat(pstats[playerId], event);
+        if (event === 'passCompleted') lastPass[who.teamId] = { id: playerId, tick };
+        else if (event === 'passIntercepted' || event === 'dispossessed' || event === 'heavyTouch') delete lastPass[who.teamId];
+        else if (event === 'goal') {
+          const lp = lastPass[who.teamId];
+          if (lp && lp.id !== playerId && tick - lp.tick <= ASSIST_TICKS) pstats[lp.id] = bumpPlayerStat(pstats[lp.id], 'assist');
+          delete lastPass[who.teamId];
+        }
+      }
+    }
     for (const [playerId, event] of events) {
+      if (!(event in CONFIDENCE_EVENTS)) continue; // peristiwa statistik saja (mis. 'shot')
       const i = players.findIndex((p) => p.id === playerId);
       if (i < 0) throw new Error(`peristiwa "${event}" untuk pemain tak dikenal ${playerId}`);
       players[i] = { ...players[i], condition: applyConfidenceEvent(players[i].condition, players[i].skills, event) };
@@ -2973,6 +3003,8 @@ export function createSimulation(home, away, seed, options = {}) {
       officials,
       whistle,
       tackleEvents,
+      pstats,
+      lastPass,
       possessionTeamId: nowPoss ?? prev.possessionTeamId ?? null,
     };
     return state;

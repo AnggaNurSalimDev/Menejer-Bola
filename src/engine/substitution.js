@@ -130,7 +130,7 @@ export function applySubstitutions(state, tick, placeAt = () => entrySpot(), onl
         tackleCooldown: 0,
         reactionDelay: 0,
         runCooldown: 0,
-        condition: { energy: 1, confidence: CONDITION.startConfidence, form: 0, blunders: 0 },
+        condition: { energy: state.startEnergy?.[incoming.id] ?? 1, confidence: CONDITION.startConfidence, form: 0, blunders: 0 },
         discipline: initialDiscipline(),
         subbedOn: tick,
       };
@@ -147,6 +147,8 @@ export function applySubstitutions(state, tick, placeAt = () => entrySpot(), onl
           profile: out.profile,
           discipline: out.discipline,
           injury: out.injury,
+          condition: out.condition,
+          subbedOn: out.subbedOn,
           x: out.x,
           y: out.y,
           vx: out.vx,

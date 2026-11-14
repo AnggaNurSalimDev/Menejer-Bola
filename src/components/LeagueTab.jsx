@@ -15,7 +15,9 @@ import {
   simulateToUserMatch,
   SEASON_ROUNDS,
   TIERS,
+  topPlayers,
 } from '../engine/league.js';
+import { DEV } from '../engine/development.js';
 import { stagesOf, roundDate } from '../engine/calendar.js';
 import { compLabel, stageLabel, roundLabel, scoreText, dateLabel } from './compLabels.js';
 import { newsText, AbsenceBadge } from './Status.jsx';
@@ -117,6 +119,43 @@ const zoneFor = (tier) => (i, n) => {
   return '';
 };
 
+// Top skor, assist, rating satu ajang (15 Nov).
+const AWARD_LABEL = { terbaik: tk('Pemain terbaik'), topskor: tk('Top skor'), kiper: tk('Kiper terbaik'), muda: tk('Pemain muda terbaik') };
+function TopLists({ league, statKey, userId }) {
+  const table = league.pstats?.[statKey] ?? {};
+  const maxApps = Object.values(table).reduce((m, r) => Math.max(m, r[0]), 0);
+  if (maxApps === 0) return null;
+  const minApps = Math.max(1, Math.round(maxApps / 3));
+  const lists = [
+    [tk('Top skor'), topPlayers(league, statKey, 'goals', { limit: 8 }), (r) => r.goals],
+    [tk('Assist'), topPlayers(league, statKey, 'assists', { limit: 8 }), (r) => r.assists],
+    [tk('Rating rata-rata'), topPlayers(league, statKey, 'rating', { limit: 8, minApps }), (r) => r.rating.toFixed(2)],
+  ];
+  return (
+    <div className="top-lists">
+      {lists.map(([label, rows, val]) => (
+        <div key={label}>
+          <h5>{t(label)}</h5>
+          {rows.length === 0 ? (
+            <p className="tac-note">–</p>
+          ) : (
+            <ol className="top-list">
+              {rows.map((r) => (
+                <li key={r.uid} className={r.clubId === userId ? 'is-user' : undefined}>
+                  <ClubLogo logo={clubLogo(league, r.clubId)} size={14} /> <span>{r.player.shortName}</span>
+                  <small>{t('{n} laga', { n: r.apps })}</small>
+                  <b>{val(r)}</b>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      ))}
+      <p className="tac-note">{t('Rating: minimal {n} laga. Laga klub lain dihitung cepat, jadi gol & rating mereka perkiraan.', { n: minApps })}</p>
+    </div>
+  );
+}
+
 function CupView({ league, comp, userId }) {
   const rounds = league.calendar.filter((r) => r.comp === comp && r.fixtures && !(comp === 'elite' && r.stage.startsWith('G')));
   const stages = stagesOf(comp).filter((st) => !(comp === 'elite' && st.startsWith('G')));
@@ -137,6 +176,7 @@ function CupView({ league, comp, userId }) {
           </ul>
         </div>
       ))}
+      <TopLists league={league} statKey={comp} userId={userId} />
       {pending.length > 0 && (
         <p className="tac-note">
           {t('Belum diundi')}:{' '}
@@ -206,10 +246,17 @@ function HistoryView({ league }) {
         <li key={s}>
           <b>{t('Musim {s}', { s })}</b>
           {league.history
-            .filter((h) => h.season === s)
+            .filter((h) => h.season === s && h.comp !== 'award')
             .map((h, i) => (
               <span key={i}>
                 🏆 {compLabel(h.comp, h.comp === 'liga' ? h.tier : null)}: {h.name}
+              </span>
+            ))}
+          {league.history
+            .filter((h) => h.season === s && h.comp === 'award')
+            .map((h, i) => (
+              <span key={`a${i}`} className="award">
+                🎖️ {t(AWARD_LABEL[h.kind])} {t('Liga {n}', { n: h.tier })}: {h.name} ({h.club}) · {h.kind === 'topskor' ? t('{n} gol', { n: h.value }) : `⭐ ${Number(h.value).toFixed(2)}`}
               </span>
             ))}
         </li>
@@ -234,6 +281,7 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch }) {
   const name = (id) => clubById(league, id).name;
   const lastLeague = [...league.calendar.slice(0, league.week)].reverse().find((r) => r.comp === 'liga');
   const ownTable = standings(league, user.tier);
+  const tiredCount = Object.values(user.lineup).map((u) => user.players.find((p) => p.uid === u)).filter((p) => p && !p.absence && (p.fit ?? 100) < DEV.tiredBelow).length;
   const playoff = league.calendar.filter((r) => r.comp === 'playoff' && r.fixtures).flatMap((r) => r.fixtures.filter((f) => f.tier === tier).map((f) => ({ ...f, stage: r.stage })));
 
   function saveProfile() {
@@ -273,6 +321,7 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch }) {
             <button type="button" className="break-button" onClick={onGoMatch}>
               {t('Ke laga')}
             </button>
+            {tiredCount > 0 && <small className="sub-warn">⚠️ {t('{n} pemain inti kondisinya di bawah {p}% — cek tab Skuad', { n: tiredCount, p: DEV.tiredBelow })}</small>}
           </div>
         )}
         {!over && !fx && (
@@ -342,6 +391,7 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch }) {
             {tier > 1 && <span className="zone-playoff">{t('Play-off promosi')}</span>}
             {tier < 3 && <span className="zone-down">{t('Degradasi')}</span>}
           </p>
+          <TopLists league={league} statKey={`liga${tier}`} userId={user.id} />
           {playoff.length > 0 && (
             <>
               <h5>{compLabel('playoff')}</h5>

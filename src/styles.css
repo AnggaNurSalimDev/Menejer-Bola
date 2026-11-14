@@ -2421,3 +2421,126 @@ details.fold {
     grid-template-columns: minmax(0, 860px);
   }
 }
+
+/* ── Umur, potensi, kondisi, latihan, statistik (15 Nov) ── */
+.player-meta {
+  display: block;
+  font-size: 0.72rem;
+  color: #adb5bd;
+}
+.pot-stars {
+  color: #fcc419;
+  letter-spacing: -1px;
+}
+.fit-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: middle;
+}
+.fit-bar__track {
+  width: 40px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.fit-bar__track > span {
+  display: block;
+  height: 100%;
+  background: #51cf66;
+}
+.fit-bar--mid .fit-bar__track > span {
+  background: #fcc419;
+}
+.fit-bar--low .fit-bar__track > span {
+  background: #ff6b6b;
+}
+.training-box {
+  background: #1b2026;
+  border: 1px solid #2b313a;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+.training-box h4 {
+  margin: 0 0 6px;
+}
+.training-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 6px;
+}
+.tired-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.top-lists {
+  display: grid;
+  gap: 10px;
+  margin: 10px 0;
+}
+@media (min-width: 900px) {
+  .top-lists {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .top-lists > .tac-note {
+    grid-column: 1 / -1;
+  }
+}
+.top-list {
+  margin: 0;
+  padding-left: 1.4em;
+  font-size: 0.8rem;
+}
+.top-list li {
+  padding: 2px 0;
+}
+.top-list li > * {
+  margin-right: 6px;
+}
+.top-list li.is-user span {
+  color: #74c0fc;
+}
+.top-list small {
+  color: #868e96;
+}
+.history-list .award {
+  color: #ced4da;
+  font-size: 0.8rem;
+}
+.ratings-block {
+  margin: 8px 0;
+  font-size: 0.8rem;
+}
+.motm {
+  margin: 0 0 6px;
+}
+.ratings-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.ratings-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ratings-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 1px 0;
+}
+.break-details summary {
+  cursor: pointer;
+  color: #adb5bd;
+  font-size: 0.85rem;
+}

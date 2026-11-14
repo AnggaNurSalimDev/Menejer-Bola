@@ -40,6 +40,7 @@ export function AbsenceBadge({ absence }) {
 export function newsText(n) {
   if (n.type === 'pergi') return `👋 ${t('{p} pergi — kontraknya habis', { p: n.name })}`;
   if (n.type === 'muda') return `🌱 ${t('{p} dipromosikan dari tim muda', { p: n.name })}`;
+  if (n.type === 'pensiun') return `🎓 ${t('{p} pensiun di usia {a}', { p: n.name, a: n.weeks })}`;
   if (n.type === 'lolos' || n.type === 'gugur') {
     const [comp, stage] = String(n.detail).split(':');
     const where = `${compLabel(comp)} · ${stageLabel(stage)}`;
@@ -49,4 +50,35 @@ export function newsText(n) {
   if (n.type === 'naik') return `⬆️ ${t('Promosi ke Liga {n}!', { n: n.weeks })}`;
   if (n.type === 'turun') return `⬇️ ${t('Terdegradasi ke Liga {n}', { n: n.weeks })}`;
   return `${ABSENCE_ICON[n.type] ?? '•'} ${n.name}: ${absenceText({ type: n.type, weeks: n.weeks, detail: n.detail })}`;
+}
+
+// Bintang kelipatan ½ (15 Nov): 3,5 → "★★★½".
+export function starText(v) {
+  if (!Number.isFinite(v)) return '';
+  const full = Math.floor(v);
+  return '★'.repeat(full) + (v - full >= 0.5 ? '½' : '');
+}
+
+export function PotentialStars({ range }) {
+  if (!range) return null;
+  const [lo, hi] = range;
+  return (
+    <span className="pot-stars" title={t('Perkiraan potensi (bukan pasti)')}>
+      {lo === hi ? starText(lo) : `${starText(lo)}–${starText(hi)}`}
+    </span>
+  );
+}
+
+// Bar kondisi 0–100 (15 Nov). Kuning < 85, merah < 75.
+export function FitBar({ fit }) {
+  if (!Number.isFinite(fit)) return null;
+  const tone = fit < 75 ? 'low' : fit < 85 ? 'mid' : 'ok';
+  return (
+    <span className={`fit-bar fit-bar--${tone}`} title={t('Kondisi {n}%', { n: fit })}>
+      <span className="fit-bar__track">
+        <span style={{ width: `${Math.max(0, Math.min(100, fit))}%` }} />
+      </span>
+      <small>{fit}%</small>
+    </span>
+  );
 }

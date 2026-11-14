@@ -17,7 +17,9 @@ import { TECHNICAL_STATS, GOALKEEPER_STATS, PSYCHOLOGICAL_STATS, STAT_MIN, STAT_
 import { logoErrors, defaultLogo, contrastColor } from './logo.js';
 import { INJURY, rollSeverity } from './injury.js';
 import { CLUB_DEFS, GUEST_DEFS, FOREIGN_IDS, AMATEUR_IDS, TIERS, CLUBS_PER_TIER, USER_CLUB, isGuestId } from './clubs.js';
-import { COMP, COMP_KEYS, seasonSkeleton, SKELETON_LENGTH, stagesOf, drawPairs, koWinner, shootout, tableOf, eliteGroups, groupMatchdays } from './calendar.js';
+import { DEV, DEFAULT_TRAINING, INTENSITY_INJURY, trainingErrors, overall, rollAgePot, developMonth, retireChance, recover } from './development.js';
+import { COMP, COMP_KEYS, seasonSkeleton, SKELETON_LENGTH, stagesOf, drawPairs, koWinner, shootout, tableOf, eliteGroups, groupMatchdays, roundDate } from './calendar.js';
+import { matchRatings } from './playerStats.js';
 
 export { USER_CLUB, TIERS, CLUBS_PER_TIER, COMP };
 export const SEASON_ROUNDS = SKELETON_LENGTH;
@@ -31,7 +33,9 @@ const cleanName = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, NA
 // v4 (15 Nov): 3 kasta × 20 klub, kalender musim 62 babak (liga + Piala Nasional, Piala Liga, Piala Super,
 //   Kejuaraan Elite, play-off promosi), naik-turun kasta, sejarah juara. `week` = indeks babak kalender.
 //   v3 dimigrasi: 10 klub lama jadi bagian Liga 1, musim berjalan dimulai ulang dengan kalender baru.
-export const LEAGUE_VERSION = 4;
+// v5 (15 Nov): umur, potensi, kondisi (fit) per pemain; latihan tim; statistik pemain per ajang
+//   (pstats) & penghargaan akhir musim. v4 dimigrasi: umur/potensi diundi, kondisi 100, statistik kosong.
+export const LEAGUE_VERSION = 5;
 
 export const LEAGUE = Object.freeze({
   clubs: TIERS.length * CLUBS_PER_TIER,
@@ -43,7 +47,11 @@ export const LEAGUE = Object.freeze({
   koPrize: Object.freeze({ nasional: 1, ligaCup: 0.5, elite: 3, super: 0, playoff: 2 }),
   groupWinPrize: 2,
   trophyPrize: Object.freeze({ nasional: 15, ligaCup: 8, elite: 30, super: 3 }),
-  historyMax: 120,
+  historyMax: 400,
+  awardMinApps: 12, // penghargaan rating: minimal laga liga
+  youngAge: 21,
+  aiSquadTarget: 20, // klub AI ditambah pemain muda sampai sebanyak ini
+  youthQualityByTier: Object.freeze({ 1: [9, 11], 2: [8, 10], 3: [7, 9] }),
   startBudget: 40, // juta (mata uang karangan)
   squadMax: 25,
   squadMin: 18, // 11 starter + 7 cadangan
@@ -81,18 +89,16 @@ export const CLUB_CHOICES = Object.freeze(CLUB_DEFS.map((d) => Object.freeze({ i
 const ROLE_GROUP = { GK: 'GK', CB: 'DF', LB: 'DF', RB: 'DF', LWB: 'DF', RWB: 'DF', DM: 'MF', CM: 'MF', AM: 'MF', LM: 'MF', RM: 'MF', LW: 'FW', RW: 'FW', ST: 'FW' };
 export const roleGroup = (role) => ROLE_GROUP[role] ?? 'MF';
 
-// Nilai keseluruhan pemain: kiper dari stat kiper + posisi, lainnya dari stat teknik (tanpa kecerobohan).
-export function overall(player) {
-  const s = player.stats;
-  const keys = player.role === 'GK' ? [...GOALKEEPER_STATS, 'posisi', 'antisipasi'] : TECHNICAL_STATS.filter((k) => k !== 'kecerobohan');
-  const vals = keys.map((k) => s[k]).filter(Number.isFinite);
-  if (vals.length === 0) throw new Error(`overall: stat kosong untuk ${player.uid ?? player.id}`);
-  return vals.reduce((a, b) => a + b, 0) / vals.length;
-}
+export { overall };
 
 // Harga (juta): naik ±35% per poin nilai, nilai 10 ≈ 5 juta.
+// Umur (15 Nov): yang muda dihargai menurut potensinya, yang tua (≥ 31) didiskon.
 export function playerValue(player) {
-  return Math.max(1, Math.round(5 * 1.35 ** (overall(player) - 10)));
+  const ovr = overall(player);
+  const age = player.age ?? 26;
+  const pot = Number.isFinite(player.pot) ? player.pot : ovr;
+  const eff = ovr + (age <= 23 ? 0.5 * Math.max(0, pot - ovr) : 0) - (age >= 31 ? 0.3 * (age - 30) : 0);
+  return Math.max(1, Math.round(5 * 1.35 ** (eff - 10)));
 }
 
 function makeClub(def, seed, usedNames) {
@@ -152,7 +158,8 @@ function makeFreeAgent(rng, n, usedNames) {
   const quality = rng.int(8, 15);
   const t = createTeam({ usedShortNames: new Set(), id: `fa${n}`, name: 'Bursa', colors: { shirt: '#000', number: '#fff' }, formation: '4-4-2', quality, philosophy: 'seimbang', seed: rng.int(1, 1e9) });
   const src = t.players.find((p) => p.role === role) ?? t.players[1];
-  return { uid: `fa${n}`, fullName: src.fullName, shortName: src.shortName, role: src.role, stats: { ...src.stats } };
+  const base = { uid: `fa${n}`, fullName: src.fullName, shortName: src.shortName, role: src.role, stats: { ...src.stats } };
+  return { ...base, ...rollAgePot(base, rng), fit: 100 };
 }
 
 // profile = { clubId, clubName, managerName, logo } — semuanya opsional (bawaan: Persada Bandung).
@@ -178,7 +185,7 @@ export function createLeague(seed = 2026, profile = {}) {
   const cup = seasonCup(top1.slice(0, 4).map((c) => c.id), [top1[0].id, top1[1].id], rng);
   const calendar = buildCalendar(signed, cup, rng);
   const income = round1(Math.max(LEAGUE.tierIncome[userDef.tier], wageBill(userDef) + LEAGUE.incomeMargin));
-  const base = { version: LEAGUE_VERSION, seed, season: 1, week: 0, userClubId: clubId, clubs: signed, calendar, cup, history: [], budget: LEAGUE.startBudget, income, news: [], market, userTactics: null, rngState: rng.int(1, 1e9) };
+  const base = { version: LEAGUE_VERSION, seed, season: 1, week: 0, userClubId: clubId, clubs: signed, calendar, cup, history: [], pstats: {}, training: { ...DEFAULT_TRAINING }, budget: LEAGUE.startBudget, income, news: [], market, userTactics: null, rngState: rng.int(1, 1e9) };
   const name = cleanName(profile.clubName) || def.name;
   const league = updateProfile(
     { ...base, profile: { managerName: 'Manajer', logo: defaultLogo({ name, colors: def.colors }) } },
@@ -236,6 +243,8 @@ export function leagueErrors(league) {
   if (!(Number.isFinite(league.income) && league.income > 0)) e.push('pemasukan tidak valid');
   if (!Array.isArray(league.news)) e.push('kabar pekan tidak valid');
   e.push(...calendarErrors(league, ids));
+  e.push(...trainingErrors(league.training));
+  if (!league.pstats || typeof league.pstats !== 'object') e.push('statistik pemain tidak valid');
   // Anggaran boleh minus (gaji melebihi pemasukan); pembelian ditolak selama minus.
   if (!Number.isFinite(league.budget)) e.push('anggaran tidak valid');
   const pr = league.profile;
@@ -288,6 +297,9 @@ export function migrateLeague(l) {
     const old = new Map(l.clubs.map((c) => [c.id, c]));
     const clubs = fresh.clubs.map((c) => (old.has(c.id) ? { ...old.get(c.id), tier: c.tier } : c));
     const user = clubs.find((c) => c.id === l.userClubId);
+    // `fresh` sudah v5; klub lama (v3) belum punya umur/kondisi → lengkapi di sini.
+    const rngAp = createRng((Number(l.seed) || 1) + 4242);
+    for (let k = 0; k < clubs.length; k += 1) if (old.has(clubs[k].id)) clubs[k] = { ...clubs[k], players: clubs[k].players.map((p) => withSquadFields(p, rngAp)) };
     return {
       ...fresh,
       clubs,
@@ -295,11 +307,18 @@ export function migrateLeague(l) {
       budget: l.budget,
       income: round1(Math.max(l.income ?? 0, LEAGUE.tierIncome[1], wageBill(user) + LEAGUE.incomeMargin)),
       news: l.news ?? [],
-      market: l.market,
+      market: { ...l.market, players: (l.market?.players ?? []).map((p) => (Number.isInteger(p.age) ? p : { ...p, ...rollAgePot(p, rngAp), fit: 100 })) },
       profile: l.profile,
       userTactics: l.userTactics ?? null,
       ...(l.userFormation ? { userFormation: l.userFormation } : {}),
     };
+  }
+  if (l.version === 4) {
+    if (!Array.isArray(l.clubs)) return null;
+    const rng = createRng((Number(l.seed) || 1) + 4242);
+    const clubs = l.clubs.map((c) => ({ ...c, players: c.players.map((p) => withSquadFields(p, rng)) }));
+    const market = { ...l.market, players: (l.market?.players ?? []).map((p) => (Number.isInteger(p.age) ? p : { ...p, ...rollAgePot(p, rng), fit: 100 })) };
+    return { ...l, version: 5, clubs, market, pstats: {}, training: { ...DEFAULT_TRAINING } };
   }
   return l;
 }
@@ -334,9 +353,11 @@ export function clubLogo(league, id) {
   return defaultLogo(clubById(league, id));
 }
 
-export function clubStrength(club) {
-  const starters = Object.values(effectiveLineup(club).lineup).map((uid) => club.players.find((p) => p.uid === uid));
-  return starters.reduce((s, p) => s + overall(p), 0) / starters.length;
+// Kekuatan hitung cepat: rata-rata nilai 11 pemain yang benar-benar main (klub AI merotasi yang lelah),
+// dikurangi kelelahan: nilai × (0,85 + 0,15 × kondisi).
+export function clubStrength(club, { rotate = true } = {}) {
+  const starters = Object.values(effectiveLineup(club, null, { rotate }).lineup).map((uid) => club.players.find((p) => p.uid === uid));
+  return starters.reduce((s, p) => s + overall(p) * (0.85 + 0.15 * ((p.fit ?? 100) / 100)), 0) / starters.length;
 }
 
 function poisson(rng, lambda, max) {
@@ -400,7 +421,15 @@ export function completeWeek(league, userGoals, oppGoals, userTactics = null, re
   const weekNo = league.week + 1;
   const news = [];
   const inRound = new Set(roundFixtures.flatMap((f) => [f.home, f.away]));
-  const playedThisWeek = new Map(league.clubs.filter((c) => inRound.has(c.id)).map((c) => [c.id, new Set(Object.values(effectiveLineup(c).lineup))]));
+  const playedThisWeek = new Map(league.clubs.filter((c) => inRound.has(c.id)).map((c) => [c.id, new Set(Object.values(effectiveLineup(c, null, { rotate: c.id !== league.userClubId }).lineup))]));
+  // Statistik pemain (15 Nov): laga pengguna dari laporan engine, laga lain diundi dari hasil.
+  const pstats = recordRoundStats(league, round, roundFixtures, report, rng);
+  // Kondisi (15 Nov): yang main kehilangan kondisi; semua pulih menurut jumlah hari ke babak berikutnya.
+  const today = roundDate(league.season, league.week);
+  const nextDay = roundDate(league.season, league.week + 1);
+  const days = nextDay ? Math.round((nextDay - today) / 86400000) : 0;
+  const monthTurn = nextDay !== null && new Date(nextDay).getUTCMonth() !== new Date(today).getUTCMonth();
+  const userEnergy = new Map((report?.players ?? []).filter((x) => x.side === 'user' && Number.isFinite(x.energy)).map((x) => [x.uid, x.energy]));
   const clubs = league.clubs.map((c) => {
     const isUser = c.id === league.userClubId;
     const log = (p, type, weeks, detail = null) => isUser && news.push({ week: weekNo, uid: p.uid, name: p.fullName, type, weeks, detail });
@@ -433,7 +462,8 @@ export function completeWeek(league, userGoals, oppGoals, userTactics = null, re
       // Klub AI: cedera & kartu diundi dari pemain yang main pekan ini.
       const xi = [...playedThisWeek.get(c.id)];
       const am = LEAGUE.aiMatch;
-      if (rng.chance(am.injury)) {
+      const avgFit = xi.reduce((sum, u) => sum + (players[byUid(u)]?.fit ?? 100), 0) / Math.max(1, xi.length);
+      if (rng.chance(Math.min(0.6, am.injury * (1 + (1 - avgFit / 100))))) {
         const i = byUid(rng.pick(xi));
         setP(i, (p) => withAbsence(p, 'cedera', injuryWeeks(rollSeverity(rng), rng)));
       }
@@ -456,13 +486,25 @@ export function completeWeek(league, userGoals, oppGoals, userTactics = null, re
       let out = null;
       if (r < ab.illness) out = ['sakit', rng.int(ab.illnessWeeks[0], ab.illnessWeeks[1]), null];
       else if (r < ab.illness + ab.personal) out = ['izin', rng.int(ab.personalWeeks[0], ab.personalWeeks[1]), null];
-      else if (r < ab.illness + ab.personal + ab.training) {
+      else if (r < ab.illness + ab.personal + ab.training * (isUser ? INTENSITY_INJURY[league.training.intensity] : 1)) {
         const sev = rollSeverity(rng);
         out = ['cedera', injuryWeeks(sev, rng), `latihan-${sev}`];
       }
       if (!out) return p;
       const q = withAbsence(p, out[0], out[1], out[2]);
       log(q, out[0], out[1], out[2]);
+      return q;
+    });
+    // Kondisi: biaya laga lalu pemulihan harian; perkembangan bulanan bila bulan berganti.
+    const played = playedThisWeek.get(c.id);
+    const intensity = isUser ? league.training.intensity : 'normal';
+    const starters = new Set(Object.values(effectiveLineup({ ...c, players }, isUser ? league.userFormation : null, { rotate: !isUser }).lineup));
+    players = players.map((p) => {
+      let fit = p.fit ?? 100;
+      if (isUser && userEnergy.has(p.uid)) fit = Math.min(fit, Math.round(userEnergy.get(p.uid) * 100));
+      else if (!isUser && played?.has(p.uid)) fit = Math.max(20, fit - rng.int(DEV.aiMatchCost[0], DEV.aiMatchCost[1]));
+      let q = { ...p, fit: recover(fit, days, intensity) };
+      if (monthTurn) q = developMonth(q, rng, { starter: starters.has(p.uid), training: isUser ? league.training : DEFAULT_TRAINING });
       return q;
     });
     return { ...c, players };
@@ -501,6 +543,7 @@ export function completeWeek(league, userGoals, oppGoals, userTactics = null, re
     week: league.week + 1,
     budget,
     news: [...news, ...league.news].slice(0, LEAGUE.newsMax),
+    pstats,
     userTactics: done ? (userTactics ?? league.userTactics) : league.userTactics,
     market: refreshMarket(league.market, rng),
   };
@@ -508,6 +551,103 @@ export function completeWeek(league, userGoals, oppGoals, userTactics = null, re
   next = { ...next, rngState: rng.int(1, 1e9) };
   assertLeague(next);
   return next;
+}
+
+// ---------------------------------------------------------------- statistik pemain (15 Nov)
+//   league.pstats[ajang][uid] = [main, gol, assist, jumlah rating × 10, idKlub]
+//   ajang: 'liga1'/'liga2'/'liga3' atau kunci piala (nasional, ligaCup, elite, super, playoff)
+export const statKey = (round, fixture) => (round.comp === COMP.liga ? `liga${fixture.tier}` : round.comp);
+
+function addStat(table, uid, clubId, { goals = 0, assists = 0, rating }) {
+  const cur = table[uid] ?? [0, 0, 0, 0, clubId];
+  table[uid] = [cur[0] + 1, cur[1] + goals, cur[2] + assists, cur[3] + Math.round(rating * 10), clubId];
+}
+
+// Laga hitung cepat: pencetak gol dari pemain inti (bobot posisi × finishing), assist 70% (bobot
+// posisi × passing), rating 6,3 ± hasil ± acak + gol/assist, kiper ± kebobolan.
+function quickPlayerStats(league, club, gf, ga, rng) {
+  const lineup = effectiveLineup(club, null, { rotate: !club.guest && club.id !== league.userClubId }).lineup;
+  const xi = Object.values(lineup).map((u) => club.players.find((p) => p.uid === u)).filter(Boolean);
+  const out = new Map(xi.map((p) => [p.uid, { goals: 0, assists: 0 }]));
+  const pickBy = (wf) => {
+    const w = xi.map((p) => Math.max(0, wf(p)));
+    let r = rng.next() * w.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < xi.length; i += 1) if ((r -= w[i]) <= 0) return xi[i];
+    return xi[xi.length - 1];
+  };
+  const G = { FW: 0.55, MF: 0.32, DF: 0.12, GK: 0 };
+  const A = { FW: 0.35, MF: 0.45, DF: 0.2, GK: 0.02 };
+  for (let g = 0; g < gf; g += 1) {
+    const scorer = pickBy((p) => G[roleGroup(p.role)] * (p.stats.finishing ?? 8));
+    out.get(scorer.uid).goals += 1;
+    if (rng.chance(0.7)) {
+      const helper = pickBy((p) => (p.uid === scorer.uid ? 0 : A[roleGroup(p.role)] * (p.stats.passing ?? 8)));
+      if (helper.uid !== scorer.uid) out.get(helper.uid).assists += 1;
+    }
+  }
+  const res = gf > ga ? 0.4 : gf < ga ? -0.4 : 0;
+  return xi.map((p) => {
+    const o = out.get(p.uid);
+    let r = 6.3 + res + rng.normal(0, 0.45) + o.goals * 1.0 + o.assists * 0.6;
+    if (p.role === 'GK') r += ga === 0 ? 0.6 : -0.3 * ga;
+    return { uid: p.uid, goals: o.goals, assists: o.assists, rating: Math.round(Math.min(10, Math.max(3, r)) * 10) / 10 };
+  });
+}
+
+function recordRoundStats(league, round, fixtures, report, rng) {
+  const pstats = { ...league.pstats };
+  for (const f of fixtures) {
+    const key = statKey(round, f);
+    const table = { ...(pstats[key] ?? {}) };
+    const isUserFixture = f.home === league.userClubId || f.away === league.userClubId;
+    if (isUserFixture && report?.players?.length) {
+      const opp = f.home === league.userClubId ? f.away : f.home;
+      for (const x of report.players) addStat(table, x.uid, x.side === 'user' ? league.userClubId : opp, x);
+    } else {
+      for (const [clubId, gf, ga] of [
+        [f.home, f.result.home, f.result.away],
+        [f.away, f.result.away, f.result.home],
+      ]) {
+        for (const x of quickPlayerStats(league, clubById(league, clubId), gf, ga, rng)) addStat(table, x.uid, clubId, x);
+      }
+    }
+    pstats[key] = table;
+  }
+  return pstats;
+}
+
+// Daftar pemain teratas satu ajang. by: 'goals' | 'assists' | 'rating' (minimal minApps laga).
+export function topPlayers(league, key, by = 'goals', { limit = 10, minApps = 1, role = null, maxAge = null } = {}) {
+  const table = league.pstats?.[key] ?? {};
+  const findPlayer = (uid, clubId) => {
+    try {
+      return clubById(league, clubId).players.find((p) => p.uid === uid) ?? null;
+    } catch {
+      return null;
+    }
+  };
+  const rows = Object.entries(table)
+    .map(([uid, [apps, goals, assists, rsum, clubId]]) => ({ uid, apps, goals, assists, rating: apps ? rsum / 10 / apps : 0, clubId, player: findPlayer(uid, clubId) }))
+    .filter((r) => r.player && r.apps >= minApps && (!role || (role === 'GK') === (r.player.role === 'GK')) && (maxAge === null || r.player.age <= maxAge));
+  const val = (r) => (by === 'rating' ? r.rating : r[by]);
+  return rows.sort((a, b) => val(b) - val(a) || b.goals - a.goals || b.rating - a.rating || a.uid.localeCompare(b.uid)).filter((r) => by === 'rating' || val(r) > 0).slice(0, limit);
+}
+
+// Statistik musim ini seorang pemain di liga (untuk tab Skuad).
+export function seasonLine(league, uid) {
+  let apps = 0;
+  let goals = 0;
+  let assists = 0;
+  let rsum = 0;
+  for (const table of Object.values(league.pstats ?? {})) {
+    const row = table[uid];
+    if (!row) continue;
+    apps += row[0];
+    goals += row[1];
+    assists += row[2];
+    rsum += row[3];
+  }
+  return { apps, goals, assists, rating: apps ? rsum / 10 / apps : null };
 }
 
 // Hitung cepat semua babak tanpa klub pengguna sampai laga pengguna berikutnya / akhir musim.
@@ -647,8 +787,11 @@ export function wageBill(club) {
 }
 
 function withSquadFields(p, rng) {
+  const ap = Number.isInteger(p.age) && Number.isFinite(p.pot) ? { age: p.age, pot: p.pot } : rollAgePot(p, rng);
   return {
     ...p,
+    ...ap,
+    fit: Number.isFinite(p.fit) ? p.fit : 100,
     absence: p.absence ?? null,
     yellows: p.yellows ?? 0,
     contract: p.contract ?? { seasons: rng.int(LEAGUE.contractSeasons[0], LEAGUE.contractSeasons[1]), wage: wageFor(p) },
@@ -662,6 +805,9 @@ function squadFieldErrors(p) {
     else if (!(Number.isInteger(p.absence.weeks) && p.absence.weeks >= 1)) e.push('lama absen tidak valid');
   }
   if (!(Number.isInteger(p.yellows) && p.yellows >= 0 && p.yellows < LEAGUE.yellowLimit)) e.push('akumulasi kuning tidak valid');
+  if (!(Number.isInteger(p.age) && p.age >= 14 && p.age <= 40)) e.push('umur tidak valid');
+  if (!(Number.isFinite(p.pot) && p.pot >= 1 && p.pot <= 20)) e.push('potensi tidak valid');
+  if (!(Number.isFinite(p.fit) && p.fit >= 0 && p.fit <= 100)) e.push('kondisi tidak valid');
   if (!p.contract || !(Number.isInteger(p.contract.seasons) && p.contract.seasons >= 1 && p.contract.seasons <= LEAGUE.contractSeasons[1])) e.push('sisa kontrak tidak valid');
   else if (!(p.contract.wage > 0)) e.push('gaji tidak valid');
   return e;
@@ -690,7 +836,9 @@ function injuryWeeks(severity, rng) {
 
 // Susunan yang benar-benar dipakai: pemain inti yang absen diganti cadangan tersedia terbaik
 // (kiper → kiper bila ada; lainnya utamakan kelompok posisi yang sama).
-export function effectiveLineup(club, formation = null) {
+// rotate (15 Nov, klub AI): pemain inti dengan kondisi < DEV.aiRestBelow diistirahatkan bila ada
+// pengganti segar (≥ DEV.freshFrom) yang nilainya tidak jauh di bawah (≤ 2,5).
+export function effectiveLineup(club, formation = null, { rotate = false } = {}) {
   const slots = getFormation(formation ?? getStyle(club.style).formation);
   const byUid = new Map(club.players.map((p) => [p.uid, p]));
   const lineup = { ...club.lineup };
@@ -710,7 +858,57 @@ export function effectiveLineup(club, formation = null) {
     lineup[s.number] = pick.uid;
     used.add(pick.uid);
   }
+  if (rotate) {
+    for (const s of slots) {
+      const cur = byUid.get(lineup[s.number]);
+      if (!cur || (cur.fit ?? 100) >= DEV.aiRestBelow) continue;
+      const fresh = club.players
+        .filter((p) => isAvailable(p) && !used.has(p.uid) && (p.fit ?? 100) >= DEV.freshFrom && (s.role === 'GK') === (p.role === 'GK') && roleGroup(p.role) === roleGroup(s.role) && overall(p) >= overall(cur) - 2.5)
+        .sort((a, b) => overall(b) - overall(a) || a.uid.localeCompare(b.uid))[0];
+      if (!fresh) continue;
+      changes.push({ number: s.number, outUid: cur.uid, inUid: fresh.uid, rest: true });
+      used.delete(cur.uid);
+      lineup[s.number] = fresh.uid;
+      used.add(fresh.uid);
+    }
+  }
   return { lineup, changes };
+}
+
+// Tombol "istirahatkan yang lelah" (pengguna): inti dengan kondisi < batas diganti pemain segar
+// terbaik di kelompok posisi yang sama, lalu disimpan sebagai susunan baru.
+export function restTired(league, threshold = DEV.tiredBelow) {
+  const club = userClub(league);
+  const byUid = new Map(club.players.map((p) => [p.uid, p]));
+  const slots = getFormation(league.userFormation ?? getStyle(club.style).formation);
+  const lineup = { ...club.lineup };
+  const used = new Set(Object.values(lineup));
+  const swaps = [];
+  for (const s of slots) {
+    const cur = byUid.get(lineup[s.number]);
+    if (!cur || (cur.fit ?? 100) >= threshold) continue;
+    const fresh = club.players
+      .filter((p) => isAvailable(p) && !used.has(p.uid) && (p.fit ?? 100) >= DEV.freshFrom && (s.role === 'GK') === (p.role === 'GK') && roleGroup(p.role) === roleGroup(s.role))
+      .sort((a, b) => overall(b) - overall(a) || a.uid.localeCompare(b.uid))[0];
+    if (!fresh) continue;
+    swaps.push({ number: s.number, outUid: cur.uid, inUid: fresh.uid });
+    used.delete(cur.uid);
+    used.add(fresh.uid);
+    lineup[s.number] = fresh.uid;
+  }
+  if (swaps.length === 0) return { league, swaps };
+  const next = withUserClub({ ...league, userTactics: null }, { ...club, lineup });
+  assertLeague(next);
+  return { league: next, swaps };
+}
+
+export function setTraining(league, training) {
+  const t = { ...league.training, ...training };
+  const e = trainingErrors(t);
+  if (e.length) throw new RangeError(`setTraining: ${e[0]}`);
+  const next = { ...league, training: t };
+  assertLeague(next);
+  return next;
 }
 
 // Cadangan yang ikut laga: 7 pemain tersedia terbaik, dengan satu kiper bila ada.
@@ -735,6 +933,10 @@ function matchReportErrors(league, report) {
   for (const x of report.injuries ?? []) if (!uids.has(x.uid) || !INJURY.severities.some((s) => s.key === x.severity)) e.push(`cedera ${x.uid}`);
   for (const uid of report.reds ?? []) if (!uids.has(uid)) e.push(`merah ${uid}`);
   for (const y of report.yellows ?? []) if (!uids.has(y.uid) || !(Number.isInteger(y.n) && y.n >= 1 && y.n <= 2)) e.push(`kuning ${y.uid}`);
+  for (const x of report.players ?? []) {
+    if (x.side === 'user' && !uids.has(x.uid)) e.push(`statistik ${x.uid}`);
+    if (!(x.rating >= 1 && x.rating <= 10) || !(Number.isInteger(x.goals) && x.goals >= 0) || !(Number.isInteger(x.assists) && x.assists >= 0)) e.push(`statistik ${x.uid} tidak valid`);
+  }
   return e;
 }
 
@@ -745,7 +947,13 @@ export function matchReportFromState(state, simTeamId = 'home') {
   const uid = (p) => String(p.id).slice(prefix.length);
   const everyone = [...state.players, ...(state.subbedOff ?? []), ...(state.sentOff ?? [])].filter(mine);
   const seen = new Set();
-  const report = { injuries: [], yellows: [], reds: [] };
+  const report = { injuries: [], yellows: [], reds: [], players: [] };
+  // Rating & gol/assist semua pemain (kedua tim); uid tanpa awalan 'home-'/'away-'.
+  for (const [id, r] of Object.entries(matchRatings(state))) {
+    const side = String(id).startsWith(prefix) ? 'user' : 'opp';
+    const u = String(id).replace(/^(home|away)-/, '');
+    report.players.push({ uid: u, side, rating: r.rating, goals: r.goals, assists: r.assists, minutes: r.minutes, energy: r.energy });
+  }
   for (const p of everyone) {
     if (seen.has(p.id)) continue;
     seen.add(p.id);
@@ -805,6 +1013,21 @@ export function newSeason(league) {
     }
   }
   const history = [...league.history, ...TIERS.map((t) => ({ season: league.season, comp: COMP.liga, tier: t, winner: tables[t][0].id, name: tables[t][0].name }))];
+  // Penghargaan per kasta (15 Nov): pemain terbaik, top skor, kiper terbaik, pemain muda terbaik.
+  for (const t of TIERS) {
+    const key = `liga${t}`;
+    const min = LEAGUE.awardMinApps;
+    const picks = [
+      ['terbaik', topPlayers(league, key, 'rating', { limit: 1, minApps: min })[0], (r) => r.rating],
+      ['topskor', topPlayers(league, key, 'goals', { limit: 1 })[0], (r) => r.goals],
+      ['kiper', topPlayers(league, key, 'rating', { limit: 1, minApps: min, role: 'GK' })[0], (r) => r.rating],
+      ['muda', topPlayers(league, key, 'rating', { limit: 1, minApps: min, maxAge: LEAGUE.youngAge })[0], (r) => r.rating],
+    ];
+    for (const [kind, r, val] of picks) {
+      if (!r) continue;
+      history.push({ season: league.season, comp: 'award', tier: t, kind, winner: r.clubId, name: r.player.fullName, club: clubById(league, r.clubId).name, value: Math.round(val(r) * 100) / 100 });
+    }
+  }
   const nasionalWinner = koWinner(league.calendar.find((r) => r.comp === COMP.nasional && r.stage === 'F').fixtures[0]);
   const champ = tables[1][0].id;
   const superPair = [champ, nasionalWinner === champ || !league.clubs.some((c) => c.id === nasionalWinner) ? tables[1][1].id : nasionalWinner];
@@ -814,7 +1037,14 @@ export function newSeason(league) {
   let market = league.market;
   const clubs = league.clubs.map((c) => {
     const isUser = c.id === league.userClubId;
-    let players = c.players.map((p) => ({ ...p, yellows: 0, absence: p.absence?.type === 'skors' ? null : p.absence }));
+    // Umur +1, kondisi pulih penuh; yang tua bisa pensiun (pemain pengguna: masuk kabar).
+    let players = c.players
+      .map((p) => ({ ...p, age: p.age + 1, fit: 100, yellows: 0, absence: p.absence?.type === 'skors' ? null : p.absence }))
+      .filter((p) => {
+        if (!rng.chance(retireChance(p.age))) return true;
+        if (isUser) news.push({ week: 0, season: league.season + 1, uid: p.uid, name: p.fullName, type: 'pensiun', weeks: p.age, detail: null });
+        return false;
+      });
     players = players
       .map((p) => {
         const left = p.contract.seasons - 1;
@@ -824,12 +1054,14 @@ export function newSeason(league) {
         return null;
       })
       .filter(Boolean);
-    // Skuad di bawah minimum → pemain muda dipromosikan (kontrak 1 musim, gaji kecil).
-    while (players.length < LEAGUE.squadMin) {
-      const kid = makeYouth(rng, market.nextId, c.id);
+    // Pemain muda: klub AI diisi sampai LEAGUE.aiSquadTarget, klub pengguna dapat satu dari akademi
+    // (bila ada tempat), dan siapa pun yang di bawah minimum diisi sampai minimum.
+    const intake = isUser ? Math.max(LEAGUE.squadMin - players.length, players.length < LEAGUE.squadMax ? 1 : 0) : Math.max(0, LEAGUE.aiSquadTarget - players.length);
+    for (let k = 0; k < intake; k += 1) {
+      const kid = makeYouth(rng, market.nextId, c.id, moves.get(c.id) ?? c.tier);
       market = { ...market, nextId: market.nextId + 1 };
       players.push(kid);
-      if (isUser) news.push({ week: 0, season: league.season + 1, uid: kid.uid, name: kid.fullName, type: 'muda', weeks: 0, detail: null });
+      if (isUser) news.push({ week: 0, season: league.season + 1, uid: kid.uid, name: kid.fullName, type: 'muda', weeks: kid.age, detail: null });
     }
     return { ...c, tier: moves.get(c.id) ?? c.tier, players, lineup: repairLineup({ ...c, players }) };
   });
@@ -846,6 +1078,7 @@ export function newSeason(league) {
     calendar,
     income,
     history: history.slice(-LEAGUE.historyMax),
+    pstats: {},
     news: [...news, ...league.news].slice(0, LEAGUE.newsMax),
     season: league.season + 1,
     week: 0,
@@ -856,14 +1089,17 @@ export function newSeason(league) {
   return next;
 }
 
-function makeYouth(rng, n, clubId) {
-  const roles = ['GK', 'CB', 'LB', 'RB', 'CM', 'CM', 'LM', 'RM', 'ST'];
+function makeYouth(rng, n, clubId, tier = 3) {
+  const roles = ['GK', 'CB', 'CB', 'LB', 'RB', 'DM', 'CM', 'CM', 'LM', 'RM', 'LW', 'RW', 'ST', 'ST'];
   const role = rng.pick(roles);
-  const quality = rng.int(LEAGUE.youthQuality[0], LEAGUE.youthQuality[1]);
+  const [qlo, qhi] = LEAGUE.youthQualityByTier[tier] ?? LEAGUE.youthQuality;
+  const quality = rng.int(qlo, qhi);
   const t = createTeam({ usedShortNames: new Set(), id: `y${n}`, name: 'Muda', colors: { shirt: '#000', number: '#fff' }, formation: '4-4-2', quality, philosophy: 'seimbang', seed: rng.int(1, 1e9) });
   const src = t.players.find((p) => p.role === role) ?? t.players[1];
   const p = { uid: `${clubId}-y${n}`, fullName: src.fullName, shortName: src.shortName, role: src.role, stats: { ...src.stats } };
-  return { ...p, absence: null, yellows: 0, contract: { seasons: 1, wage: wageFor(p) } };
+  const age = rng.int(DEV.youthAge[0], DEV.youthAge[1]);
+  const pot = Math.round(Math.min(19, overall(p) + rng.range(2, 6)) * 10) / 10;
+  return { ...p, age, pot, fit: 100, absence: null, yellows: 0, contract: { seasons: 2, wage: wageFor(p) } };
 }
 
 // Susunan tersimpan yang menunjuk pemain yang sudah pergi: isi dengan pemain terbaik yang tersisa.
@@ -959,10 +1195,12 @@ export function buildMatchTeams(league) {
     used.add(name);
     return name;
   };
-  const toTeam = (club, simId, formation, philosophy) => {
+  const startEnergy = {};
+  const toTeam = (club, simId, formation, philosophy, rotate) => {
     const slots = getFormation(formation);
     const byUid = new Map(club.players.map((p) => [p.uid, p]));
-    const { lineup } = effectiveLineup(club, formation);
+    const { lineup } = effectiveLineup(club, formation, { rotate });
+    for (const p of club.players) startEnergy[`${simId}-${p.uid}`] = Math.max(0.2, Math.min(1, (p.fit ?? 100) / 100));
     const players = slots.map((s) => {
       const p = byUid.get(lineup[s.number]);
       if (!p) throw new Error(`buildMatchTeams: posisi ${s.number} ${club.id} kosong`);
@@ -974,7 +1212,7 @@ export function buildMatchTeams(league) {
   const oppStyle = getStyle(opp.style);
   const userStyle = getStyle(user.style);
   const userFormation = league.userFormation ?? userStyle.formation;
-  const away = toTeam(opp, 'away', oppStyle.formation, oppStyle.philosophy);
+  const away = toTeam(opp, 'away', oppStyle.formation, oppStyle.philosophy, true);
   // Warna jersey bertabrakan (logo pengguna bisa berwarna apa saja) → lawan memakai jersey kedua.
   if (colorDistance(user.colors.shirt, opp.colors.shirt) < KIT_CLASH) {
     const alt = colorDistance(user.colors.shirt, '#f1f3f5') < KIT_CLASH ? '#212529' : '#f1f3f5';
@@ -984,8 +1222,9 @@ export function buildMatchTeams(league) {
     fixture: f,
     userIsHome: f.home === user.id,
     opponent: opp,
-    home: toTeam(user, 'home', userFormation, userStyle.philosophy),
+    home: toTeam(user, 'home', userFormation, userStyle.philosophy, false),
     away,
+    startEnergy,
   };
 }
 

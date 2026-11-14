@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { getStyle } from '../engine/clubStyles.js';
 import { getFormation } from '../engine/formations.js';
-import { LEAGUE, clubById, overall, playerValue, buyPlayer, sellPlayer, setStarter, roleGroup, isAvailable, effectiveLineup, matchBench, wageBill, wageFor, renewContract, renewWage } from '../engine/league.js';
-import { AbsenceBadge } from './Status.jsx';
+import { LEAGUE, clubById, overall, playerValue, buyPlayer, sellPlayer, setStarter, roleGroup, isAvailable, effectiveLineup, matchBench, wageBill, wageFor, renewContract, renewWage, restTired, setTraining, seasonLine } from '../engine/league.js';
+import { potentialRange, DEV, TRAINING_FOCUS, TRAINING_INTENSITY } from '../engine/development.js';
+import { AbsenceBadge, PotentialStars, FitBar } from './Status.jsx';
 import { MARKET_GROUPS, MARKET_SORTS, BLOCK, marketRows, squadCounts, strengths } from '../engine/market.js';
 import { t, tk, getLang } from '../i18n.js';
 
@@ -48,6 +49,25 @@ const strengthText = (p) =>
     .map(([k, v]) => `${STAT_LABEL[k] ? t(STAT_LABEL[k]) : k} ${v}`)
     .join(' · ');
 
+const FOCUS_LABEL = { seimbang: tk('Seimbang'), serang: tk('Menyerang'), bertahan: tk('Bertahan'), fisik: tk('Fisik'), teknik: tk('Teknik') };
+const INTENSITY_LABEL = { ringan: tk('Ringan'), normal: tk('Normal'), berat: tk('Berat') };
+
+// Baris kecil di bawah nama pemain: umur · potensi · kondisi · statistik musim ini.
+function PlayerMeta({ league, p, withStats = true }) {
+  const line = withStats ? seasonLine(league, p.uid) : null;
+  return (
+    <span className="player-meta">
+      {t('{a} th', { a: p.age })} · <PotentialStars range={potentialRange(p)} /> <FitBar fit={p.fit} />
+      {line && line.apps > 0 && (
+        <small>
+          {' '}
+          · {t('{n} laga', { n: line.apps })} · ⚽ {line.goals} · 🅰️ {line.assists} · ⭐ {line.rating.toFixed(1)}
+        </small>
+      )}
+    </span>
+  );
+}
+
 function DeltaChip({ delta }) {
   if (delta === null) return null;
   const tone = delta >= 0.5 ? 'up' : delta <= -0.5 ? 'down' : 'flat';
@@ -89,6 +109,7 @@ export default function SquadMarketTab({ league, onChange, locked, part = 'squad
     }
   }
   const asking = (kind, uid) => confirm?.kind === kind && confirm.uid === uid;
+  const tired = slots.map((s) => byUid.get(user.lineup[s.number])).filter((p) => p && isAvailable(p) && (p.fit ?? 100) < DEV.tiredBelow);
 
   return (
     <div className="squad-market">
@@ -111,6 +132,38 @@ export default function SquadMarketTab({ league, onChange, locked, part = 'squad
       <div className={`sm-columns sm-columns--${part}`}>
         {part === 'squad' && (
         <section aria-label={t('Skuad')}>
+          <div className="training-box">
+            <h4>{t('Latihan')}</h4>
+            <div className="training-row">
+              <span className="tac-label">{t('Fokus')}</span>
+              <div className="tac-options">
+                {TRAINING_FOCUS.map((f) => (
+                  <button key={f} type="button" className={league.training.focus === f ? 'is-active' : undefined} aria-pressed={league.training.focus === f} onClick={() => onChange(setTraining(league, { focus: f }))}>
+                    {t(FOCUS_LABEL[f])}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="training-row">
+              <span className="tac-label">{t('Intensitas')}</span>
+              <div className="tac-options">
+                {TRAINING_INTENSITY.map((k) => (
+                  <button key={k} type="button" className={league.training.intensity === k ? 'is-active' : undefined} aria-pressed={league.training.intensity === k} onClick={() => onChange(setTraining(league, { intensity: k }))}>
+                    {t(INTENSITY_LABEL[k])}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="tac-note">{t('Berat: pemain muda berkembang ±25% lebih cepat, tapi kondisi pulih lebih lambat (9%/hari, normal 11%, ringan 13%) dan cedera latihan lebih sering. Fokus mempercepat stat terkait. Perkembangan dihitung tiap awal bulan; pemain inti berkembang lebih cepat dari cadangan; mulai usia 30 stat fisik menurun.')}</p>
+          </div>
+          {tired.length > 0 && (
+            <div className="zone-notice tired-row">
+              <span>{t('{n} pemain inti kondisinya di bawah {p}%: {list}', { n: tired.length, p: DEV.tiredBelow, list: tired.map((p) => `${p.shortName} ${p.fit}%`).join(', ') })}</span>
+              <button type="button" className="break-button" disabled={locked} onClick={() => act(() => restTired(league))}>
+                {t('Istirahatkan yang lelah')}
+              </button>
+            </div>
+          )}
           <h4>{t('Susunan inti')}</h4>
           <ul className="squad-list">
             {slots.map((s) => {
@@ -123,6 +176,7 @@ export default function SquadMarketTab({ league, onChange, locked, part = 'squad
                   <span className="squad-name">
                     {p.fullName} {roleGroup(p.role) !== roleGroup(s.role) && <small className="sub-warn">({p.role})</small>} <AbsenceBadge absence={p.absence} />
                     {autoIn.has(s.number) && <small className="auto-in">→ {t('diganti {p} otomatis', { p: autoIn.get(s.number).shortName })}</small>}
+                    <PlayerMeta league={league} p={p} />
                   </span>
                   <span className="squad-val">{fmt(overall(p))}</span>
                   <select
@@ -134,7 +188,7 @@ export default function SquadMarketTab({ league, onChange, locked, part = 'squad
                     <option value="">{t('ganti…')}</option>
                     {bench.filter(isAvailable).map((b) => (
                       <option key={b.uid} value={b.uid}>
-                        {b.shortName} ({b.role}, {fmt(overall(b))})
+                        {b.shortName} ({b.role}, {fmt(overall(b))}, {b.fit}%)
                       </option>
                     ))}
                   </select>
@@ -153,6 +207,7 @@ export default function SquadMarketTab({ league, onChange, locked, part = 'squad
                   <span className="squad-role">{p.role}</span>
                   <span className="squad-name">
                     {p.fullName} <AbsenceBadge absence={p.absence} />
+                    <PlayerMeta league={league} p={p} />
                   </span>
                   <span className="squad-val">{fmt(overall(p))}</span>
                   {asking('sell', p.uid) ? (
@@ -245,6 +300,9 @@ export default function SquadMarketTab({ league, onChange, locked, part = 'squad
                   </div>
                   <div className="market-row__meta">
                     <DeltaChip delta={r.delta} />
+                    <span className="market-row__stats">
+                      {t('{a} th', { a: r.player.age })} · <PotentialStars range={potentialRange(r.player)} />
+                    </span>
                     <span className="market-row__stats">{strengthText(r.player)}</span>
                     <span className="market-row__stats">{t('gaji {n} jt/pekan', { n: wageFor(r.player) })}</span>
                   </div>

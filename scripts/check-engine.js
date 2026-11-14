@@ -13,6 +13,8 @@ import { createSimulation } from '../src/engine/simulation.js';
 import { createRng } from '../src/engine/rng.js';
 import { matchInjuries } from '../src/engine/injury.js';
 import { koWinner, roundDates } from '../src/engine/calendar.js';
+import { matchRatings } from '../src/engine/playerStats.js';
+import { recover, developMonth, overall, retireChance, potentialRange, toStars } from '../src/engine/development.js';
 import { AMATEUR_IDS } from '../src/engine/clubs.js';
 import { marketRows, weakestStarters, squadCounts, strengths, BLOCK } from '../src/engine/market.js';
 import { TICK_RATE, HALF_TICKS } from '../src/engine/constants.js';
@@ -53,7 +55,7 @@ import { THROW_IN, throwRange } from '../src/engine/simulation.js';
 import { logoErrors, initials, cleanLogoText, contrastColor, defaultLogo } from '../src/engine/logo.js';
 import { readSaves, writeSlot, deleteSlot, slotSummary, SLOTS, SAVE_KEY } from '../src/saves.js';
 import { updateProfile, colorDistance } from '../src/engine/league.js';
-import { createLeague, leagueErrors, buildMatchTeams, completeWeek, standings, parseLeague, newSeason, buyPlayer, sellPlayer, setStarter, playerValue, clubById, roleGroup, clubLogo, simulateToUserMatch, TIERS, isKnockout, userFixture, packLeague, migrateLeague, matchReportFromState, effectiveLineup, isAvailable, wageBill, renewContract, seasonOver, absentPlayers, LEAGUE } from '../src/engine/league.js';
+import { createLeague, leagueErrors, buildMatchTeams, completeWeek, standings, parseLeague, newSeason, buyPlayer, sellPlayer, setStarter, playerValue, clubById, roleGroup, clubLogo, statKey, currentRound, topPlayers, restTired, setTraining, clubStrength, simulateToUserMatch, TIERS, isKnockout, userFixture, packLeague, migrateLeague, matchReportFromState, effectiveLineup, isAvailable, wageBill, renewContract, seasonOver, absentPlayers, LEAGUE } from '../src/engine/league.js';
 import { CLUB_STYLES, STYLE_KEYS, styleTactics, styleErrors, randomStyle } from '../src/engine/clubStyles.js';
 import { GROUP_ZONES, groupErrors, activeGroup, groupPassBonus, renameInGroups } from '../src/engine/groups.js';
 import { scriptErrors, renameInScripts, SCRIPT_ZONES, triggerMet, advanceScript } from '../src/engine/scripts.js';
@@ -921,7 +923,7 @@ console.log('Profil karier, logo & simpanan (14 Nov)');
   const v1 = { ...createLeague(3), version: 1 };
   delete v1.profile;
   const mig = parseLeague(JSON.stringify(v1));
-  check('liga v1 (sebelum menu utama) dimigrasi: profil bawaan, valid', mig && mig.version === 4 && mig.profile.managerName === 'Manajer' && logoErrors(mig.profile.logo).length === 0 ? [] : ['gagal']);
+  check('liga v1 (sebelum menu utama) dimigrasi: profil bawaan, valid', mig && mig.version === 5 && mig.profile.managerName === 'Manajer' && logoErrors(mig.profile.logo).length === 0 ? [] : ['gagal']);
 
   // Simpanan dengan penyimpanan tiruan.
   const mem = () => {
@@ -1079,7 +1081,8 @@ console.log('Cedera, absen, skorsing & kontrak (14 Nov)');
   const leaving = before.filter((p) => p.contract.seasons === 1).map((p) => p.uid);
   check('musim baru: kontrak habis → pemain pergi; yang diperpanjang tetap', leaving.every((u) => !after.some((p) => p.uid === u)) && after.some((p) => p.uid === shortP.uid) && pl(ns, shortP.uid).contract.seasons === 2 ? [] : ['salah']);
   check('musim baru: skuad tetap ≥ minimum (pemain muda), susunan sah, kuning & skorsing hapus', after.length >= LEAGUE.squadMin && leagueErrors(ns).length === 0 && after.every((p) => p.yellows === 0 && p.absence?.type !== 'skors') ? [] : leagueErrors(ns).slice(0, 2));
-  check('musim baru: klub AI memperpanjang otomatis (skuad tidak menyusut)', ns.clubs.filter((c) => c.id !== ns.userClubId).every((c) => c.players.length === clubById(endL, c.id).players.length) ? [] : ['menyusut']);
+  // Klub AI: kontrak diperpanjang otomatis; yang hilang hanya karena pensiun (usia ≥ 34); skuad diisi pemain muda.
+  check('musim baru: klub AI memperpanjang otomatis (hanya pensiun yang pergi), skuad ≥ 20', ns.clubs.filter((c) => c.id !== ns.userClubId).every((c) => c.players.length >= LEAGUE.aiSquadTarget && clubById(endL, c.id).players.every((p) => c.players.some((q) => q.uid === p.uid) || p.age + 1 >= 34)) ? [] : ['menyusut']);
   const v2 = JSON.parse(JSON.stringify(lg));
   v2.version = 2;
   delete v2.income;
@@ -1090,7 +1093,7 @@ console.log('Cedera, absen, skorsing & kontrak (14 Nov)');
     delete p.yellows;
   }
   const m3 = parseLeague(JSON.stringify(v2));
-  check('liga v2 dimigrasi (lewat v3) ke v4: kontrak, pemasukan, tanpa absen', m3 && m3.version === 4 && m3.income > 0 && leagueErrors(m3).length === 0 ? [] : ['gagal']);
+  check('liga v2 dimigrasi (lewat v3) ke v4: kontrak, pemasukan, tanpa absen', m3 && m3.version === 5 && m3.income > 0 && leagueErrors(m3).length === 0 ? [] : ['gagal']);
   // Satu musim penuh: semua klub kehilangan pemain sesekali, AI juga.
   let full = createLeague(43);
   let maxAbsentAi = 0;
@@ -1190,7 +1193,87 @@ console.log('Liga 3 kasta, piala & naik-turun (15 Nov; dasar 10 Nov)');
   delete v3.history;
   v3.fixtures = [];
   const mig = migrateLeague(v3);
-  check('liga v3 (10 klub) dimigrasi ke dunia 3 kasta: valid, klub lama di Liga 1, anggaran tetap', mig && mig.version === 4 && leagueErrors(mig).length === 0 && v3.clubs.every((c) => clubById(mig, c.id).tier === 1) && mig.budget === v3.budget ? [] : mig ? leagueErrors(mig).slice(0, 2) : ['null']);
+  check('liga v3 (10 klub) dimigrasi ke dunia 3 kasta: valid, klub lama di Liga 1, anggaran tetap', mig && mig.version === 5 && leagueErrors(mig).length === 0 && v3.clubs.every((c) => clubById(mig, c.id).tier === 1) && mig.budget === v3.budget ? [] : mig ? leagueErrors(mig).slice(0, 2) : ['null']);
+}
+
+console.log('Statistik pemain, umur, potensi, kondisi, latihan (15 Nov)');
+{
+  // Engine: rating & gol/assist per pemain.
+  const lg0 = simulateToUserMatch(createLeague(91));
+  const mt = buildMatchTeams(lg0);
+  const sim = createSimulation(mt.home, mt.away, 4, { aiTeams: ['away'], startEnergy: mt.startEnergy });
+  let st = sim.getState();
+  while (st.period !== 'fulltime') st = st.period === 'halftime' ? sim.startSecondHalf() : sim.step();
+  const rt = matchRatings(st);
+  const goalSum = (side) => Object.values(rt).filter((r) => r.teamId === side).reduce((a, r) => a + r.goals, 0);
+  check('rating: semua 3–10, tiap pemain inti punya rating, gol pemain ≤ gol tim', Object.values(rt).every((r) => r.rating >= 3 && r.rating <= 10) && Object.keys(rt).length >= 22 && goalSum('home') <= st.stats.goals.home && goalSum('away') <= st.stats.goals.away ? [] : ['salah']);
+  check('assist tidak melebihi gol', Object.values(rt).reduce((a, r) => a + r.assists, 0) <= st.stats.goals.home + st.stats.goals.away ? [] : ['salah']);
+  const tired = createSimulation(mt.home, mt.away, 4, { startEnergy: Object.fromEntries(Object.keys(mt.startEnergy).map((k) => [k, 0.6])) });
+  check('tenaga awal dari kondisi pemain (60%)', tired.getState().players.filter((p) => p.teamId === 'home').every((p) => Math.abs(p.condition.energy - 0.6) < 1e-9) ? [] : ['salah']);
+  let badE = false;
+  try {
+    createSimulation(mt.home, mt.away, 4, { startEnergy: { x: 3 } });
+  } catch {
+    badE = true;
+  }
+  check('tenaga awal di luar 0,2–1 ditolak', badE ? [] : ['diterima']);
+  // Liga: laporan → statistik, kondisi turun.
+  const rep = matchReportFromState(st, 'home');
+  const g = st.stats.goals;
+  const l1 = completeWeek(lg0, g.home, g.away, null, rep);
+  const key = statKey(currentRound(lg0), userFixture(lg0));
+  const myRows = Object.entries(l1.pstats[key] ?? {}).filter(([, r]) => r[4] === lg0.userClubId);
+  check('laga pengguna tercatat di statistik ajang (rating dari engine)', myRows.length >= 11 && myRows.reduce((a, [, r]) => a + r[1], 0) === g.home ? [] : [`${myRows.length}`]);
+  const me1 = clubById(l1, l1.userClubId);
+  check('kondisi pemain yang main turun (lalu pulih per hari, maks 100)', me1.players.some((p) => p.fit < 100) && me1.players.every((p) => p.fit >= 0 && p.fit <= 100) ? [] : ['salah']);
+  check('pemulihan: 3 hari normal = +33, tidak lewat 100', recover(50, 3) === 83 && recover(90, 3) === 100 && recover(50, 3, 'berat') === 77 ? [] : ['salah']);
+  // Satu musim: statistik semua kasta, top skor, penghargaan.
+  let lg = lg0;
+  while (!seasonOver(lg)) lg = completeWeek(lg, 1, 1);
+  const top = topPlayers(lg, 'liga1', 'goals', { limit: 5 });
+  check('top skor Liga 1 terisi & terurut', top.length === 5 && top.every((r, i) => i === 0 || top[i - 1].goals >= r.goals) ? [] : ['salah']);
+  const apps = Object.values(lg.pstats.liga2).map((r) => r[0]);
+  check('Liga 2: pemain main ≤ 38 laga, ada yang main ≥ 30', Math.max(...apps) <= 38 && Math.max(...apps) >= 30 ? [] : [`${Math.max(...apps)}`]);
+  const ns = newSeason(lg);
+  const awards = ns.history.filter((h) => h.comp === 'award' && h.season === lg.season);
+  check('penghargaan: 4 jenis × 3 kasta tercatat', awards.length === 12 && TIERS.every((t) => ['terbaik', 'topskor', 'kiper', 'muda'].every((k) => awards.some((a) => a.tier === t && a.kind === k))) ? [] : [`${awards.length}`]);
+  check('musim baru: statistik dikosongkan, umur +1, kondisi 100', Object.keys(ns.pstats).length === 0 && clubById(ns, ns.userClubId).players.every((p) => p.fit === 100) && clubById(lg, lg.userClubId).players.filter((p) => clubById(ns, ns.userClubId).players.some((q) => q.uid === p.uid)).every((p) => clubById(ns, ns.userClubId).players.find((q) => q.uid === p.uid).age === p.age + 1) ? [] : ['salah']);
+  // Perkembangan & penuaan (model murni).
+  const rngD = createRng(5);
+  const kid = { uid: 'x', role: 'ST', age: 18, pot: 16, stats: Object.fromEntries(Object.keys(lg.clubs[0].players[1].stats).map((k) => [k, 10])) };
+  let grown = kid;
+  for (let m = 0; m < 30; m += 1) grown = developMonth(grown, rngD, { starter: true, training: { focus: 'serang', intensity: 'berat' } });
+  check('pemain muda berkembang menuju potensi (3 musim), tidak melewati 20', overall(grown) > overall(kid) + 2 && Object.values(grown.stats).every((v) => v <= 20) ? [] : [`${overall(kid).toFixed(1)} → ${overall(grown).toFixed(1)}`]);
+  let old = { ...kid, age: 35, pot: 10 };
+  for (let m = 0; m < 24; m += 1) old = developMonth(old, rngD);
+  check('pemain 34 tahun menurun (stat fisik), potensi ikut turun', old.stats.kecepatan < 10 && old.pot <= overall(old) + 1e-9 ? [] : ['salah']);
+  check('pensiun: < 34 tidak, 37 pasti', retireChance(33) === 0 && retireChance(37) === 1 && retireChance(35) > 0 ? [] : ['salah']);
+  const pr = potentialRange({ ...kid, uid: 'abc' });
+  check('perkiraan potensi: rentang bintang memuat potensi sebenarnya', pr[0] <= toStars(kid.pot) && pr[1] >= toStars(kid.pot) && pr[0] <= pr[1] ? [] : [JSON.stringify(pr)]);
+  // Latihan & istirahat.
+  const lt = setTraining(lg0, { focus: 'fisik', intensity: 'berat' });
+  check('latihan tersimpan; fokus tak dikenal ditolak', lt.training.focus === 'fisik' && lt.training.intensity === 'berat' && (() => { try { setTraining(lg0, { focus: 'tidur' }); return false; } catch { return true; } })() ? [] : ['salah']);
+  const meT = clubById(l1, l1.userClubId);
+  const tiredL = { ...l1, clubs: l1.clubs.map((c) => (c.id === meT.id ? { ...c, players: c.players.map((p) => (Object.values(c.lineup).includes(p.uid) ? { ...p, fit: 50 } : { ...p, fit: 100 })) } : c)) };
+  const rested = restTired(tiredL);
+  check('istirahatkan: inti lelah diganti pemain segar sekelompok posisi, susunan sah', rested.swaps.length > 0 && leagueErrors(rested.league).length === 0 && rested.swaps.every((sw) => clubById(rested.league, meT.id).players.find((p) => p.uid === sw.inUid).fit === 100) ? [] : [`${rested.swaps.length}`]);
+  // Klub AI merotasi.
+  const ai = l1.clubs.find((c) => c.id !== l1.userClubId && c.tier === 1);
+  const aiTired = { ...ai, players: ai.players.map((p) => (Object.values(ai.lineup).includes(p.uid) ? { ...p, fit: 40 } : { ...p, fit: 100 })) };
+  check('klub AI merotasi pemain lelah; kekuatan turun bila lelah', effectiveLineup(aiTired, null, { rotate: true }).changes.some((c) => c.rest) && clubStrength(aiTired, { rotate: false }) < clubStrength(ai, { rotate: false }) ? [] : ['salah']);
+  // Dunia stabil 3 musim: rata-rata nilai per kasta tidak melorot/melonjak.
+  const avgTier = (l, t) => {
+    const ps = l.clubs.filter((c) => c.tier === t).flatMap((c) => c.players);
+    return ps.reduce((a, p) => a + overall(p), 0) / ps.length;
+  };
+  let w = createLeague(17);
+  const before = TIERS.map((t) => avgTier(w, t));
+  for (let sN = 0; sN < 3; sN += 1) {
+    while (!seasonOver(w)) w = completeWeek(w, 1, 1);
+    w = newSeason(w);
+  }
+  const after = TIERS.map((t) => avgTier(w, t));
+  check(`3 musim: rata-rata nilai tiap kasta bergeser < 1 (${before.map((x) => x.toFixed(2)).join('/')} → ${after.map((x) => x.toFixed(2)).join('/')})`, before.every((b, i) => Math.abs(after[i] - b) < 1) && leagueErrors(w).length === 0 ? [] : ['bergeser']);
 }
 
 console.log('Gaya klub AI (7 Nov)');

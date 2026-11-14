@@ -10,6 +10,7 @@ import { buildMatchTeams, completeWeek, seasonOver, clubLogo, matchReportFromSta
 import { roundLabel, dateLabel } from './components/compLabels.js';
 import { roundDate } from './engine/calendar.js';
 import { INJURY } from './engine/injury.js';
+import { matchRatings, manOfTheMatch } from './engine/playerStats.js';
 import { absenceText } from './components/Status.jsx';
 import { defaultLogo } from './engine/logo.js';
 import ClubLogo from './components/ClubLogo.jsx';
@@ -160,7 +161,7 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
     if (matchKind === 'liga' && lg && !seasonOver(lg) && userFixture(lg)) {
       const m = buildMatchTeams(lg);
       const names = new Map([...m.home.players, ...m.home.bench, ...m.away.players, ...m.away.bench].map((p) => [p.id, p.shortName]));
-      const sim = createSimulation(m.home, m.away, matchSeed, { aiTeams: ['away'] });
+      const sim = createSimulation(m.home, m.away, matchSeed, { aiTeams: ['away'], startEnergy: m.startEnergy });
       const st = sim.getState();
       sim.setTactics('away', styleTactics(m.opponent.style, st.players.filter((p) => p.teamId === 'away'), st.teams.away.tactics));
       applyUserTactics(sim, lg.userTactics);
@@ -623,7 +624,8 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
               home={home}
               away={away}
               onContinue={breakState.period === 'halftime' ? startSecondHalf : restart}
-              continueLabel={breakState.period === 'fulltime' && leagueMatch ? t('Hasil tersimpan · ke tab Liga') : null}
+              continueLabel={breakState.period === 'fulltime' && leagueMatch ? t('Hasil tersimpan · ke tab Kompetisi') : null}
+              namesById={namesById}
             />
           )}
         </div>
@@ -680,7 +682,7 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
 
 // Layar jeda babak dan layar akhir pertandingan. Di tahap layer manager,
 // layar jeda ini menjadi tempat mengubah taktik dan formasi.
-function BreakScreen({ state, home, away, onContinue, continueLabel }) {
+function BreakScreen({ state, home, away, onContinue, continueLabel, namesById }) {
   const isHalftime = state.period === 'halftime';
   const { stats } = state;
   const total = stats.possessionTicks[home.id] + stats.possessionTicks[away.id];
@@ -701,19 +703,59 @@ function BreakScreen({ state, home, away, onContinue, continueLabel }) {
           </strong>
           <span>{away.name}</span>
         </p>
-        <dl className="break-stats">
-          {rows.map((row) => (
-            <div key={row.label} className="break-row">
-              <dd>{row.home}</dd>
-              <dt>{row.label}</dt>
-              <dd>{row.away}</dd>
-            </div>
-          ))}
-        </dl>
+        {/* Akhir laga (15 Nov): rating jadi isi utama; statistik tim dilipat supaya kartu muat layar. */}
+        <details className="break-details" open={isHalftime}>
+          <summary>{t('Statistik laga')}</summary>
+          <dl className="break-stats">
+            {rows.map((row) => (
+              <div key={row.label} className="break-row">
+                <dd>{row.home}</dd>
+                <dt>{row.label}</dt>
+                <dd>{row.away}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+        {!isHalftime && <RatingsBlock state={state} home={home} away={away} namesById={namesById} />}
         {isHalftime && <p className="break-note">{t('Atur taktik dan pergantian di tab Taktik & Pergantian sebelum babak 2.')}</p>}
         <button type="button" className="break-button" onClick={onContinue} autoFocus>
           {isHalftime ? t('Lanjut babak 2') : (continueLabel ?? t('Main lagi (seed baru)'))}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// Rating pemain di layar akhir laga (15 Nov): pemain terbaik + rating kedua tim.
+function RatingsBlock({ state, home, away, namesById }) {
+  const ratings = matchRatings(state);
+  const motm = manOfTheMatch(ratings);
+  const name = (id) => namesById?.get(id) ?? id;
+  const side = (teamId) =>
+    Object.entries(ratings)
+      .filter(([, r]) => r.teamId === teamId)
+      .sort(([, a], [, b]) => b.rating - a.rating);
+  if (!motm) return null;
+  return (
+    <div className="ratings-block">
+      <p className="motm">
+        🏅 {t('Pemain terbaik laga')}: <b>{name(motm)}</b> ({ratings[motm].teamId === home.id ? home.name : away.name}) · ⭐ {ratings[motm].rating.toFixed(1)}
+      </p>
+      <div className="ratings-cols">
+        {[home, away].map((team) => (
+          <ul key={team.id} className="ratings-list">
+            {side(team.id).map(([id, r]) => (
+              <li key={id}>
+                <span>
+                  {name(id)}
+                  {r.goals > 0 && ` ⚽${r.goals > 1 ? `×${r.goals}` : ''}`}
+                  {r.assists > 0 && ` 🅰️${r.assists > 1 ? `×${r.assists}` : ''}`}
+                </span>
+                <b className={r.rating >= 7.5 ? 'pos' : r.rating < 6 ? 'neg' : undefined}>{r.rating.toFixed(1)}</b>
+              </li>
+            ))}
+          </ul>
+        ))}
       </div>
     </div>
   );

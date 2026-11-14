@@ -129,6 +129,8 @@ export function applySendOffs(players, sentOff, removals, tick) {
       profile: gone.profile,
       discipline: gone.discipline,
       injury: gone.injury,
+      condition: gone.condition,
+      subbedOn: gone.subbedOn,
       x: gone.x,
       y: gone.y,
       vx: gone.vx,
