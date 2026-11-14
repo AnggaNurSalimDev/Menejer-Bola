@@ -160,3 +160,42 @@ export function groupMatchdays(group, gi) {
   const mk = (pairs, flip) => pairs.map(([x, y]) => ({ home: flip ? y : x, away: flip ? x : y, result: null, group: gi }));
   return [...half.map((p) => mk(p, false)), ...half.map((p) => mk(p, true))];
 }
+
+// ---------------------------------------------------------------- tanggal (14 Nov malam)
+// Tanggal tiap babak, dihitung (tidak disimpan) dari musim & urutan kalender, pola Inggris:
+//   Piala Super  Minggu pertama Agustus
+//   Liga  Sabtu · Piala Liga  Selasa · Elite, Piala Nasional & semifinal play-off  Rabu · final piala nasional & play-off  Sabtu
+// Tiap babak jatuh pada hari target berikutnya, minimal 2 hari setelah babak sebelumnya.
+// Musim 1 dimulai Agustus 2026 (karangan, tidak mengikuti kalender nyata).
+const WEEKDAY = { super: 0, liga: 6, nasional: 3, ligaCup: 2, elite: 3 };
+const playoffDay = (stage) => (stage === 'F' ? 6 : 3);
+const DAY = 86400000;
+const dateCache = new Map();
+
+export function seasonYear(season) {
+  if (!(Number.isInteger(season) && season >= 1)) throw new RangeError(`seasonYear: musim tidak valid ${season}`);
+  return 2025 + season;
+}
+
+export function roundDates(season) {
+  if (dateCache.has(season)) return dateCache.get(season);
+  const year = seasonYear(season);
+  const firstAug = Date.UTC(year, 7, 1);
+  const firstSunday = firstAug + (((7 - new Date(firstAug).getUTCDay()) % 7) * DAY);
+  let cursor = firstSunday - 2 * DAY; // supaya Piala Super jatuh tepat di Minggu pertama
+  const out = seasonSkeleton().map(({ comp, stage }) => {
+    const target = comp === COMP.playoff ? playoffDay(stage) : comp === COMP.nasional && stage === 'F' ? 6 : WEEKDAY[comp];
+    let d = cursor + 2 * DAY;
+    while (new Date(d).getUTCDay() !== target) d += DAY;
+    cursor = d;
+    return d;
+  });
+  dateCache.set(season, Object.freeze(out));
+  return dateCache.get(season);
+}
+
+// Tanggal (ms UTC) babak ke-i musim tertentu; i di luar kalender → null.
+export function roundDate(season, index) {
+  const list = roundDates(season);
+  return index >= 0 && index < list.length ? list[index] : null;
+}

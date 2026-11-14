@@ -16,8 +16,8 @@ import {
   SEASON_ROUNDS,
   TIERS,
 } from '../engine/league.js';
-import { stagesOf } from '../engine/calendar.js';
-import { compLabel, stageLabel, roundLabel, scoreText } from './compLabels.js';
+import { stagesOf, roundDate } from '../engine/calendar.js';
+import { compLabel, stageLabel, roundLabel, scoreText, dateLabel } from './compLabels.js';
 import { newsText, AbsenceBadge } from './Status.jsx';
 import ClubLogo from './ClubLogo.jsx';
 import ProfileEditor from './ProfileEditor.jsx';
@@ -125,7 +125,9 @@ function CupView({ league, comp, userId }) {
     <div className="cup-view">
       {[...rounds].reverse().map((r) => (
         <div key={r.stage}>
-          <h5>{stageLabel(r.stage)}</h5>
+          <h5>
+            {stageLabel(r.stage)} · {dateLabel(roundDate(league.season, league.calendar.indexOf(r)))}
+          </h5>
           <ul className="fixture-list">
             {[...r.fixtures]
               .sort((a, b) => (b.home === userId || b.away === userId) - (a.home === userId || a.away === userId))
@@ -135,7 +137,14 @@ function CupView({ league, comp, userId }) {
           </ul>
         </div>
       ))}
-      {pending.length > 0 && <p className="tac-note">{t('Belum diundi')}: {pending.map(stageLabel).join(' · ')}</p>}
+      {pending.length > 0 && (
+        <p className="tac-note">
+          {t('Belum diundi')}:{' '}
+          {pending
+            .map((st) => `${stageLabel(st)} (${dateLabel(roundDate(league.season, league.calendar.findIndex((r) => r.comp === comp && r.stage === st)), { year: false })})`)
+            .join(' · ')}
+        </p>
+      )}
     </div>
   );
 }
@@ -174,7 +183,9 @@ function MySchedule({ league, userId }) {
         const outcome = !res ? '' : mine > theirs ? 'M' : mine < theirs ? 'K' : 'S';
         return (
           <li key={i} className={i === league.week ? 'is-now' : undefined}>
-            <small>{roundLabel(r, tier)}</small>
+            <small>
+              {dateLabel(roundDate(league.season, i), { year: false })} · {roundLabel(r, tier)}
+            </small>
             <span>
               {home ? t('kandang') : t('tandang')} · <ClubLogo logo={clubLogo(league, opp)} size={14} /> {clubById(league, opp).name}
             </span>
@@ -241,7 +252,12 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch }) {
         <div>
           <h3>
             {t('Musim {s} · Babak {w}/{n}', { s: league.season, w: Math.min(league.week + 1, SEASON_ROUNDS), n: SEASON_ROUNDS })}
-            {round && <small className="round-tag"> · {roundLabel(round, user.tier)}</small>}
+            {round && (
+              <small className="round-tag">
+                {' '}
+                · {roundLabel(round, user.tier)} · 📅 {dateLabel(roundDate(league.season, league.week))}
+              </small>
+            )}
           </h3>
           <p className="league-sub">
             <ClubLogo logo={league.profile.logo} size={18} title={user.name} /> {user.name} · {t('Liga {n}', { n: user.tier })} · {t('Manajer')}: {league.profile.managerName} · {t('anggaran')}{' '}
@@ -251,7 +267,7 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch }) {
         {!over && fx && (
           <div className="league-next">
             <span>
-              {t('Laga berikutnya')} ({roundLabel(round, user.tier)}): <b>{name(fx.home)}</b> vs <b>{name(fx.away)}</b> ({fx.home === user.id ? t('kandang') : t('tandang')}) · {t('lawan bergaya')}{' '}
+              {t('Laga berikutnya')} ({roundLabel(round, user.tier)} · {dateLabel(roundDate(league.season, league.week), { year: false })}): <b>{name(fx.home)}</b> vs <b>{name(fx.away)}</b> ({fx.home === user.id ? t('kandang') : t('tandang')}) · {t('lawan bergaya')}{' '}
               {t(CLUB_STYLES[clubById(league, fx.home === user.id ? fx.away : fx.home).style].label).toLowerCase()}
             </span>
             <button type="button" className="break-button" onClick={onGoMatch}>

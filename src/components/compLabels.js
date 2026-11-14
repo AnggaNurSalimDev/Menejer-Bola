@@ -1,4 +1,4 @@
-import { t, tk } from '../i18n.js';
+import { t, tk, getLang } from '../i18n.js';
 
 // Nama ajang & babak (15 Nov). Kunci teks Indonesia; terjemahan lewat i18n.
 
@@ -45,4 +45,14 @@ export function scoreText(result) {
   if (!result) return 'vs';
   const pens = result.pens ? ` (${t('pen')} ${result.pens.home}–${result.pens.away})` : '';
   return `${result.home}–${result.away}${pens}`;
+}
+
+// Tanggal babak (14 Nov malam), mis. "Sab, 8 Agu 2026" / "Sat, 8 Aug 2026".
+export function dateLabel(ms, { year = true } = {}) {
+  if (!Number.isFinite(ms)) return '';
+  try {
+    return new Date(ms).toLocaleDateString(getLang() === 'en' ? 'en-GB' : 'id-ID', { weekday: 'short', day: 'numeric', month: 'short', ...(year ? { year: 'numeric' } : {}), timeZone: 'UTC' });
+  } catch {
+    return new Date(ms).toISOString().slice(0, 10);
+  }
 }

@@ -7,7 +7,8 @@ import { gameClock } from './engine/state.js';
 import { getPhilosophy } from './engine/philosophy.js';
 import { CLUB_STYLES, STYLE_KEYS, styleTactics, randomStyle } from './engine/clubStyles.js';
 import { buildMatchTeams, completeWeek, seasonOver, clubLogo, matchReportFromState, effectiveLineup, absentPlayers, clubById, userFixture, simulateToUserMatch, currentRound, isKnockout } from './engine/league.js';
-import { roundLabel } from './components/compLabels.js';
+import { roundLabel, dateLabel } from './components/compLabels.js';
+import { roundDate } from './engine/calendar.js';
 import { INJURY } from './engine/injury.js';
 import { absenceText } from './components/Status.jsx';
 import { defaultLogo } from './engine/logo.js';
@@ -22,9 +23,9 @@ const USER_TEAM = 'home'; // tim yang diatur pengguna; tim tamu diatur AI pelati
 const TEAM_VIEW_EVERY_TICKS = 5; // tab Tim diperbarui 2× per detik (cukup untuk bar tenaga)
 const SUB_NOTICE_TICKS = 50;
 // Tab (14 Nov): pergantian & bursa jadi tab sendiri supaya tidak perlu gulir jauh.
-const TABS = ['league', 'match', 'team', 'subs', 'squad'];
-const LEAGUE_ONLY_TABS = new Set(['league', 'squad']);
-const TAB_LABEL = { league: tk('Kompetisi'), match: tk('Pertandingan'), team: tk('Taktik'), subs: tk('Pergantian'), squad: tk('Skuad & bursa') };
+const TABS = ['league', 'match', 'team', 'subs', 'squad', 'market'];
+const LEAGUE_ONLY_TABS = new Set(['league', 'squad', 'market']);
+const TAB_LABEL = { league: tk('Kompetisi'), match: tk('Pertandingan'), team: tk('Taktik'), subs: tk('Pergantian'), squad: tk('Skuad'), market: tk('Bursa') };
 
 // Gaya lawan (7 Nov): pilihan pengguna disimpan di perangkat; "acak" ditentukan dari seed laga
 // (seed sama → gaya sama, jadi ?seed=… tetap memutar ulang laga yang sama).
@@ -173,7 +174,7 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
           key: `${lg.season}-${lg.week}-${leagueMatchId}`,
           season: lg.season,
           week: lg.week,
-          label: roundLabel(currentRound(lg), clubById(lg, lg.userClubId).tier),
+          label: `${roundLabel(currentRound(lg), clubById(lg, lg.userClubId).tier)} · ${dateLabel(roundDate(lg.season, lg.week), { year: false })}`,
           knockout: isKnockout(currentRound(lg)),
           userIsHome: m.userIsHome,
           opponentId: m.opponent.id,
@@ -586,7 +587,12 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
 
       {league && (
         <div hidden={tab !== 'squad'}>
-          <SquadMarketTab league={league} onChange={changeLeague} locked={leagueInProgress} />
+          <SquadMarketTab league={league} onChange={changeLeague} locked={leagueInProgress} part="squad" />
+        </div>
+      )}
+      {league && (
+        <div hidden={tab !== 'market'}>
+          <SquadMarketTab league={league} onChange={changeLeague} locked={leagueInProgress} part="market" />
         </div>
       )}
 

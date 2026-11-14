@@ -5,6 +5,8 @@ import { CLUB_CHOICES, createLeague, NAME_MAX } from '../engine/league.js';
 import { CLUB_STYLES } from '../engine/clubStyles.js';
 import { defaultLogo, logoErrors } from '../engine/logo.js';
 import { SLOTS, slotSummary } from '../saves.js';
+import { roundDate } from '../engine/calendar.js';
+import { dateLabel } from './compLabels.js';
 import { t, getLang } from '../i18n.js';
 
 // Menu utama (14 Nov): lanjutkan · karier baru · muat · laga persahabatan · bahasa.
@@ -35,7 +37,7 @@ function SlotCard({ index, slot, children }) {
           <div className="slot-card__info">
             <b>{s.clubName}</b>
             <span>
-              {s.managerName} · {t('Liga {n}', { n: s.tier ?? 1 })} · {t('Musim {s} · Babak {w}/{n}', { s: s.season, w: s.week, n: s.weeks })}
+              {s.managerName} · {t('Liga {n}', { n: s.tier ?? 1 })} · {t('Musim {s} · Babak {w}/{n}', { s: s.season, w: s.week, n: s.weeks })} · {dateLabel(roundDate(s.season, s.week - 1))}
             </span>
             <small>{fmtDate(s.savedAt)}</small>
           </div>
@@ -235,7 +237,7 @@ export default function MainMenu({ saves, onStart, onLoad, onDelete, onFriendly,
               <button type="button" className="menu-btn menu-btn--primary" onClick={() => onLoad(saves.last)}>
                 <span>{t('Lanjutkan')}</span>
                 <small>
-                  {slotSummary(last).clubName} · {t('Liga {n}', { n: slotSummary(last).tier ?? 1 })} · {t('Musim {s} · Babak {w}/{n}', { s: slotSummary(last).season, w: slotSummary(last).week, n: slotSummary(last).weeks })}
+                  {slotSummary(last).clubName} · {t('Liga {n}', { n: slotSummary(last).tier ?? 1 })} · {t('Musim {s} · Babak {w}/{n}', { s: slotSummary(last).season, w: slotSummary(last).week, n: slotSummary(last).weeks })} · {dateLabel(roundDate(slotSummary(last).season, slotSummary(last).week - 1))}
                 </small>
               </button>
             )}

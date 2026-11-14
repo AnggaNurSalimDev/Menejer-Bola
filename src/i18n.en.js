@@ -404,7 +404,6 @@ export const EN = Object.freeze({
   // Tab Taktik/Pergantian/Skuad & bursa (14 Nov)
   'Taktik': 'Tactics',
   'Pergantian': 'Substitutions',
-  'Skuad & bursa': 'Squad & market',
   'Atur taktik dan pergantian di tab Taktik & Pergantian sebelum babak 2.': 'Adjust tactics and substitutions in the Tactics & Substitutions tabs before the second half.',
   'Semua': 'All',
   'Kiper': 'Goalkeepers',

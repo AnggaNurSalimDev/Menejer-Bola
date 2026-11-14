@@ -55,7 +55,10 @@ function DeltaChip({ delta }) {
   return <span className={`delta-chip delta-chip--${tone}`}>{text}</span>;
 }
 
-export default function SquadMarketTab({ league, onChange, locked }) {
+// part (14 Nov malam): 'squad' = tab Skuad (susunan, cadangan, kontrak), 'market' = tab Bursa — dipisah atas
+// permintaan pengguna; kepala (anggaran, gaji, jumlah skuad) tampil di keduanya.
+export default function SquadMarketTab({ league, onChange, locked, part = 'squad' }) {
+  if (part !== 'squad' && part !== 'market') throw new RangeError(`SquadMarketTab: bagian tidak dikenal ${part}`);
   const [msg, setMsg] = useState(null);
   const [group, setGroup] = useState('semua');
   const [sort, setSort] = useState('nilai');
@@ -105,7 +108,8 @@ export default function SquadMarketTab({ league, onChange, locked }) {
         </p>
       )}
 
-      <div className="sm-columns">
+      <div className={`sm-columns sm-columns--${part}`}>
+        {part === 'squad' && (
         <section aria-label={t('Skuad')}>
           <h4>{t('Susunan inti')}</h4>
           <ul className="squad-list">
@@ -200,7 +204,9 @@ export default function SquadMarketTab({ league, onChange, locked }) {
             ))}
           </ul>
         </section>
+        )}
 
+        {part === 'market' && (
         <section aria-label={t('Bursa')}>
           <h4>{t('Bursa pemain bebas')}</h4>
           <p className="tac-note">
@@ -264,6 +270,7 @@ export default function SquadMarketTab({ league, onChange, locked }) {
             </ul>
           )}
         </section>
+        )}
       </div>
     </div>
   );

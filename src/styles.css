@@ -2414,3 +2414,10 @@ details.fold {
   padding: 6px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
+/* Skuad & Bursa dipisah (14 Nov): satu kolom lebar penuh. */
+@media (min-width: 900px) {
+  .sm-columns--squad,
+  .sm-columns--market {
+    grid-template-columns: minmax(0, 860px);
+  }
+}

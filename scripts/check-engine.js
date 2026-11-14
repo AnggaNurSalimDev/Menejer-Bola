@@ -12,7 +12,7 @@ import { createMatchState, validateMatchState, gameClock } from '../src/engine/s
 import { createSimulation } from '../src/engine/simulation.js';
 import { createRng } from '../src/engine/rng.js';
 import { matchInjuries } from '../src/engine/injury.js';
-import { koWinner } from '../src/engine/calendar.js';
+import { koWinner, roundDates } from '../src/engine/calendar.js';
 import { AMATEUR_IDS } from '../src/engine/clubs.js';
 import { marketRows, weakestStarters, squadCounts, strengths, BLOCK } from '../src/engine/market.js';
 import { TICK_RATE, HALF_TICKS } from '../src/engine/constants.js';
@@ -1171,6 +1171,12 @@ console.log('Liga 3 kasta, piala & naik-turun (15 Nov; dasar 10 Nov)');
   check('ganti starter: pemain baru di nomor 9, susunan tetap 11 unik', clubById(swapped, lg2.userClubId).lineup[9] === newcomer && leagueErrors(swapped).length === 0 ? [] : ['salah']);
   const poor = { ...lg2, budget: 0 };
   check('anggaran kurang → ditolak, liga tidak berubah', buyPlayer(poor, cheap.uid).error && buyPlayer(poor, cheap.uid).league === poor ? [] : ['diterima']);
+  // Tanggal babak (dihitung, tidak disimpan).
+  const days = roundDates(1);
+  const dow = (ms) => new Date(ms).getUTCDay();
+  const sk = lg.calendar;
+  check('tanggal: 62 babak, naik ≥ 2 hari, Agustus–Mei, liga Sabtu, Piala Liga Selasa, Elite Rabu, Super Minggu', days.length === 62 && days.every((d, i) => i === 0 || d - days[i - 1] >= 2 * 86400000) && new Date(days[0]).getUTCMonth() === 7 && new Date(days[61]).getUTCMonth() <= 5 && sk.every((r, i) => (r.comp !== 'liga' || dow(days[i]) === 6) && (r.comp !== 'ligaCup' || dow(days[i]) === 2) && (r.comp !== 'elite' || dow(days[i]) === 3) && (r.comp !== 'super' || dow(days[i]) === 0)) ? [] : ['salah']);
+  check('tanggal musim 2 setahun setelah musim 1', new Date(roundDates(2)[0]).getUTCFullYear() === new Date(days[0]).getUTCFullYear() + 1 ? [] : ['salah']);
   // Mulai dari Liga 3, babak tanpa klub pengguna dilewati.
   const low = simulateToUserMatch(createLeague(77, { clubId: 'karang-kudus' }));
   check('karier di Liga 3: valid, babak berjalan berisi laga pengguna', leagueErrors(low).length === 0 && clubById(low, low.userClubId).tier === 3 && userFixture(low) ? [] : leagueErrors(low).slice(0, 2));
