@@ -19,6 +19,7 @@ import { recover, developMonth, overall, retireChance, potentialRange, toStars }
 import { AMATEUR_IDS } from '../src/engine/clubs.js';
 import { marketRows, weakestStarters, squadCounts, strengths, BLOCK } from '../src/engine/market.js';
 import { TICK_RATE, HALF_TICKS } from '../src/engine/constants.js';
+import { PRESET_KEYS, PRESETS, PRESET_MEASURED, buildPreset, uniqueScriptId } from '../src/engine/scriptPresets.js';
 import { computeAnchor, PHASES } from '../src/engine/shape.js';
 import { PITCH, distance } from '../src/engine/pitch.js';
 import { longBallTarget } from '../src/engine/attack.js';
@@ -1275,6 +1276,47 @@ console.log('Statistik pemain, umur, potensi, kondisi, latihan (15 Nov)');
   }
   const after = TIERS.map((t) => avgTier(w, t));
   check(`3 musim: rata-rata nilai tiap kasta bergeser < 1 (${before.map((x) => x.toFixed(2)).join('/')} → ${after.map((x) => x.toFixed(2)).join('/')})`, before.every((b, i) => Math.abs(after[i] - b) < 1) && leagueErrors(w).length === 0 ? [] : ['bergeser']);
+}
+
+console.log('Pustaka skema siap pakai (15 Nov)');
+{
+  const tm = createDemoTeams(4);
+  const sim = createSimulation(tm.home, tm.away, 9, { aiTeams: ['away'] });
+  let st = sim.getState();
+  const players = st.players.filter((p) => p.teamId === 'home');
+  const errs = [];
+  const all = [];
+  for (const key of PRESET_KEYS) {
+    if (!(PRESETS[key].level >= 1 && PRESETS[key].level <= 5)) errs.push(`${key}: tingkat ${PRESETS[key].level}`);
+    if (!Number.isFinite(PRESET_MEASURED[key])) errs.push(`${key}: belum diukur`);
+    const [l, r] = ['kiri', 'kanan'].map((sd) => buildPreset(key, sd, players));
+    if (!l.script || !r.script) { errs.push(`${key}: tidak terbangun (${[l.error, r.error].flat().filter(Boolean).join(', ')})`); continue; }
+    errs.push(...scriptErrors([l.script, r.script]).map((e) => `${key}: ${e}`));
+    // Cermin: x sama, y → 68 − y.
+    l.script.steps.forEach((stp, i) => stp.actions.forEach((a, j) => {
+      const b = r.script.steps[i].actions[j];
+      if (a.point && (a.point.x !== b.point.x || Math.abs(a.point.y + b.point.y - 68) > 1e-9)) errs.push(`${key}: cermin salah`);
+    }));
+    all.push(l.script, r.script);
+  }
+  check('tiap preset terbangun di kedua sisi, valid, & tercermin benar', errs.slice(0, 5));
+  // Tanpa pemain sayap → error yang jelas, bukan skema rusak.
+  const noWide = players.map((p) => (['LW', 'LM', 'RW', 'RM', 'LWB', 'RWB'].includes(p.role) ? { ...p, role: 'CM' } : p));
+  const nw = buildPreset('overlap', 'kiri', noWide);
+  check('peran yang tidak ada → error (bukan skema)', !nw.script && nw.error?.length > 0 ? [] : ['tidak error']);
+  check('id skema unik', uniqueScriptId('a', [{ id: 'a' }, { id: 'a-2' }]) === 'a-3' ? [] : ['salah']);
+  const runErrs = [];
+  try {
+    st = sim.setTactics('home', { scripts: all.slice(0, 16) });
+    for (let i = 0; i < 1200; i += 1) {
+      st = sim.step();
+      if (i % 200 === 0) runErrs.push(...validateMatchState(st));
+    }
+    if (!(st.stats.scripts.home.started > 0)) runErrs.push('tidak ada skema yang mulai');
+  } catch (e) {
+    runErrs.push(e.message);
+  }
+  check(`semua preset terpasang sekaligus, laga valid (mulai ${st.stats.scripts.home.started}, selesai ${st.stats.scripts.home.completed})`, runErrs.slice(0, 5));
 }
 
 console.log('Template taktik & pemahaman (15 Nov)');

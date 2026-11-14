@@ -1,3 +1,4 @@
+import PresetLibrary from './PresetLibrary.jsx';
 import { useEffect, useRef, useState } from 'react';
 import ScriptEditor, { ScriptOverlay, blankScript, ACTION_LABEL } from './ScriptEditor.jsx';
 import { PITCH } from '../engine/pitch.js';
@@ -62,6 +63,7 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
   const [draft, setDraft] = useState(null); // Strategi detil: skema yang sedang diedit
   const [viewId, setViewId] = useState(null); // skema yang garisnya ditampilkan
   const [picking, setPicking] = useState(null); // { step, action, cb } — menunggu klik titik
+  const [libOpen, setLibOpen] = useState(false); // pustaka skema siap pakai
   const [gdraft, setGdraft] = useState(null); // Kelompok yang sedang diedit: { id, zone, memberIds }
   const svgRef = useRef(null);
   // Esc membatalkan mode memilih titik (2 Nov: pengguna mengira papan "tidak bisa diklik").
@@ -444,6 +446,7 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
           <div className="scripts__head">
             <h5>{t('Strategi detil')} · {zl(zone).toLowerCase()}</h5>
             {!draft && (
+              <span className="scripts__btns">
               <button
                 type="button"
                 className="lane-reset"
@@ -452,8 +455,25 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
               >
                 + {t('Skema baru')}
               </button>
+              <button type="button" className="lane-reset" disabled={locked || Boolean(gdraft)} aria-expanded={libOpen} onClick={() => setLibOpen(!libOpen)}>
+                📚 {t('Pustaka skema')}
+              </button>
+              </span>
             )}
           </div>
+          {!draft && libOpen && (
+            <PresetLibrary
+              zone={zone}
+              players={players}
+              scripts={scripts}
+              locked={locked}
+              onClose={() => setLibOpen(false)}
+              onAdd={(next, added) => {
+                onSetTactics({ scripts: next }, t('Skema siap pakai ditambahkan: {n}', { n: added.map((x) => x.name).join(', ') }));
+                setViewId(added.find((x) => x.zone === zone)?.id ?? null);
+              }}
+            />
+          )}
           {!draft && zoneScripts.length === 0 && (
             <p className="tac-note">{t('Belum ada skema di zona ini. Skema dijalankan saat bola dipegang pemain yang ditentukan di zona ini dan pemain skema sudah di posisi zonanya.')}</p>
           )}

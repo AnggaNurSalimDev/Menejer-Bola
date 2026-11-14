@@ -14,6 +14,7 @@
 
 import { mirrorGroups } from './tactics.js';
 import { getFormation } from './formations.js';
+import { buildPreset } from './scriptPresets.js';
 
 export const TEMPLATE_KEYS = Object.freeze(['klasik442', 'blokRendah', 'sayap', 'gegenpress', 'tigaBek', 'bekKeTengah', 'posisional', 'pancingan']);
 export const UNDERSTANDING_PER_STAR = 18; // % pemahaman yang dibutuhkan per ★ kerumitan
@@ -205,55 +206,9 @@ function trioGroups(players, tactics, key) {
   return mirrorGroups(players, { ...tactics, groups: left }, 'lawanKiri', (i) => `${key}-lka${i}`).groups;
 }
 
-// Skema berbasis peran. Titik di bingkai tim (meter; menyerang ke kanan; y kecil = kiri).
-const W = 68;
-const mirrorY = (pt) => ({ x: pt.x, y: W - pt.y });
-function pemainKetiga(players) {
-  const cms = byRole(players, 'CM');
-  const st = byRole(players, 'ST')[0];
-  const lw = byRole(players, 'LW')[0];
-  const rw = byRole(players, 'RW')[0];
-  if (cms.length < 2 || !st || !lw || !rw) return [];
-  const make = (id, name, zone, holder, wing, flip) => {
-    const f = flip ? mirrorY : (p) => p;
-    return {
-      id,
-      name,
-      zone,
-      holderId: holder.id,
-      playerIds: [st.id],
-      steps: [
-        { trigger: { type: 'mulai' }, actions: [{ type: 'oper', to: st.id }, { type: 'lari', playerId: wing.id, point: f({ x: 90, y: 8 }) }] },
-        { trigger: { type: 'operanDiterima' }, actions: [{ type: 'oper', to: wing.id }] },
-        { trigger: { type: 'operanDiterima' }, actions: [{ type: 'umpanSilang', point: f({ x: 98, y: 30 }) }] },
-      ],
-    };
-  };
-  return [make('tpl-pk-kiri', 'Pemain ketiga · kiri', 'lawanKiri', cms[0], lw, false), make('tpl-pk-kanan', 'Pemain ketiga · kanan', 'lawanKanan', cms[cms.length - 1], rw, true)];
-}
-function pancing(players) {
-  const cbs = byRole(players, 'CB');
-  const dms = byRole(players, 'DM');
-  const st = byRole(players, 'ST')[0];
-  const lw = byRole(players, 'LW')[0];
-  const rw = byRole(players, 'RW')[0];
-  if (cbs.length < 2 || dms.length < 1 || !st || !lw || !rw) return [];
-  const make = (id, name, zone, cb, dm, wing, flip) => {
-    const f = flip ? mirrorY : (p) => p;
-    return {
-      id,
-      name,
-      zone,
-      holderId: cb.id,
-      playerIds: [dm.id],
-      steps: [
-        { trigger: { type: 'mulai' }, actions: [{ type: 'oper', to: dm.id }, { type: 'lari', playerId: st.id, point: f({ x: 58, y: 30 }) }] },
-        { trigger: { type: 'operanDiterima' }, actions: [{ type: 'oper', to: st.id }, { type: 'lari', playerId: wing.id, point: f({ x: 80, y: 10 }) }] },
-        { trigger: { type: 'operanDiterima' }, actions: [{ type: 'oper', to: wing.id }] },
-      ],
-    };
-  };
-  return [make('tpl-pc-kiri', 'Pancingan · kiri', 'sendiriKiri', cbs[0], dms[0], lw, false), make('tpl-pc-kanan', 'Pancingan · kanan', 'sendiriKanan', cbs[cbs.length - 1], dms[dms.length - 1], rw, true)];
+// Skema template = preset pustaka (scriptPresets.js) untuk kedua sisi.
+function presetPair(key, players) {
+  return ['kiri', 'kanan'].map((side) => buildPreset(key, side, players, { id: `tpl-${key}-${side}` })).filter((r) => r.script).map((r) => r.script);
 }
 
 // Langkah 1: perubahan formasi & instruksi tim (pemain belum perlu diketahui).
@@ -288,8 +243,8 @@ export function templateDetails(key, players, tactics) {
     changes.playerLanes = lanes;
   }
   if (t.groups === 'trio') changes.groups = trioGroups(players, tactics, key);
-  if (t.scripts === 'pemainKetiga') changes.scripts = pemainKetiga(players);
-  if (t.scripts === 'pancing') changes.scripts = pancing(players);
+  if (t.scripts === 'pemainKetiga') changes.scripts = presetPair('pemainKetiga', players);
+  if (t.scripts === 'pancing') changes.scripts = presetPair('pancingan', players);
   return changes;
 }
 

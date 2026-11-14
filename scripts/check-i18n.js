@@ -8,6 +8,7 @@ import { EN } from '../src/i18n.en.js';
 import { CLUB_STYLES } from '../src/engine/clubStyles.js';
 import { PHILOSOPHIES } from '../src/engine/philosophy.js';
 import { TEMPLATES } from '../src/engine/tacticTemplates.js';
+import { PRESETS, presetNeeds } from '../src/engine/scriptPresets.js';
 
 const files = [];
 (function walk(dir) {
@@ -31,6 +32,11 @@ for (const tp of Object.values(TEMPLATES)) {
   keys.add(tp.label);
   keys.add(tp.idea);
 }
+for (const pr of Object.values(PRESETS)) {
+  keys.add(pr.label);
+  keys.add(pr.idea);
+}
+for (const n of presetNeeds()) keys.add(n);
 
 // Kunci ganda di kamus (objek JS diam-diam memakai yang terakhir) — dicari dari teks berkas.
 const enSrc = readFileSync('src/i18n.en.js', 'utf8');

@@ -2685,3 +2685,12 @@ details.fold {
 .fit-box small {
   color: #adb5bd;
 }
+
+/* Pustaka skema siap pakai (15 Nov) */
+.preset-lib { border: 1px solid var(--line, #2a3a2f); border-radius: 8px; padding: 8px 10px; margin: 6px 0 10px; }
+.preset-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.preset-list > li { border-top: 1px solid var(--line, #2a3a2f); padding-top: 6px; }
+.preset-list > li:first-child { border-top: 0; padding-top: 0; }
+.preset-row { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.preset-list .tac-note { margin: 2px 0 4px; }
+.scripts__btns { display: inline-flex; gap: 6px; flex-wrap: wrap; }
