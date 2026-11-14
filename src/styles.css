@@ -2233,3 +2233,66 @@ details.fold {
     padding: 8px 10px;
   }
 }
+
+/* ── Absen, kontrak, kabar klub (14 Nov) ── */
+.absence-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  padding: 0 5px;
+  border-radius: 999px;
+  border: 1px solid #5c2b2b;
+  background: rgba(224, 49, 49, 0.12);
+  color: #ffc9c9;
+  white-space: nowrap;
+}
+.absence-badge--sakit,
+.absence-badge--izin {
+  border-color: #4a4a2a;
+  background: rgba(250, 176, 5, 0.1);
+  color: #ffe8a1;
+}
+.auto-in {
+  display: block;
+  color: #74c0fc;
+  font-size: 0.72rem;
+}
+.contract-list li.is-expiring {
+  background: rgba(250, 176, 5, 0.06);
+}
+.neg {
+  color: #ff8787;
+}
+.pos {
+  color: #8ce99a;
+}
+.absence-line {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  font-size: 0.8rem;
+  color: #ffc9c9;
+}
+.league-news h4 {
+  margin-bottom: 4px;
+}
+.news-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  font-size: 0.85rem;
+}
+.news-list li {
+  padding: 2px 0;
+}
+.news-list small {
+  color: #868e96;
+  margin-right: 6px;
+}
+.news-absent {
+  margin-right: 10px;
+}
+.roster-tag--hurt {
+  background: #e03131;
+  color: #fff;
+}

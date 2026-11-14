@@ -11,6 +11,7 @@ import { createDemoTeams } from '../src/engine/teams.js';
 import { createMatchState, validateMatchState, gameClock } from '../src/engine/state.js';
 import { createSimulation } from '../src/engine/simulation.js';
 import { createRng } from '../src/engine/rng.js';
+import { matchInjuries } from '../src/engine/injury.js';
 import { marketRows, weakestStarters, squadCounts, strengths, BLOCK } from '../src/engine/market.js';
 import { TICK_RATE, HALF_TICKS } from '../src/engine/constants.js';
 import { computeAnchor, PHASES } from '../src/engine/shape.js';
@@ -50,7 +51,7 @@ import { THROW_IN, throwRange } from '../src/engine/simulation.js';
 import { logoErrors, initials, cleanLogoText, contrastColor, defaultLogo } from '../src/engine/logo.js';
 import { readSaves, writeSlot, deleteSlot, slotSummary, SLOTS, SAVE_KEY } from '../src/saves.js';
 import { updateProfile, colorDistance } from '../src/engine/league.js';
-import { createLeague, leagueErrors, buildMatchTeams, completeWeek, standings, parseLeague, newSeason, buyPlayer, sellPlayer, setStarter, playerValue, clubById, roleGroup, clubLogo } from '../src/engine/league.js';
+import { createLeague, leagueErrors, buildMatchTeams, completeWeek, standings, parseLeague, newSeason, buyPlayer, sellPlayer, setStarter, playerValue, clubById, roleGroup, clubLogo, matchReportFromState, effectiveLineup, isAvailable, wageBill, renewContract, seasonOver, absentPlayers, LEAGUE } from '../src/engine/league.js';
 import { CLUB_STYLES, STYLE_KEYS, styleTactics, styleErrors, randomStyle } from '../src/engine/clubStyles.js';
 import { GROUP_ZONES, groupErrors, activeGroup, groupPassBonus, renameInGroups } from '../src/engine/groups.js';
 import { scriptErrors, renameInScripts, SCRIPT_ZONES, triggerMet, advanceScript } from '../src/engine/scripts.js';
@@ -918,7 +919,7 @@ console.log('Profil karier, logo & simpanan (14 Nov)');
   const v1 = { ...createLeague(3), version: 1 };
   delete v1.profile;
   const mig = parseLeague(JSON.stringify(v1));
-  check('liga v1 (sebelum menu utama) dimigrasi: profil bawaan, valid', mig && mig.version === 2 && mig.profile.managerName === 'Manajer' && logoErrors(mig.profile.logo).length === 0 ? [] : ['gagal']);
+  check('liga v1 (sebelum menu utama) dimigrasi: profil bawaan, valid', mig && mig.version === 3 && mig.profile.managerName === 'Manajer' && logoErrors(mig.profile.logo).length === 0 ? [] : ['gagal']);
 
   // Simpanan dengan penyimpanan tiruan.
   const mem = () => {
@@ -990,6 +991,112 @@ console.log('Logo klub lawan (14 Nov)');
   check('10 logo klub berbeda satu sama lain', designs.size === lg.clubs.length ? [] : [`${designs.size} berbeda`]);
   check('logo klub pengguna = logo profil; klub AI = warna jersey-nya', clubLogo(lg, 'garuda') === lg.profile.logo && lg.clubs.filter((c) => c.id !== 'garuda').every((c) => clubLogo(lg, c.id).primary === c.colors.shirt.toLowerCase()) ? [] : ['salah']);
   check('logo tim tanpa preset tetap sama untuk nama yang sama', JSON.stringify(defaultLogo({ name: 'Tim X', colors: { shirt: '#123456', number: '#ffffff' } })) === JSON.stringify(defaultLogo({ name: 'Tim X', colors: { shirt: '#123456', number: '#ffffff' } })) ? [] : ['berubah']);
+}
+
+console.log('Cedera, absen, skorsing & kontrak (14 Nov)');
+{
+  // Engine: banyak cedera (peluang ×40) — invariant tetap, cedera diganti / keluar, statistik cocok.
+  const lgM = createLeague(31);
+  const mt = buildMatchTeams(lgM);
+  const simI = createSimulation(mt.home, mt.away, 99, { injuryScale: 40 });
+  let stI = simI.getState();
+  let badI = [];
+  for (let g = 0; g < 20000 && stI.period !== 'fulltime'; g += 1) {
+    stI = stI.period === 'halftime' ? simI.startSecondHalf() : simI.step();
+    if (stI.tick % 250 === 0) badI = validateMatchState(stI);
+    if (badI.length) break;
+  }
+  const injs = matchInjuries(stI);
+  check('cedera saat laga: invariant lolos sampai peluit akhir', badI.length === 0 && stI.period === 'fulltime' ? [] : badI.slice(0, 2));
+  check('cedera tercatat = statistik cedera', injs.length === stI.stats.injuries.home + stI.stats.injuries.away && injs.length >= 4 ? [] : [`${injs.length} vs ${JSON.stringify(stI.stats.injuries)}`]);
+  const injuredLong = stI.players.filter((p) => p.injury && stI.tick - p.injury.tick > 1500);
+  check('pemain cedera tidak dibiarkan lama di lapangan (diganti/keluar)', injuredLong.length === 0 ? [] : injuredLong.map((p) => p.id));
+  check('keluar cedera tanpa pengganti bukan kartu merah', stI.sentOff.filter((p) => p.card === 'injury').every((p) => p.injury) && stI.stats.reds.home + stI.stats.reds.away === stI.sentOff.filter((p) => p.card !== 'injury').length ? [] : ['salah']);
+  const simOff = createSimulation(mt.home, mt.away, 99, { injuries: false });
+  let so = simOff.getState();
+  for (let g = 0; g < 3000; g += 1) so = simOff.step();
+  check('cedera bisa dimatikan (uji/kalibrasi)', so.stats.injuries.home + so.stats.injuries.away === 0 ? [] : ['ada cedera']);
+  let thrown = false;
+  try {
+    createSimulation(mt.home, mt.away, 1, { injuryScale: -1 });
+  } catch {
+    thrown = true;
+  }
+  check('injuryScale negatif ditolak', thrown ? [] : ['diterima']);
+  // Laporan laga → data liga.
+  const rep = matchReportFromState(stI, 'home');
+  const userUids = new Set(clubById(lgM, lgM.userClubId).players.map((p) => p.uid));
+  check('laporan laga hanya berisi pemain klub pengguna', [...rep.injuries.map((x) => x.uid), ...rep.reds, ...rep.yellows.map((x) => x.uid)].every((u) => userUids.has(u)) ? [] : ['ada uid asing']);
+
+  // Liga: absen & skorsing.
+  const lg = createLeague(41);
+  const me = clubById(lg, lg.userClubId);
+  const starterUid = me.lineup[9];
+  const benchUid = me.players.find((p) => !Object.values(me.lineup).includes(p.uid)).uid;
+  const yUid = me.lineup[4];
+  const lgY = { ...lg, clubs: lg.clubs.map((c) => (c.id === me.id ? { ...c, players: c.players.map((p) => (p.uid === yUid ? { ...p, yellows: 4 } : p)) } : c)) };
+  const w1 = completeWeek(lgY, 1, 0, null, { injuries: [{ uid: starterUid, severity: 'berat' }], reds: [benchUid], yellows: [{ uid: yUid, n: 1 }] });
+  const pl = (l, uid) => clubById(l, l.userClubId).players.find((p) => p.uid === uid);
+  check('cedera berat dari laga → absen cedera 6–10 pekan', pl(w1, starterUid).absence?.type === 'cedera' && pl(w1, starterUid).absence.weeks >= 6 && pl(w1, starterUid).absence.weeks <= 10 ? [] : [JSON.stringify(pl(w1, starterUid).absence)]);
+  check('kartu merah → skorsing 1 laga', pl(w1, benchUid).absence?.type === 'skors' && pl(w1, benchUid).absence.weeks === 1 ? [] : [JSON.stringify(pl(w1, benchUid).absence)]);
+  check('kuning ke-5 → skorsing 1 laga, hitungan kuning kembali 0', pl(w1, yUid).absence?.type === 'skors' && pl(w1, yUid).yellows === 0 ? [] : [JSON.stringify(pl(w1, yUid))]);
+  const eff = effectiveLineup(clubById(w1, w1.userClubId));
+  check('susunan efektif mengganti pemain inti yang absen dengan pemain tersedia', !Object.values(eff.lineup).includes(starterUid) && !Object.values(eff.lineup).includes(yUid) && Object.values(eff.lineup).every((u) => isAvailable(pl(w1, u))) ? [] : [JSON.stringify(eff.changes)]);
+  const mt1 = buildMatchTeams(w1);
+  const inMatch = new Set([...mt1.home.players, ...mt1.home.bench].map((p) => p.id.slice(5)));
+  check('pemain absen tidak ikut laga (inti maupun cadangan)', ![starterUid, benchUid, yUid].some((u) => inMatch.has(u)) && mt1.home.players.length === 11 ? [] : ['ikut']);
+  let starterThrow = false;
+  try {
+    setStarter(w1, 10, starterUid);
+  } catch {
+    starterThrow = true;
+  }
+  check('pemain absen tidak bisa dipasang sebagai inti', starterThrow ? [] : ['diterima']);
+  const w2 = completeWeek(w1, 0, 0);
+  check('skorsing selesai setelah satu pekan dilewati', pl(w2, benchUid).absence === null && pl(w2, yUid).absence === null && pl(w2, starterUid).absence.weeks === pl(w1, starterUid).absence.weeks - 1 ? [] : ['salah']);
+  let badRep = false;
+  try {
+    completeWeek(lg, 0, 0, null, { injuries: [{ uid: 'orang-asing', severity: 'ringan' }] });
+  } catch {
+    badRep = true;
+  }
+  check('laporan laga dengan pemain asing ditolak', badRep ? [] : ['diterima']);
+
+  // Kontrak & gaji.
+  check('semua pemain punya kontrak 1–4 musim & gaji; pemasukan = gaji awal + 2', lg.clubs.every((c) => c.players.every((p) => p.contract.seasons >= 1 && p.contract.seasons <= 4 && p.contract.wage > 0)) && Math.abs(lg.income - (wageBill(me) + LEAGUE.incomeMargin)) < 0.051 ? [] : ['salah']);
+  check('anggaran pekan = anggaran + pemasukan − gaji', Math.abs(w1.budget - (lgY.budget + lgY.income - wageBill(clubById(w1, w1.userClubId)))) < 0.051 ? [] : [`${w1.budget}`]);
+  const shortP = me.players.find((p) => p.contract.seasons === 1) ?? me.players[0];
+  const rn = renewContract(lg, shortP.uid, 3);
+  check('perpanjang kontrak: 3 musim, gaji naik ≥10% (tidak turun)', !rn.error && pl(rn.league, shortP.uid).contract.seasons === 3 && pl(rn.league, shortP.uid).contract.wage >= shortP.contract.wage ? [] : [rn.error ?? 'salah']);
+  check('perpanjang ke durasi yang tidak lebih panjang ditolak', renewContract(rn.league, shortP.uid, 2).error ? [] : ['diterima']);
+  let endL = rn.league;
+  while (!seasonOver(endL)) endL = completeWeek(endL, 1, 1);
+  const before = clubById(endL, endL.userClubId).players;
+  const ns = newSeason(endL);
+  const after = clubById(ns, ns.userClubId).players;
+  const leaving = before.filter((p) => p.contract.seasons === 1).map((p) => p.uid);
+  check('musim baru: kontrak habis → pemain pergi; yang diperpanjang tetap', leaving.every((u) => !after.some((p) => p.uid === u)) && after.some((p) => p.uid === shortP.uid) && pl(ns, shortP.uid).contract.seasons === 2 ? [] : ['salah']);
+  check('musim baru: skuad tetap ≥ minimum (pemain muda), susunan sah, kuning & skorsing hapus', after.length >= LEAGUE.squadMin && leagueErrors(ns).length === 0 && after.every((p) => p.yellows === 0 && p.absence?.type !== 'skors') ? [] : leagueErrors(ns).slice(0, 2));
+  check('musim baru: klub AI memperpanjang otomatis (skuad tidak menyusut)', ns.clubs.filter((c) => c.id !== ns.userClubId).every((c) => c.players.length === clubById(endL, c.id).players.length) ? [] : ['menyusut']);
+  const v2 = JSON.parse(JSON.stringify(lg));
+  v2.version = 2;
+  delete v2.income;
+  delete v2.news;
+  for (const c of v2.clubs) for (const p of c.players) {
+    delete p.contract;
+    delete p.absence;
+    delete p.yellows;
+  }
+  const m3 = parseLeague(JSON.stringify(v2));
+  check('liga v2 dimigrasi ke v3: kontrak, pemasukan, tanpa absen', m3 && m3.version === 3 && m3.income > 0 && leagueErrors(m3).length === 0 ? [] : ['gagal']);
+  // Satu musim penuh: semua klub kehilangan pemain sesekali, AI juga.
+  let full = createLeague(43);
+  let maxAbsentAi = 0;
+  while (!seasonOver(full)) {
+    full = completeWeek(full, 1, 1);
+    maxAbsentAi = Math.max(maxAbsentAi, ...full.clubs.filter((c) => c.id !== full.userClubId).map((c) => absentPlayers(c).length));
+  }
+  check('klub AI juga kehilangan pemain (cedera/sakit/skors/izin)', maxAbsentAi >= 1 ? [] : ['tidak pernah']);
 }
 
 console.log('Liga (10 Nov)');

@@ -12,6 +12,7 @@
 //   5. Statistik dicatat.
 
 import { createRng } from './rng.js';
+import { INJURY, injuryChance, rollSeverity } from './injury.js';
 import {
   createMatchState,
   createInitialBall,
@@ -159,6 +160,8 @@ import {
   cancelSubstitution as cancelSub,
   applySubstitutions,
   aiSubstitutions,
+  substitutionErrors,
+  roleLine,
 } from './substitution.js';
 import { scuffleTargets, scuffleRefereeSpot, protestTarget, assignScuffleStyles, SCUFFLE_MOVE, PROTEST_MOVE } from './scuffle.js';
 
@@ -229,6 +232,7 @@ function cloneStats(stats) {
     dissentYellows: { ...stats.dissentYellows },
     scuffleYellows: { ...stats.scuffleYellows },
     reds: { ...stats.reds },
+    injuries: { ...(stats.injuries ?? Object.fromEntries(Object.keys(stats.reds).map((k) => [k, 0]))) },
     straightReds: { ...stats.straightReds },
     scuffleReds: { ...stats.scuffleReds },
     corners: Object.fromEntries(Object.entries(stats.corners).map(([k, v]) => [k, { ...v }])),
@@ -1479,6 +1483,11 @@ export function createSimulation(home, away, seed, options = {}) {
   state = { ...state, players: state.players.map((p) => ({ ...p, condition: initialCondition(p.skills, rng) })) };
   state = { ...state, officials: createOfficials(rng) };
   const aiTeams = new Set(options.aiTeams ?? teamIds);
+  // Cedera (14 Nov): RNG sendiri supaya urutan acak laga tidak bergeser; options.injuries = false mematikan.
+  const injuriesOn = options.injuries !== false;
+  const injuryScale = options.injuryScale ?? 1; // uji: perbesar peluang cedera
+  if (!(injuryScale >= 0)) throw new RangeError(`createSimulation: injuryScale tidak valid ${injuryScale}`);
+  const injuryRng = createRng((seed * 7919 + 104729) % 2147483647);
   if (options.startSentOff?.length) {
     const removals = new Map(options.startSentOff.map((id) => [id, { card: 'red', reason: 'test' }]));
     const stats = cloneStats(state.stats);
@@ -1558,16 +1567,23 @@ export function createSimulation(home, away, seed, options = {}) {
   //    semua sampai (atau setelah MAX_RETURN_TICKS, supaya tidak menunggu selamanya).
   // Pergantian pemain saat bola mati di babak 2 (AI pelatih mengantrikan di awal jeda).
   // Eksekutor bola mati yang diganti digantikan pemain masuk.
+  // Cedera (14 Nov): pemain cedera boleh diganti di bola mati babak MANA PUN; antrean biasa di
+  // babak 1 tetap menunggu babak 2.
   function substituteAtStoppage(prev, tick) {
-    if (prev.period !== 'second') return prev;
+    if (prev.period !== 'second' && prev.period !== 'first') return prev;
     let next = prev;
     if (prev.pauseElapsed === 0) {
-      const minute = gameClock(prev).minute;
-      for (const id of teamIds) if (aiTeams.has(id)) next = aiSubstitutions(next, id, minute);
+      for (const id of teamIds) next = handleInjured(next, id, tick, aiTeams.has(id));
+      if (prev.period === 'second') {
+        const minute = gameClock(next).minute;
+        for (const id of teamIds) if (aiTeams.has(id)) next = aiSubstitutions(next, id, minute);
+      }
     }
-    if (!teamIds.some((id) => next.teams[id].subQueue.length > 0)) return next;
+    const injuredIds = new Set(next.players.filter((p) => p.injury).map((p) => p.id));
+    const due = (q) => prev.period === 'second' || injuredIds.has(q.outId);
+    if (!teamIds.some((id) => next.teams[id].subQueue.some(due))) return next;
     const before = new Set(next.players.map((p) => p.id));
-    next = applySubstitutions(next, tick);
+    next = applySubstitutions(next, tick, undefined, prev.period === 'second' ? null : injuredIds);
     const replaced = new Map(
       next.players.filter((p) => !before.has(p.id)).map((p) => [prev.players.find((q) => q.slot === p.slot && q.teamId === p.teamId && !next.players.some((r) => r.id === q.id))?.id, p.id]),
     );
@@ -1575,6 +1591,38 @@ export function createSimulation(home, away, seed, options = {}) {
       next = { ...next, incident: { ...next.incident, takerId: replaced.get(next.incident.takerId) } };
     }
     if (next.ball.ownerId !== null && replaced.has(next.ball.ownerId)) next = { ...next, ball: { ...next.ball, ownerId: replaced.get(next.ball.ownerId) } };
+    return next;
+  }
+
+  // Pemain cedera yang belum diantrikan keluar: tim AI (atau pengguna yang diam lewat masa tenggang)
+  // diganti otomatis; tanpa jatah/cadangan sah → keluar tanpa pengganti.
+  function handleInjured(state0, teamId, tick, isAi) {
+    let next = state0;
+    const hurt = next.players.filter((p) => p.teamId === teamId && p.injury && !next.teams[teamId].subQueue.some((q) => q.outId === p.id));
+    for (const p of hurt) {
+      if (!isAi && tick - p.injury.tick < INJURY.userGraceTicks) continue;
+      const team = next.teams[teamId];
+      const free = team.bench.filter((b) => !team.subQueue.some((q) => q.inId === b.id));
+      const pool = p.role === 'GK' ? free.filter((b) => b.role === 'GK') : free.filter((b) => b.role !== 'GK');
+      const pick = pool.find((b) => roleLine(b.role) === roleLine(p.role)) ?? pool[0];
+      if (pick && substitutionErrors(next, teamId, p.id, pick.id).length === 0) {
+        next = queueSub(next, teamId, p.id, pick.id);
+        continue;
+      }
+      const out = applySendOffs(next.players, next.sentOff, new Map([[p.id, { card: 'injury', reason: 'cedera' }]]), tick);
+      const players = reslotTeam(out.players, teamId, next.teams[teamId].activeTactics, next.teams[teamId].shapeBlend);
+      let ball = next.ball;
+      if (ball.ownerId === p.id) {
+        const mate = players.filter((q) => q.teamId === teamId && q.role !== 'GK').sort((a, b) => distance(a, ball) - distance(b, ball) || a.id.localeCompare(b.id))[0];
+        ball = { ...ball, ownerId: mate.id };
+      }
+      let incident = next.incident;
+      if (incident?.takerId === p.id) {
+        const mate = players.filter((q) => q.teamId === teamId && q.role !== 'GK').sort((a, b) => distance(a, ball) - distance(b, ball) || a.id.localeCompare(b.id))[0];
+        incident = { ...incident, takerId: mate.id };
+      }
+      next = { ...next, players, sentOff: out.sentOff, ball, incident };
+    }
     return next;
   }
 
@@ -2836,6 +2884,16 @@ export function createSimulation(home, away, seed, options = {}) {
     if (ball.passTargetId === null) {
       for (let i = 0; i < players.length; i += 1) {
         if (players[i].task === 'receive') players[i] = { ...players[i], task: 'chase' };
+      }
+    }
+
+    // Cedera saat laga (14 Nov): undian dari RNG terpisah; pemain cedera pincang sampai diganti.
+    if (injuriesOn) {
+      for (let i = 0; i < players.length; i += 1) {
+        const p = players[i];
+        if (p.injury || !injuryRng.chance(Math.min(1, injuryChance(p, injuryScale)))) continue;
+        players[i] = { ...p, injury: { tick, severity: rollSeverity(injuryRng) } };
+        stats.injuries[p.teamId] += 1;
       }
     }
 

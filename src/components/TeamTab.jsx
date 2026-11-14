@@ -586,6 +586,7 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
                     {p.shortName}
                     {p.discipline.yellows > 0 && <span className="card-chip" title={t('Kartu kuning')} />}
                     {queuedOut.has(p.id) && <span className="roster-tag">{t('keluar')}</span>}
+                    {p.injury && <span className="roster-tag roster-tag--hurt">🩹 {t('cedera')}</span>}
                   </span>
                   <span className="roster-role">{p.role}</span>
                   <EnergyBar value={p.condition.energy} />

@@ -6,7 +6,9 @@ import { createSimulation } from './engine/simulation.js';
 import { gameClock } from './engine/state.js';
 import { getPhilosophy } from './engine/philosophy.js';
 import { CLUB_STYLES, STYLE_KEYS, styleTactics, randomStyle } from './engine/clubStyles.js';
-import { buildMatchTeams, completeWeek, seasonOver, clubLogo } from './engine/league.js';
+import { buildMatchTeams, completeWeek, seasonOver, clubLogo, matchReportFromState, effectiveLineup, absentPlayers, clubById } from './engine/league.js';
+import { INJURY } from './engine/injury.js';
+import { absenceText } from './components/Status.jsx';
 import { defaultLogo } from './engine/logo.js';
 import ClubLogo from './components/ClubLogo.jsx';
 import LeagueTab from './components/LeagueTab.jsx';
@@ -162,7 +164,20 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
         namesById: names,
         simulation: sim,
         awayStyle: m.opponent.style,
-        leagueMatch: { key: `${lg.season}-${lg.week}-${leagueMatchId}`, season: lg.season, week: lg.week, userIsHome: m.userIsHome, opponentId: m.opponent.id },
+        leagueMatch: {
+          key: `${lg.season}-${lg.week}-${leagueMatchId}`,
+          season: lg.season,
+          week: lg.week,
+          userIsHome: m.userIsHome,
+          opponentId: m.opponent.id,
+          // Absen (14 Nov): pemain inti pengguna yang diganti otomatis, dan pemain lawan yang absen.
+          autoSubs: (() => {
+            const user = clubById(lg, lg.userClubId);
+            const byUid = new Map(user.players.map((p) => [p.uid, p]));
+            return effectiveLineup(user, lg.userFormation).changes.map((c) => ({ out: byUid.get(c.outUid), in: byUid.get(c.inUid) }));
+          })(),
+          oppAbsent: absentPlayers(m.opponent),
+        },
       };
     }
     const styleKey = styleChoice === 'acak' ? randomStyle(() => seededUnit(matchSeed)) : styleChoice;
@@ -191,7 +206,8 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
     if (lg.season !== leagueMatch.season || lg.week !== leagueMatch.week) return; // liga berubah di tengah jalan: jangan catat
     recordedRef.current = leagueMatch.key;
     const g = breakState.stats.goals;
-    setLeague(completeWeek(lg, g.home, g.away, simulation.getState().teams.home.tactics));
+    const final = simulation.getState();
+    setLeague(completeWeek(lg, g.home, g.away, final.teams.home.tactics, matchReportFromState(final, 'home')));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [breakState, leagueMatch]);
 
@@ -245,18 +261,27 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
       const toast = subToastRef.current;
       if (toast) {
         const recent = (state.subNotices ?? []).filter((n) => state.tick - n.tick <= SUB_NOTICE_TICKS);
-        toast.hidden = recent.length === 0;
-        set(
-          toast,
-          recent
-            .map((n) => {
-              const team = n.teamId === home.id ? home.name : away.name;
-              return n.status === 'masuk'
-                ? `🔁 ${team}: ${namesById.get(n.outId) ?? n.outId} ➜ ${namesById.get(n.inId) ?? n.inId}`
-                : `⚠️ ${team}: ${t('pergantian {p} dibatalkan', { p: namesById.get(n.outId) ?? n.outId })}`;
-            })
-            .join('   '),
-        );
+        // Cedera (14 Nov): pemberitahuan sampai pemain diganti; untuk tim pengguna ada petunjuknya.
+        const hurt = state.players.filter((p) => p.injury);
+        const limpedOff = (state.sentOff ?? []).filter((p) => p.card === 'injury' && state.tick - p.tick <= SUB_NOTICE_TICKS);
+        const teamName = (id) => (id === home.id ? home.name : away.name);
+        const lines = [
+          ...hurt.map((p) => {
+            const left = Math.max(0, Math.ceil((INJURY.userGraceTicks - (state.tick - p.injury.tick)) / 10));
+            return p.teamId === USER_TEAM
+              ? `🩹 ${t('{p} cedera — pilih pengganti di tab Pergantian (otomatis dalam {s} dtk)', { p: p.shortName, s: left })}`
+              : `🩹 ${teamName(p.teamId)}: ${t('{p} cedera', { p: p.shortName })}`;
+          }),
+          ...limpedOff.map((p) => `🩹 ${teamName(p.teamId)}: ${t('{p} keluar cedera tanpa pengganti', { p: p.shortName })}`),
+          ...recent.map((n) => {
+            const team = teamName(n.teamId);
+            return n.status === 'masuk'
+              ? `🔁 ${team}: ${namesById.get(n.outId) ?? n.outId} ➜ ${namesById.get(n.inId) ?? n.inId}`
+              : `⚠️ ${team}: ${t('pergantian {p} dibatalkan', { p: namesById.get(n.outId) ?? n.outId })}`;
+          }),
+        ];
+        toast.hidden = lines.length === 0;
+        set(toast, lines.join('   '));
       }
 
       // Strategi detil: skema tim pengguna yang sedang berjalan.
@@ -447,6 +472,20 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
           <button type="button" className="link-btn" disabled={leagueInProgress} onClick={toFriendly} title={leagueInProgress ? t('Selesaikan laga liga dulu') : undefined}>
             {t('Laga persahabatan')}
           </button>
+          {(leagueMatch.autoSubs.length > 0 || leagueMatch.oppAbsent.length > 0) && (
+            <span className="absence-line">
+              {leagueMatch.autoSubs.map((c) => (
+                <span key={c.out.uid}>
+                  {t('{a} absen ({r}) → diganti {b}', { a: c.out.shortName, r: absenceText(c.out.absence), b: c.in.shortName })}
+                </span>
+              ))}
+              {leagueMatch.oppAbsent.length > 0 && (
+                <span>
+                  {t('Lawan tanpa')}: {leagueMatch.oppAbsent.map((p) => `${p.shortName} (${absenceText(p.absence)})`).join(', ')}
+                </span>
+              )}
+            </span>
+          )}
         </div>
       ) : (
       <div className="scout-bar">

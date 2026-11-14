@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { CLUB_STYLES } from '../engine/clubStyles.js';
 import {
-  LEAGUE,
   standings,
   userFixture,
   clubById,
@@ -9,7 +8,10 @@ import {
   newSeason,
   updateProfile,
   clubLogo,
+  wageBill,
+  absentPlayers,
 } from '../engine/league.js';
+import { newsText, AbsenceBadge } from './Status.jsx';
 import ClubLogo from './ClubLogo.jsx';
 import ProfileEditor from './ProfileEditor.jsx';
 import { t, getLang } from '../i18n.js';
@@ -60,7 +62,7 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch }) {
             {t('Musim {s} · Pekan {w}/{n}', { s: league.season, w: Math.min(league.week + 1, total), n: total })}
           </h3>
           <p className="league-sub">
-            <ClubLogo logo={league.profile.logo} size={18} title={user.name} /> {user.name} · {t('Manajer')}: {league.profile.managerName} · {t('anggaran')} <b>{t('{n} jt', { n: league.budget })}</b> · {t('pemasukan {n} jt/pekan', { n: LEAGUE.weeklyIncome })}
+            <ClubLogo logo={league.profile.logo} size={18} title={user.name} /> {user.name} · {t('Manajer')}: {league.profile.managerName} · {t('anggaran')} <b>{t('{n} jt', { n: league.budget })}</b> · {t('pemasukan {n} jt/pekan', { n: league.income })} · {t('gaji {n} jt/pekan', { n: wageBill(user) })}
           </p>
         </div>
         {!over && fx && (
@@ -85,6 +87,29 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch }) {
           </div>
         )}
       </section>
+
+      {(league.news.length > 0 || absentPlayers(user).length > 0) && (
+        <section className="league-news" aria-label={t('Kabar klub')}>
+          <h4>{t('Kabar klub')}</h4>
+          {absentPlayers(user).length > 0 && (
+            <p className="league-sub">
+              {t('Absen sekarang')}:{' '}
+              {absentPlayers(user).map((p) => (
+                <span key={p.uid} className="news-absent">
+                  {p.shortName} <AbsenceBadge absence={p.absence} />
+                </span>
+              ))}
+            </p>
+          )}
+          <ul className="news-list">
+            {league.news.slice(0, 6).map((n, i) => (
+              <li key={`${n.uid}-${n.week}-${n.season ?? ''}-${i}`}>
+                <small>{n.season ? t('Musim {s}', { s: n.season }) : t('Pekan {w}', { w: n.week })}</small> {newsText(n)}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section aria-label={t('Klasemen')}>
         <h4>{t('Klasemen')}</h4>

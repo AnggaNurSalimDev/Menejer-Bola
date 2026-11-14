@@ -183,6 +183,7 @@ function drawPlayer(ctx, vp, player, teamColors, pose = null) {
   ctx.fillText(player.shortName, cx, nameY);
 
   drawConditionCues(ctx, cx, cy, w, nameY + nameSize + 2, player.condition);
+  if (player.injury) drawInjuryCue(ctx, cx, cy, w);
 
   // Kartu kuning (tahap 7b-1): kotak kuning kecil di bahu kiri. Kartu merah (7c): kotak merah.
   if (player.discipline?.yellows > 0 || player.card) {
@@ -242,6 +243,21 @@ function drawConditionCues(ctx, cx, cy, w, barY, condition) {
     ctx.strokeStyle = '#ffffff';
     ctx.stroke();
   }
+}
+
+// Cedera (14 Nov): palang merah di bahu kiri jersey sampai pemain diganti.
+function drawInjuryCue(ctx, cx, cy, w) {
+  const r = Math.max(3.5, w * 0.24);
+  const x = cx - w * 0.55;
+  const y = cy - w * 0.5;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.fillStyle = '#e03131';
+  const t = r * 0.38;
+  ctx.fillRect(x - r * 0.7, y - t / 2, r * 1.4, t);
+  ctx.fillRect(x - t / 2, y - r * 0.7, t, r * 1.4);
 }
 
 // Bola udara: bayangan tetap di tanah, bola digambar naik dan sedikit membesar

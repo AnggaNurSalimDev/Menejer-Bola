@@ -191,6 +191,7 @@ function createStats(teamIds) {
     // Skema bola mati: sepak pojok yang diberikan, tembakan & gol dalam 15 dtk setelahnya.
     corners: perTeam(() => ({ taken: 0, shots: 0, goals: 0 })),
     subs: perTeam(() => 0), // pergantian pemain yang sudah dijalankan
+    injuries: perTeam(() => 0), // cedera saat laga (14 Nov)
   };
 }
 
@@ -294,7 +295,7 @@ export function validateMatchState(state, teams = []) {
   for (const teamId of Object.keys(state.teams)) {
     const mine = state.players.filter((p) => p.teamId === teamId);
     if (mine.length < SENDOFF.minPlayers) errors.push(`tim ${teamId}: hanya ${mine.length} pemain`);
-    if (state.stats && sentOff.filter((p) => p.teamId === teamId).length !== state.stats.reds[teamId]) {
+    if (state.stats && sentOff.filter((p) => p.teamId === teamId && p.card !== 'injury').length !== state.stats.reds[teamId]) {
       errors.push(`tim ${teamId}: jumlah kartu merah tidak cocok dengan pemain yang keluar`);
     }
   }

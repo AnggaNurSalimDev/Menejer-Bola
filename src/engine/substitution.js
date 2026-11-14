@@ -80,7 +80,9 @@ export function entrySpot() {
 // Jalankan semua antrian (semua tim). placeAt(player) → titik awal pemain masuk.
 // Mengembalikan state baru; pergantian yang tidak lagi sah (mis. pemain sudah dikartu merah)
 // dibatalkan dan dicatat di pemberitahuan.
-export function applySubstitutions(state, tick, placeAt = () => entrySpot()) {
+// onlyOutIds (14 Nov): bila diisi, hanya antrean yang pemain keluarnya ada di set ini yang dijalankan
+// (pergantian pemain cedera di babak 1); sisanya tetap mengantre.
+export function applySubstitutions(state, tick, placeAt = () => entrySpot(), onlyOutIds = null) {
   let players = state.players;
   let subbedOff = state.subbedOff ?? [];
   const teams = { ...state.teams };
@@ -89,11 +91,13 @@ export function applySubstitutions(state, tick, placeAt = () => entrySpot()) {
   let changed = false;
   for (const teamId of Object.keys(teams)) {
     const team = teams[teamId];
-    if (team.subQueue.length === 0) continue;
+    const due = onlyOutIds ? team.subQueue.filter((q) => onlyOutIds.has(q.outId)) : team.subQueue;
+    const waiting = onlyOutIds ? team.subQueue.filter((q) => !onlyOutIds.has(q.outId)) : [];
+    if (due.length === 0) continue;
     changed = true;
     let bench = team.bench;
     let subsUsed = team.subsUsed;
-    for (const q of team.subQueue) {
+    for (const q of due) {
       const out = players.find((p) => p.id === q.outId);
       const incoming = bench.find((p) => p.id === q.inId);
       if (!out || !incoming || subsUsed >= SUBS.max) {
@@ -142,6 +146,7 @@ export function applySubstitutions(state, tick, placeAt = () => entrySpot()) {
           skills: out.skills,
           profile: out.profile,
           discipline: out.discipline,
+          injury: out.injury,
           x: out.x,
           y: out.y,
           vx: out.vx,
@@ -164,7 +169,7 @@ export function applySubstitutions(state, tick, placeAt = () => entrySpot()) {
       if (baseTactics) baseTactics = transferLaneInstruction(baseTactics, n.outId, n.inId);
       if (activeTactics) activeTactics = transferLaneInstruction(activeTactics, n.outId, n.inId);
     }
-    teams[teamId] = { ...team, bench, subsUsed, subQueue: [], tactics, baseTactics, activeTactics };
+    teams[teamId] = { ...team, bench, subsUsed, subQueue: waiting, tactics, baseTactics, activeTactics };
   }
   if (!changed) return state;
   return { ...state, players, subbedOff, teams, stats, subNotices: notices.filter((n) => tick - n.tick <= SUBS.noticeTicks) };

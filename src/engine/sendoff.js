@@ -128,6 +128,7 @@ export function applySendOffs(players, sentOff, removals, tick) {
       skills: gone.skills,
       profile: gone.profile,
       discipline: gone.discipline,
+      injury: gone.injury,
       x: gone.x,
       y: gone.y,
       vx: gone.vx,
@@ -180,7 +181,9 @@ export function validateSentOff(sentOff, players) {
   const present = new Set(players.map((p) => p.id));
   for (const p of sentOff) {
     if (present.has(p.id)) errors.push(`${p.id} dikartu merah tetapi masih bermain`);
-    if (!['secondYellow', 'red'].includes(p.card)) errors.push(`${p.id}: kartu keluar tidak dikenal ${p.card}`);
+    // 'injury' = keluar cedera tanpa pengganti (14 Nov) — bukan kartu, tapi sama-sama mengurangi pemain.
+    if (!['secondYellow', 'red', 'injury'].includes(p.card)) errors.push(`${p.id}: kartu keluar tidak dikenal ${p.card}`);
+    if (p.card === 'injury' && !p.injury) errors.push(`${p.id}: keluar cedera tanpa data cedera`);
   }
   if (new Set(sentOff.map((p) => p.id)).size !== sentOff.length) errors.push('pemain dikartu merah ganda');
   return errors;

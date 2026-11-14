@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { getStyle } from '../engine/clubStyles.js';
 import { getFormation } from '../engine/formations.js';
-import { LEAGUE, clubById, overall, playerValue, buyPlayer, sellPlayer, setStarter, roleGroup } from '../engine/league.js';
+import { LEAGUE, clubById, overall, playerValue, buyPlayer, sellPlayer, setStarter, roleGroup, isAvailable, effectiveLineup, matchBench, wageBill, wageFor, renewContract, renewWage } from '../engine/league.js';
+import { AbsenceBadge } from './Status.jsx';
 import { MARKET_GROUPS, MARKET_SORTS, BLOCK, marketRows, squadCounts, strengths } from '../engine/market.js';
 import { t, tk, getLang } from '../i18n.js';
 
@@ -14,6 +15,7 @@ const ERR_EN = [
   [/^Skuad penuh \(maks (\d+)\)$/, 'Squad full (max $1)'],
   [/^Pemain inti tidak bisa dijual — ganti dulu dari susunan$/, 'Starters cannot be sold — take them out of the line-up first'],
   [/^Skuad minimal (\d+) pemain$/, 'Squad needs at least $1 players'],
+  [/^Kontrak sekarang sudah sepanjang itu$/, 'The current contract is already that long'],
 ];
 const errText = (m) => (getLang() === 'en' ? ERR_EN.reduce((s, [re, en]) => s.replace(re, en), m) : m);
 const fmt = (n) => (Math.round(n * 10) / 10).toFixed(1);
@@ -64,7 +66,13 @@ export default function SquadMarketTab({ league, onChange, locked }) {
   const slots = getFormation(getStyle(user.style).formation);
   const byUid = new Map(user.players.map((p) => [p.uid, p]));
   const starters = new Set(Object.values(user.lineup));
-  const bench = user.players.filter((p) => !starters.has(p.uid)).sort((a, b) => overall(b) - overall(a));
+  const bench = user.players.filter((p) => !starters.has(p.uid)).sort((a, b) => isAvailable(b) - isAvailable(a) || overall(b) - overall(a));
+  const { lineup: playing, changes } = effectiveLineup(user, league.userFormation);
+  const autoIn = new Map(changes.map((c) => [c.number, byUid.get(c.inUid)]));
+  const travelling = new Set(matchBench(user, playing).map((p) => p.uid));
+  const bill = wageBill(user);
+  const net = Math.round((league.income - bill) * 10) / 10;
+  const contracts = [...user.players].sort((a, b) => a.contract.seasons - b.contract.seasons || overall(b) - overall(a));
   const rows = marketRows(league, { group, sort, locked });
   const counts = squadCounts(league);
 
@@ -83,7 +91,8 @@ export default function SquadMarketTab({ league, onChange, locked }) {
     <div className="squad-market">
       <header className="sm-head">
         <span>
-          {t('Anggaran')} <b>{t('{n} jt', { n: league.budget })}</b> · {t('pemasukan {n} jt/pekan', { n: LEAGUE.weeklyIncome })}
+          {t('Anggaran')} <b className={league.budget < 0 ? 'neg' : undefined}>{t('{n} jt', { n: league.budget })}</b> · {t('pemasukan {n} jt/pekan', { n: league.income })} · {t('gaji {n} jt/pekan', { n: bill })} ·{' '}
+          <b className={net < 0 ? 'neg' : 'pos'}>{t('bersih {n} jt/pekan', { n: net > 0 ? `+${net}` : net })}</b>
         </span>
         <span>
           {t('Skuad')} <b>{user.players.length}/{LEAGUE.squadMax}</b> ({t('min {n}', { n: LEAGUE.squadMin })}) · GK {counts.GK} · DF {counts.DF} · MF {counts.MF} · FW {counts.FW}
@@ -108,7 +117,8 @@ export default function SquadMarketTab({ league, onChange, locked }) {
                   <span className="squad-num">{s.number}</span>
                   <span className="squad-role">{s.role}</span>
                   <span className="squad-name">
-                    {p.fullName} {roleGroup(p.role) !== roleGroup(s.role) && <small className="sub-warn">({p.role})</small>}
+                    {p.fullName} {roleGroup(p.role) !== roleGroup(s.role) && <small className="sub-warn">({p.role})</small>} <AbsenceBadge absence={p.absence} />
+                    {autoIn.has(s.number) && <small className="auto-in">→ {t('diganti {p} otomatis', { p: autoIn.get(s.number).shortName })}</small>}
                   </span>
                   <span className="squad-val">{fmt(overall(p))}</span>
                   <select
@@ -118,7 +128,7 @@ export default function SquadMarketTab({ league, onChange, locked }) {
                     onChange={(e) => e.target.value && onChange(setStarter(league, s.number, e.target.value))}
                   >
                     <option value="">{t('ganti…')}</option>
-                    {bench.map((b) => (
+                    {bench.filter(isAvailable).map((b) => (
                       <option key={b.uid} value={b.uid}>
                         {b.shortName} ({b.role}, {fmt(overall(b))})
                       </option>
@@ -128,15 +138,18 @@ export default function SquadMarketTab({ league, onChange, locked }) {
               );
             })}
           </ul>
-          <h4>{t('Cadangan (7 teratas ikut ke laga)')}</h4>
+          <h4>{t('Cadangan (7 teratas yang tersedia ikut ke laga)')}</h4>
           <ul className="squad-list">
-            {bench.map((p, i) => {
+            {bench.map((p) => {
               const price = Math.round(playerValue(p) * LEAGUE.sellRate);
+              const goes = travelling.has(p.uid);
               return (
-                <li key={p.uid} className={i >= LEAGUE.benchInMatch ? 'is-out' : undefined}>
-                  <span className="squad-num">{i < LEAGUE.benchInMatch ? 'C' : '–'}</span>
+                <li key={p.uid} className={goes ? undefined : 'is-out'}>
+                  <span className="squad-num">{goes ? 'C' : '–'}</span>
                   <span className="squad-role">{p.role}</span>
-                  <span className="squad-name">{p.fullName}</span>
+                  <span className="squad-name">
+                    {p.fullName} <AbsenceBadge absence={p.absence} />
+                  </span>
                   <span className="squad-val">{fmt(overall(p))}</span>
                   {asking('sell', p.uid) ? (
                     <span className="sm-confirm">
@@ -156,11 +169,44 @@ export default function SquadMarketTab({ league, onChange, locked }) {
               );
             })}
           </ul>
+          <h4>{t('Kontrak')}</h4>
+          <p className="tac-note">{t('Kontrak berkurang satu musim tiap pergantian musim. Pemain yang kontraknya habis pergi — perpanjang sebelum musim selesai. Gaji naik 10% saat diperpanjang.')}</p>
+          <ul className="squad-list contract-list">
+            {contracts.map((p) => (
+              <li key={p.uid} className={p.contract.seasons === 1 ? 'is-expiring' : undefined}>
+                <span className="squad-num">{p.contract.seasons}</span>
+                <span className="squad-role">{p.role}</span>
+                <span className="squad-name">
+                  {p.fullName} <small>{t('{n} jt/pk', { n: p.contract.wage })}</small>
+                  {p.contract.seasons === 1 && <small className="sub-warn"> {t('habis akhir musim')}</small>}
+                </span>
+                <span className="squad-val">{fmt(overall(p))}</span>
+                <select
+                  aria-label={t('Perpanjang kontrak {p}', { p: p.shortName })}
+                  value=""
+                  disabled={locked || p.contract.seasons >= LEAGUE.renewMax}
+                  onChange={(e) => e.target.value && act(() => renewContract(league, p.uid, Number(e.target.value)))}
+                >
+                  <option value="">{t('perpanjang…')}</option>
+                  {[1, 2, 3]
+                    .filter((n) => n > p.contract.seasons && n <= LEAGUE.renewMax)
+                    .map((n) => (
+                      <option key={n} value={n}>
+                        {t('{n} musim · {w} jt/pk', { n, w: renewWage(p) })}
+                      </option>
+                    ))}
+                </select>
+              </li>
+            ))}
+          </ul>
         </section>
 
         <section aria-label={t('Bursa')}>
           <h4>{t('Bursa pemain bebas')}</h4>
-          <p className="tac-note">{t('{n} pemain berganti tiap pekan. Harga naik ±35% per poin nilai; jual dapat {p}% nilai.', { n: LEAGUE.marketRefresh, p: Math.round(LEAGUE.sellRate * 100) })}</p>
+          <p className="tac-note">
+            {t('{n} pemain berganti tiap pekan. Harga naik ±35% per poin nilai; jual dapat {p}% nilai.', { n: LEAGUE.marketRefresh, p: Math.round(LEAGUE.sellRate * 100) })}{' '}
+            {t('Pemain yang dibeli dikontrak {n} musim.', { n: LEAGUE.buyContractSeasons })}
+          </p>
           <div className="sm-filters">
             <div className="tac-options" role="group" aria-label={t('Posisi')}>
               {MARKET_GROUPS.map((g) => (
@@ -194,6 +240,7 @@ export default function SquadMarketTab({ league, onChange, locked }) {
                   <div className="market-row__meta">
                     <DeltaChip delta={r.delta} />
                     <span className="market-row__stats">{strengthText(r.player)}</span>
+                    <span className="market-row__stats">{t('gaji {n} jt/pekan', { n: wageFor(r.player) })}</span>
                   </div>
                   <div className="market-row__buy">
                     {asking('buy', r.player.uid) ? (

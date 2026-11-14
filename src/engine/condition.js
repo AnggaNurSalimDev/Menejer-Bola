@@ -9,6 +9,7 @@
 // SEMUA angka kondisi ada di file ini.
 
 import { normalizeStat } from './skill.js';
+import { INJURY } from './injury.js';
 
 export const CONDITION = Object.freeze({
   // --- Tenaga (stat Stamina) ---
@@ -166,8 +167,9 @@ export function physicalScale(player, context = {}) {
 }
 
 // Profil gerak setelah dikurangi kelelahan.
+// Cedera (14 Nov): pemain cedera pincang sampai diganti.
 export function effectiveProfile(player, context = {}) {
-  const scale = physicalScale(player, context);
+  const scale = physicalScale(player, context) * (player.injury ? INJURY.limpScale : 1);
   if (scale === 1) return player.profile;
   return { ...player.profile, maxSpeed: player.profile.maxSpeed * scale, maxAccel: player.profile.maxAccel * scale };
 }
