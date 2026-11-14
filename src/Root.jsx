@@ -2,6 +2,9 @@ import { useState } from 'react';
 import App from './App.jsx';
 import MainMenu from './components/MainMenu.jsx';
 import { readSaves, writeSlot, deleteSlot } from './saves.js';
+import { seasonOver, userFixture, simulateToUserMatch } from './engine/league.js';
+
+const atRest = (l) => (seasonOver(l) || userFixture(l) ? l : simulateToUserMatch(l));
 import { readLang, setLang, LANGS } from './i18n.js';
 
 // Akar aplikasi (14 Nov): menu utama dulu, lalu layar permainan untuk satu slot karier (atau laga
@@ -22,17 +25,20 @@ export default function Root() {
   }
   const refresh = () => setSaves(readSaves());
 
-  function start(slot, league) {
+  function start(slot, created) {
+    const league = atRest(created);
     writeSlot(slot, league);
     refresh();
     setGame({ slot, league, key: Date.now() });
   }
   function load(slot) {
     const s = readSaves().slots[slot];
-    if (!s) return refresh();
-    writeSlot(slot, s.league); // jadikan slot terakhir
+    const loaded = s?.league ?? null; // dimuat malas; null = rusak
+    if (!loaded) return setSaves({ ...readSaves(), broken: [slot] });
+    const league = atRest(loaded);
+    writeSlot(slot, league); // jadikan slot terakhir
     refresh();
-    setGame({ slot, league: s.league, key: Date.now() });
+    setGame({ slot, league, key: Date.now() });
   }
   function remove(slot) {
     deleteSlot(slot);

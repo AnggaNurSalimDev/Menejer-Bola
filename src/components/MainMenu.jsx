@@ -11,7 +11,7 @@ import { t, getLang } from '../i18n.js';
 // Tidak menyimpan sendiri: memanggil onStart(slot, league) / onDelete(slot) / onFriendly().
 
 function stars(q) {
-  const n = Math.max(1, Math.min(5, Math.round((q - 8) / 1.4)));
+  const n = Math.max(1, Math.min(5, Math.round((q - 6) / 2))); // 7 → ★, 15+ → ★★★★★ (15 Nov: 3 kasta)
   return '★'.repeat(n) + '☆'.repeat(5 - n);
 }
 
@@ -35,7 +35,7 @@ function SlotCard({ index, slot, children }) {
           <div className="slot-card__info">
             <b>{s.clubName}</b>
             <span>
-              {s.managerName} · {t('Musim {s} · Pekan {w}/{n}', { s: s.season, w: s.week, n: s.weeks })}
+              {s.managerName} · {t('Liga {n}', { n: s.tier ?? 1 })} · {t('Musim {s} · Babak {w}/{n}', { s: s.season, w: s.week, n: s.weeks })}
             </span>
             <small>{fmtDate(s.savedAt)}</small>
           </div>
@@ -54,6 +54,7 @@ function NewCareer({ saves, onStart, onBack }) {
   const firstFree = saves.slots.findIndex((s) => s === null);
   const [slot, setSlot] = useState(firstFree >= 0 ? firstFree : 0);
   const [clubId, setClubId] = useState(CLUB_CHOICES[0].id);
+  const [tier, setTier] = useState(1);
   const club = CLUB_CHOICES.find((c) => c.id === clubId);
   const [profile, setProfile] = useState(() => ({ clubName: club.name, managerName: '', logo: defaultLogo(club) }));
   const [error, setError] = useState(null);
@@ -98,8 +99,18 @@ function NewCareer({ saves, onStart, onBack }) {
       <section>
         <h4>1 · {t('Pilih klub')}</h4>
         <p className="tac-note">{t('Klub menentukan skuad, kekuatan awal, dan gaya bermain bawaan. Nama dan logo bisa kamu ganti di bawah.')}</p>
+        <div className="tac-options tier-tabs" role="group" aria-label={t('Kasta')}>
+          {[1, 2, 3].map((n) => (
+            <button key={n} type="button" className={n === tier ? 'is-active' : undefined} aria-pressed={n === tier} onClick={() => setTier(n)}>
+              {t('Liga {n}', { n })}
+            </button>
+          ))}
+        </div>
+        <p className="tac-note">{[t('Liga 1: kasta teratas, 4 teratas ikut Kejuaraan Elite.'), t('Liga 2: 2 teratas naik, peringkat 3–6 play-off.'), t('Liga 3: kasta terbawah — merintis dari bawah.')][tier - 1]}</p>
         <div className="club-grid">
-          {CLUB_CHOICES.map((c) => (
+          {CLUB_CHOICES.filter((c) => c.tier === tier)
+            .sort((a, b) => b.quality - a.quality || a.name.localeCompare(b.name))
+            .map((c) => (
             <button key={c.id} type="button" className={`club-card ${c.id === clubId ? 'is-active' : ''}`} onClick={() => pickClub(c)}>
               <ClubLogo logo={defaultLogo(c)} size={36} />
               <span className="club-card__name">{c.name}</span>
@@ -224,7 +235,7 @@ export default function MainMenu({ saves, onStart, onLoad, onDelete, onFriendly,
               <button type="button" className="menu-btn menu-btn--primary" onClick={() => onLoad(saves.last)}>
                 <span>{t('Lanjutkan')}</span>
                 <small>
-                  {slotSummary(last).clubName} · {t('Musim {s} · Pekan {w}/{n}', { s: slotSummary(last).season, w: slotSummary(last).week, n: slotSummary(last).weeks })}
+                  {slotSummary(last).clubName} · {t('Liga {n}', { n: slotSummary(last).tier ?? 1 })} · {t('Musim {s} · Babak {w}/{n}', { s: slotSummary(last).season, w: slotSummary(last).week, n: slotSummary(last).weeks })}
                 </small>
               </button>
             )}

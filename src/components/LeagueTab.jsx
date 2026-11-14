@@ -10,11 +10,18 @@ import {
   clubLogo,
   wageBill,
   absentPlayers,
+  currentRound,
+  eliteTables,
+  simulateToUserMatch,
+  SEASON_ROUNDS,
+  TIERS,
 } from '../engine/league.js';
+import { stagesOf } from '../engine/calendar.js';
+import { compLabel, stageLabel, roundLabel, scoreText } from './compLabels.js';
 import { newsText, AbsenceBadge } from './Status.jsx';
 import ClubLogo from './ClubLogo.jsx';
 import ProfileEditor from './ProfileEditor.jsx';
-import { t, getLang } from '../i18n.js';
+import { t, tk, getLang } from '../i18n.js';
 
 const FORM_EN = { M: 'W', S: 'D', K: 'L' };
 const PROFILE_ERR = [
@@ -28,21 +35,195 @@ const profileErrText = (m) => {
   return hit ? hit[1][getLang() === 'en' ? 1 : 0] : m;
 };
 
-// Tab Liga (10 Nov; skuad & bursa pindah ke tab sendiri 14 Nov): klasemen, jadwal, profil. Semua perubahan lewat fungsi murni
-// league.js; App yang menyimpan ke perangkat. `locked` = laga liga sedang berjalan (skuad dikunci).
+// Tab Kompetisi (10 Nov; 3 kasta & piala 15 Nov): kepala musim, kabar klub, lalu satu tampilan pilihan
+// (klasemen tiap kasta, tiap piala, Elite, jadwal saya, sejarah juara), lalu profil klub.
+// Semua perubahan lewat fungsi murni league.js; App yang menyimpan. `locked` = laga liga sedang berjalan.
+
+const VIEWS = ['liga', 'nasional', 'ligaCup', 'elite', 'super', 'jadwal', 'sejarah'];
+const VIEW_LABEL = { jadwal: tk('Jadwal saya'), sejarah: tk('Sejarah juara') };
+
+function FixtureRow({ league, f, userId }) {
+  const name = (id) => clubById(league, id).name;
+  return (
+    <li className={f.home === userId || f.away === userId ? 'is-user' : undefined}>
+      <span>
+        {name(f.home)} <ClubLogo logo={clubLogo(league, f.home)} size={14} />
+      </span>
+      <b>{scoreText(f.result)}</b>
+      <span>
+        <ClubLogo logo={clubLogo(league, f.away)} size={14} /> {name(f.away)}
+      </span>
+    </li>
+  );
+}
+
+function TableView({ league, rows, userId, zones = () => '' }) {
+  return (
+    <div className="table-wrap">
+      <table className="league-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th className="l">{t('Klub')}</th>
+            <th>{t('Main')}</th>
+            <th>{t('M')}</th>
+            <th>{t('S')}</th>
+            <th>{t('K')}</th>
+            <th>{t('Gol')}</th>
+            <th>{t('SG')}</th>
+            <th>{t('Poin')}</th>
+            <th className="l">{t('5 terakhir')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={r.id} className={[r.id === userId ? 'is-user' : '', zones(i, rows.length)].filter(Boolean).join(' ') || undefined}>
+              <td>{i + 1}</td>
+              <td className="l">
+                <ClubLogo logo={clubLogo(league, r.id)} size={16} title={r.name} /> {r.name}
+              </td>
+              <td>{r.p}</td>
+              <td>{r.w}</td>
+              <td>{r.d}</td>
+              <td>{r.l}</td>
+              <td>
+                {r.gf}–{r.ga}
+              </td>
+              <td>{r.gd > 0 ? `+${r.gd}` : r.gd}</td>
+              <td>
+                <b>{r.pts}</b>
+              </td>
+              <td className="l form">
+                {r.form.map((f, k) => (
+                  <span key={k} className={`form-${f}`}>
+                    {getLang() === 'en' ? FORM_EN[f] : f}
+                  </span>
+                ))}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Zona warna klasemen: Elite (Liga 1), naik langsung, play-off, degradasi.
+const zoneFor = (tier) => (i, n) => {
+  if (tier === 1 && i < 4) return 'zone-elite';
+  if (tier > 1 && i < 2) return 'zone-up';
+  if (tier > 1 && i >= 2 && i < 6) return 'zone-playoff';
+  if (tier < 3 && i >= n - 3) return 'zone-down';
+  return '';
+};
+
+function CupView({ league, comp, userId }) {
+  const rounds = league.calendar.filter((r) => r.comp === comp && r.fixtures && !(comp === 'elite' && r.stage.startsWith('G')));
+  const stages = stagesOf(comp).filter((st) => !(comp === 'elite' && st.startsWith('G')));
+  const pending = stages.filter((st) => !rounds.some((r) => r.stage === st));
+  return (
+    <div className="cup-view">
+      {[...rounds].reverse().map((r) => (
+        <div key={r.stage}>
+          <h5>{stageLabel(r.stage)}</h5>
+          <ul className="fixture-list">
+            {[...r.fixtures]
+              .sort((a, b) => (b.home === userId || b.away === userId) - (a.home === userId || a.away === userId))
+              .map((f) => (
+                <FixtureRow key={`${f.home}-${f.away}`} league={league} f={f} userId={userId} />
+              ))}
+          </ul>
+        </div>
+      ))}
+      {pending.length > 0 && <p className="tac-note">{t('Belum diundi')}: {pending.map(stageLabel).join(' · ')}</p>}
+    </div>
+  );
+}
+
+function EliteView({ league, userId }) {
+  const tables = eliteTables(league);
+  return (
+    <div className="cup-view">
+      <p className="tac-note">{t('4 teratas Liga 1 musim lalu (musim pertama: 4 klub terkuat) + 12 klub luar negeri. Dua teratas tiap grup lolos ke perempat final.')}</p>
+      <div className="elite-groups">
+        {tables.map((rows, gi) => (
+          <div key={gi}>
+            <h5>{t('Grup {g}', { g: 'ABCD'[gi] })}</h5>
+            <TableView league={league} rows={rows} userId={userId} zones={(i) => (i < 2 ? 'zone-up' : '')} />
+          </div>
+        ))}
+      </div>
+      <CupView league={league} comp="elite" userId={userId} />
+    </div>
+  );
+}
+
+function MySchedule({ league, userId }) {
+  const rows = league.calendar
+    .map((r, i) => ({ r, i, f: (r.fixtures ?? []).find((f) => f.home === userId || f.away === userId) }))
+    .filter((x) => x.f);
+  const tier = clubById(league, userId).tier;
+  return (
+    <ul className="schedule-list">
+      {rows.map(({ r, i, f }) => {
+        const home = f.home === userId;
+        const opp = home ? f.away : f.home;
+        const res = f.result;
+        const mine = res ? (home ? res.home : res.away) : null;
+        const theirs = res ? (home ? res.away : res.home) : null;
+        const outcome = !res ? '' : mine > theirs ? 'M' : mine < theirs ? 'K' : 'S';
+        return (
+          <li key={i} className={i === league.week ? 'is-now' : undefined}>
+            <small>{roundLabel(r, tier)}</small>
+            <span>
+              {home ? t('kandang') : t('tandang')} · <ClubLogo logo={clubLogo(league, opp)} size={14} /> {clubById(league, opp).name}
+            </span>
+            <b className={outcome ? `form-${outcome}` : undefined}>{res ? scoreText(home ? res : { home: res.away, away: res.home, pens: res.pens && { home: res.pens.away, away: res.pens.home } }) : '–'}</b>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function HistoryView({ league }) {
+  if (league.history.length === 0) return <p className="tac-note">{t('Belum ada juara — musim pertama masih berjalan.')}</p>;
+  const seasons = [...new Set(league.history.map((h) => h.season))].sort((a, b) => b - a);
+  return (
+    <ul className="history-list">
+      {seasons.map((s) => (
+        <li key={s}>
+          <b>{t('Musim {s}', { s })}</b>
+          {league.history
+            .filter((h) => h.season === s)
+            .map((h, i) => (
+              <span key={i}>
+                🏆 {compLabel(h.comp, h.comp === 'liga' ? h.tier : null)}: {h.name}
+              </span>
+            ))}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export default function LeagueTab({ league, onChange, locked, onGoMatch }) {
   const [editing, setEditing] = useState(null); // profil yang sedang diubah | null
   const [profileError, setProfileError] = useState(null);
+  const [view, setView] = useState('liga');
+  const [tierView, setTierView] = useState(null);
   if (!league) return null;
-  const table = standings(league);
   const user = clubById(league, league.userClubId);
+  const tier = tierView ?? user.tier;
+  if (!TIERS.includes(tier)) throw new RangeError(`LeagueTab: kasta ${tier} tidak ada`);
+  const table = standings(league, tier);
   const fx = userFixture(league);
   const over = seasonOver(league);
-  const total = league.fixtures.length;
-  const lastWeek = league.week > 0 ? league.fixtures[league.week - 1] : null;
-  const thisWeek = !over ? league.fixtures[league.week] : null;
+  const round = currentRound(league);
   const name = (id) => clubById(league, id).name;
+  const lastLeague = [...league.calendar.slice(0, league.week)].reverse().find((r) => r.comp === 'liga');
+  const ownTable = standings(league, user.tier);
+  const playoff = league.calendar.filter((r) => r.comp === 'playoff' && r.fixtures).flatMap((r) => r.fixtures.filter((f) => f.tier === tier).map((f) => ({ ...f, stage: r.stage })));
 
   function saveProfile() {
     try {
@@ -59,16 +240,18 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch }) {
       <section className="league-head">
         <div>
           <h3>
-            {t('Musim {s} · Pekan {w}/{n}', { s: league.season, w: Math.min(league.week + 1, total), n: total })}
+            {t('Musim {s} · Babak {w}/{n}', { s: league.season, w: Math.min(league.week + 1, SEASON_ROUNDS), n: SEASON_ROUNDS })}
+            {round && <small className="round-tag"> · {roundLabel(round, user.tier)}</small>}
           </h3>
           <p className="league-sub">
-            <ClubLogo logo={league.profile.logo} size={18} title={user.name} /> {user.name} · {t('Manajer')}: {league.profile.managerName} · {t('anggaran')} <b>{t('{n} jt', { n: league.budget })}</b> · {t('pemasukan {n} jt/pekan', { n: league.income })} · {t('gaji {n} jt/pekan', { n: wageBill(user) })}
+            <ClubLogo logo={league.profile.logo} size={18} title={user.name} /> {user.name} · {t('Liga {n}', { n: user.tier })} · {t('Manajer')}: {league.profile.managerName} · {t('anggaran')}{' '}
+            <b>{t('{n} jt', { n: league.budget })}</b> · {t('pemasukan {n} jt/pekan', { n: league.income })} · {t('gaji {n} jt/pekan', { n: wageBill(user) })}
           </p>
         </div>
         {!over && fx && (
           <div className="league-next">
             <span>
-              {t('Laga berikutnya')}: <b>{name(fx.home)}</b> vs <b>{name(fx.away)}</b> ({fx.home === user.id ? t('kandang') : t('tandang')}) · {t('lawan bergaya')}{' '}
+              {t('Laga berikutnya')} ({roundLabel(round, user.tier)}): <b>{name(fx.home)}</b> vs <b>{name(fx.away)}</b> ({fx.home === user.id ? t('kandang') : t('tandang')}) · {t('lawan bergaya')}{' '}
               {t(CLUB_STYLES[clubById(league, fx.home === user.id ? fx.away : fx.home).style].label).toLowerCase()}
             </span>
             <button type="button" className="break-button" onClick={onGoMatch}>
@@ -76,12 +259,20 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch }) {
             </button>
           </div>
         )}
+        {!over && !fx && (
+          <div className="league-next">
+            <span>{t('Klubmu tidak main di babak ini.')}</span>
+            <button type="button" className="break-button" disabled={locked} onClick={() => onChange(simulateToUserMatch(league))}>
+              {t('Lewati ke laga berikutnya')}
+            </button>
+          </div>
+        )}
         {over && (
           <div className="league-next">
             <span>
-              🏆 {t('Juara musim {s}', { s: league.season })}: <b>{table[0].name}</b> · {t('{c} finis ke-{p}', { c: user.name, p: table.findIndex((r) => r.id === user.id) + 1 })}
+              🏆 {t('Juara Liga {n}', { n: user.tier })}: <b>{ownTable[0].name}</b> · {t('{c} finis ke-{p}', { c: user.name, p: ownTable.findIndex((r) => r.id === user.id) + 1 })}
             </span>
-            <button type="button" className="break-button" onClick={() => onChange(newSeason(league))}>
+            <button type="button" className="break-button" onClick={() => onChange(simulateToUserMatch(newSeason(league)))}>
               {t('Mulai musim {s}', { s: league.season + 1 })}
             </button>
           </div>
@@ -104,108 +295,68 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch }) {
           <ul className="news-list">
             {league.news.slice(0, 6).map((n, i) => (
               <li key={`${n.uid}-${n.week}-${n.season ?? ''}-${i}`}>
-                <small>{n.season ? t('Musim {s}', { s: n.season }) : t('Pekan {w}', { w: n.week })}</small> {newsText(n)}
+                <small>{n.season ? t('Musim {s}', { s: n.season }) : t('Babak {w}', { w: n.week })}</small> {newsText(n)}
               </li>
             ))}
           </ul>
         </section>
       )}
 
-      <section aria-label={t('Klasemen')}>
-        <h4>{t('Klasemen')}</h4>
-        <div className="table-wrap">
-          <table className="league-table">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th className="l">{t('Klub')}</th>
-                <th>{t('Main')}</th>
-                <th>{t('M')}</th>
-                <th>{t('S')}</th>
-                <th>{t('K')}</th>
-                <th>{t('Gol')}</th>
-                <th>{t('SG')}</th>
-                <th>{t('Poin')}</th>
-                <th className="l">{t('5 terakhir')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {table.map((r, i) => {
-                const c = clubById(league, r.id);
-                return (
-                  <tr key={r.id} className={r.id === user.id ? 'is-user' : undefined}>
-                    <td>{i + 1}</td>
-                    <td className="l">
-                      <ClubLogo logo={clubLogo(league, c.id)} size={16} title={r.name} />{' '}
-                      {r.name}
-                    </td>
-                    <td>{r.p}</td>
-                    <td>{r.w}</td>
-                    <td>{r.d}</td>
-                    <td>{r.l}</td>
-                    <td>
-                      {r.gf}–{r.ga}
-                    </td>
-                    <td>{r.gd > 0 ? `+${r.gd}` : r.gd}</td>
-                    <td>
-                      <b>{r.pts}</b>
-                    </td>
-                    <td className="l form">
-                      {r.form.map((f, k) => (
-                        <span key={k} className={`form-${f}`}>
-                          {getLang() === 'en' ? FORM_EN[f] : f}
-                        </span>
-                      ))}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <nav className="comp-nav" aria-label={t('Kompetisi')}>
+        {VIEWS.map((v) => (
+          <button key={v} type="button" className={v === view ? 'is-active' : undefined} aria-pressed={v === view} onClick={() => setView(v)}>
+            {VIEW_LABEL[v] ? t(VIEW_LABEL[v]) : compLabel(v)}
+          </button>
+        ))}
+      </nav>
 
-      <section className="league-weeks">
-        {lastWeek && (
-          <div>
-            <h4>{t('Hasil pekan {n}', { n: league.week })}</h4>
-            <ul className="fixture-list">
-              {lastWeek.map((f) => (
-                <li key={`${f.home}-${f.away}`} className={f.home === user.id || f.away === user.id ? 'is-user' : undefined}>
-                  <span>
-                    {name(f.home)} <ClubLogo logo={clubLogo(league, f.home)} size={14} />
-                  </span>
-                  <b>
-                    {f.result.home} – {f.result.away}
-                  </b>
-                  <span>
-                    <ClubLogo logo={clubLogo(league, f.away)} size={14} /> {name(f.away)}
-                  </span>
-                </li>
-              ))}
-            </ul>
+      {view === 'liga' && (
+        <section aria-label={t('Klasemen')}>
+          <div className="tac-options tier-tabs">
+            {TIERS.map((n) => (
+              <button key={n} type="button" className={n === tier ? 'is-active' : undefined} aria-pressed={n === tier} onClick={() => setTierView(n)}>
+                {t('Liga {n}', { n })}
+              </button>
+            ))}
           </div>
-        )}
-        {thisWeek && (
-          <div>
-            <h4>{t('Jadwal pekan {n}', { n: league.week + 1 })}</h4>
-            <ul className="fixture-list">
-              {thisWeek.map((f) => (
-                <li key={`${f.home}-${f.away}`} className={f.home === user.id || f.away === user.id ? 'is-user' : undefined}>
-                  <span>
-                    {name(f.home)} <ClubLogo logo={clubLogo(league, f.home)} size={14} />
-                  </span>
-                  <b>vs</b>
-                  <span>
-                    <ClubLogo logo={clubLogo(league, f.away)} size={14} /> {name(f.away)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <p className="tac-note">{t('Laga klub lain dihitung cepat dari kekuatan skuad saat pekan ditutup.')}</p>
-          </div>
-        )}
-      </section>
+          <TableView league={league} rows={table} userId={user.id} zones={zoneFor(tier)} />
+          <p className="zone-legend">
+            {tier === 1 && <span className="zone-elite">{t('Kejuaraan Elite musim depan')}</span>}
+            {tier > 1 && <span className="zone-up">{t('Naik langsung')}</span>}
+            {tier > 1 && <span className="zone-playoff">{t('Play-off promosi')}</span>}
+            {tier < 3 && <span className="zone-down">{t('Degradasi')}</span>}
+          </p>
+          {playoff.length > 0 && (
+            <>
+              <h5>{compLabel('playoff')}</h5>
+              <ul className="fixture-list">
+                {playoff.map((f) => (
+                  <FixtureRow key={`${f.stage}-${f.home}`} league={league} f={f} userId={user.id} />
+                ))}
+              </ul>
+            </>
+          )}
+          {lastLeague && (
+            <>
+              <h5>
+                {t('Hasil')} · {stageLabel(lastLeague.stage)}
+              </h5>
+              <ul className="fixture-list">
+                {lastLeague.fixtures
+                  .filter((f) => f.tier === tier)
+                  .map((f) => (
+                    <FixtureRow key={`${f.home}-${f.away}`} league={league} f={f} userId={user.id} />
+                  ))}
+              </ul>
+            </>
+          )}
+          <p className="tac-note">{t('Laga klub lain dihitung cepat dari kekuatan skuad saat pekan ditutup.')}</p>
+        </section>
+      )}
+      {(view === 'nasional' || view === 'ligaCup' || view === 'super') && <CupView league={league} comp={view} userId={user.id} />}
+      {view === 'elite' && <EliteView league={league} userId={user.id} />}
+      {view === 'jadwal' && <MySchedule league={league} userId={user.id} />}
+      {view === 'sejarah' && <HistoryView league={league} />}
 
       <section aria-label={t('Profil klub')}>
         <h4>{t('Profil klub')}</h4>

@@ -1,4 +1,5 @@
 import { t, tk } from '../i18n.js';
+import { compLabel, stageLabel } from './compLabels.js';
 
 // Label & lencana status pemain (14 Nov): absen (cedera, sakit, skorsing, izin) dan kabar pekan.
 
@@ -39,5 +40,13 @@ export function AbsenceBadge({ absence }) {
 export function newsText(n) {
   if (n.type === 'pergi') return `👋 ${t('{p} pergi — kontraknya habis', { p: n.name })}`;
   if (n.type === 'muda') return `🌱 ${t('{p} dipromosikan dari tim muda', { p: n.name })}`;
+  if (n.type === 'lolos' || n.type === 'gugur') {
+    const [comp, stage] = String(n.detail).split(':');
+    const where = `${compLabel(comp)} · ${stageLabel(stage)}`;
+    return n.type === 'lolos' ? `✅ ${t('Lolos dari {w} (lawan {o})', { w: where, o: n.name })}` : `❌ ${t('Tersingkir di {w} oleh {o}', { w: where, o: n.name })}`;
+  }
+  if (n.type === 'juara') return `🏆 ${t('Juara {c}!', { c: compLabel(n.detail) })}`;
+  if (n.type === 'naik') return `⬆️ ${t('Promosi ke Liga {n}!', { n: n.weeks })}`;
+  if (n.type === 'turun') return `⬇️ ${t('Terdegradasi ke Liga {n}', { n: n.weeks })}`;
   return `${ABSENCE_ICON[n.type] ?? '•'} ${n.name}: ${absenceText({ type: n.type, weeks: n.weeks, detail: n.detail })}`;
 }

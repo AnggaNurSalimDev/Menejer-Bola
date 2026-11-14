@@ -6,7 +6,8 @@ import { createSimulation } from './engine/simulation.js';
 import { gameClock } from './engine/state.js';
 import { getPhilosophy } from './engine/philosophy.js';
 import { CLUB_STYLES, STYLE_KEYS, styleTactics, randomStyle } from './engine/clubStyles.js';
-import { buildMatchTeams, completeWeek, seasonOver, clubLogo, matchReportFromState, effectiveLineup, absentPlayers, clubById } from './engine/league.js';
+import { buildMatchTeams, completeWeek, seasonOver, clubLogo, matchReportFromState, effectiveLineup, absentPlayers, clubById, userFixture, simulateToUserMatch, currentRound, isKnockout } from './engine/league.js';
+import { roundLabel } from './components/compLabels.js';
 import { INJURY } from './engine/injury.js';
 import { absenceText } from './components/Status.jsx';
 import { defaultLogo } from './engine/logo.js';
@@ -23,7 +24,7 @@ const SUB_NOTICE_TICKS = 50;
 // Tab (14 Nov): pergantian & bursa jadi tab sendiri supaya tidak perlu gulir jauh.
 const TABS = ['league', 'match', 'team', 'subs', 'squad'];
 const LEAGUE_ONLY_TABS = new Set(['league', 'squad']);
-const TAB_LABEL = { league: tk('Liga'), match: tk('Pertandingan'), team: tk('Taktik'), subs: tk('Pergantian'), squad: tk('Skuad & bursa') };
+const TAB_LABEL = { league: tk('Kompetisi'), match: tk('Pertandingan'), team: tk('Taktik'), subs: tk('Pergantian'), squad: tk('Skuad & bursa') };
 
 // Gaya lawan (7 Nov): pilihan pengguna disimpan di perangkat; "acak" ditentukan dari seed laga
 // (seed sama → gaya sama, jadi ?seed=… tetap memutar ulang laga yang sama).
@@ -114,11 +115,15 @@ const STAT_ROWS = [
 
 // Layar permainan (14 Nov: dibungkus Root — menu utama & slot simpanan). initialLeague = karier dari
 // slot (null = hanya laga persahabatan); onSaveLeague(liga) → true bila tersimpan.
+// Liga "diam" (15 Nov): babak tanpa klub pengguna langsung dihitung cepat, jadi babak berjalan selalu
+// berisi laga pengguna — atau musim sudah selesai.
+const atRest = (l) => (!l || seasonOver(l) || userFixture(l) ? l : simulateToUserMatch(l));
+
 export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, onChooseLang }) {
   const chooseLang = onChooseLang;
   const [matchSeed, setMatchSeed] = useState(initialSeed);
   const [styleChoice, setStyleChoice] = useState(readStyleChoice);
-  const [league, setLeagueState] = useState(initialLeague);
+  const [league, setLeagueState] = useState(() => atRest(initialLeague));
   const [leagueNotice, setLeagueNotice] = useState(null);
   const [confirmExit, setConfirmExit] = useState(false);
   const leagueRef = useRef(league);
@@ -151,7 +156,7 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
 
   const { home, away, simulation, namesById, awayStyle, leagueMatch } = useMemo(() => {
     const lg = leagueRef.current;
-    if (matchKind === 'liga' && lg && !seasonOver(lg)) {
+    if (matchKind === 'liga' && lg && !seasonOver(lg) && userFixture(lg)) {
       const m = buildMatchTeams(lg);
       const names = new Map([...m.home.players, ...m.home.bench, ...m.away.players, ...m.away.bench].map((p) => [p.id, p.shortName]));
       const sim = createSimulation(m.home, m.away, matchSeed, { aiTeams: ['away'] });
@@ -168,6 +173,8 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
           key: `${lg.season}-${lg.week}-${leagueMatchId}`,
           season: lg.season,
           week: lg.week,
+          label: roundLabel(currentRound(lg), clubById(lg, lg.userClubId).tier),
+          knockout: isKnockout(currentRound(lg)),
           userIsHome: m.userIsHome,
           opponentId: m.opponent.id,
           // Absen (14 Nov): pemain inti pengguna yang diganti otomatis, dan pemain lawan yang absen.
@@ -194,7 +201,8 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchSeed, styleChoice, matchKind, leagueMatchId]);
 
-  function setLeague(next) {
+  function setLeague(raw) {
+    const next = atRest(raw);
     setLeagueState(next);
     if (!onSaveLeague(next)) setLeagueNotice(tk('Penyimpanan perangkat tidak tersedia — progres liga hilang bila halaman ditutup.'));
   }
@@ -466,7 +474,8 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
       {leagueMatch ? (
         <div className="scout-bar">
           <span>
-            🏆 {t('Liga · musim {s} · pekan {w}', { s: leagueMatch.season, w: leagueMatch.week + 1 })} · {leagueMatch.userIsHome ? t('kandang') : t('tandang')} · {t('lawan:')}{' '}
+            🏆 {leagueMatch.label} · {t('musim {s}', { s: leagueMatch.season })}
+            {leagueMatch.knockout ? ` · ${t('gugur: seri → adu penalti')}` : ''} · {leagueMatch.userIsHome ? t('kandang') : t('tandang')} · {t('lawan:')}{' '}
             <b>{t(CLUB_STYLES[awayStyle].label)}</b> · {CLUB_STYLES[awayStyle].formation}
           </span>
           <button type="button" className="link-btn" disabled={leagueInProgress} onClick={toFriendly} title={leagueInProgress ? t('Selesaikan laga liga dulu') : undefined}>

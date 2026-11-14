@@ -2296,3 +2296,121 @@ details.fold {
   background: #e03131;
   color: #fff;
 }
+
+/* ── Kompetisi: 3 kasta & piala (15 Nov) ── */
+.comp-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 10px 0;
+}
+.comp-nav button,
+.tier-tabs button {
+  background: #23292f;
+  color: #ced4da;
+  border: 1px solid #343a40;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.comp-nav button.is-active {
+  background: #1c7ed6;
+  border-color: #1c7ed6;
+  color: #fff;
+}
+.tier-tabs {
+  margin-bottom: 8px;
+}
+.round-tag {
+  color: #adb5bd;
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+.league-table tr.zone-elite td:first-child {
+  box-shadow: inset 3px 0 0 #4dabf7;
+}
+.league-table tr.zone-up td:first-child {
+  box-shadow: inset 3px 0 0 #51cf66;
+}
+.league-table tr.zone-playoff td:first-child {
+  box-shadow: inset 3px 0 0 #fcc419;
+}
+.league-table tr.zone-down td:first-child {
+  box-shadow: inset 3px 0 0 #ff6b6b;
+}
+.zone-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 0.75rem;
+  color: #adb5bd;
+  margin: 4px 0 10px;
+}
+.zone-legend span::before {
+  content: '';
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 5px;
+  vertical-align: -1px;
+}
+.zone-legend .zone-elite::before {
+  background: #4dabf7;
+}
+.zone-legend .zone-up::before {
+  background: #51cf66;
+}
+.zone-legend .zone-playoff::before {
+  background: #fcc419;
+}
+.zone-legend .zone-down::before {
+  background: #ff6b6b;
+}
+.cup-view h5,
+.league h5 {
+  margin: 12px 0 4px;
+  color: #ced4da;
+}
+.elite-groups {
+  display: grid;
+  gap: 10px;
+}
+@media (min-width: 900px) {
+  .elite-groups {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.elite-groups .league-table {
+  font-size: 0.8rem;
+}
+.schedule-list,
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.85rem;
+}
+.schedule-list li {
+  display: grid;
+  grid-template-columns: minmax(9em, 14em) 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.schedule-list li.is-now {
+  background: rgba(28, 126, 214, 0.15);
+}
+.schedule-list small {
+  color: #868e96;
+}
+.history-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
