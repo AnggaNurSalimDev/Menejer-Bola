@@ -1,17 +1,11 @@
 import { useState } from 'react';
-import { CLUB_STYLES, getStyle } from '../engine/clubStyles.js';
-import { getFormation } from '../engine/formations.js';
+import { CLUB_STYLES } from '../engine/clubStyles.js';
 import {
   LEAGUE,
   standings,
   userFixture,
   clubById,
   seasonOver,
-  overall,
-  playerValue,
-  buyPlayer,
-  sellPlayer,
-  setStarter,
   newSeason,
   updateProfile,
 } from '../engine/league.js';
@@ -20,12 +14,6 @@ import ProfileEditor from './ProfileEditor.jsx';
 import { t, getLang } from '../i18n.js';
 
 const FORM_EN = { M: 'W', S: 'D', K: 'L' };
-const ERR_EN = [
-  [/^Anggaran kurang \(butuh (\d+) jt, ada (\d+) jt\)$/, 'Not enough budget (need $1 M, have $2 M)'],
-  [/^Skuad penuh \(maks (\d+)\)$/, 'Squad full (max $1)'],
-  [/^Pemain inti tidak bisa dijual — ganti dulu dari susunan$/, 'Starters cannot be sold — take them out of the line-up first'],
-  [/^Skuad minimal (\d+) pemain$/, 'Squad needs at least $1 players'],
-];
 const PROFILE_ERR = [
   [/nama klub kosong/, ['Nama klub belum diisi', 'Club name is empty']],
   [/nama manajer kosong/, ['Nama manajer belum diisi', 'Manager name is empty']],
@@ -36,15 +24,11 @@ const profileErrText = (m) => {
   const hit = PROFILE_ERR.find(([re]) => re.test(m));
   return hit ? hit[1][getLang() === 'en' ? 1 : 0] : m;
 };
-const errText = (m) => (getLang() === 'en' ? ERR_EN.reduce((s, [re, en]) => s.replace(re, en), m) : m);
 
-// Tab Liga (10 Nov): klasemen, jadwal, skuad & bursa "seadanya". Semua perubahan lewat fungsi murni
+// Tab Liga (10 Nov; skuad & bursa pindah ke tab sendiri 14 Nov): klasemen, jadwal, profil. Semua perubahan lewat fungsi murni
 // league.js; App yang menyimpan ke perangkat. `locked` = laga liga sedang berjalan (skuad dikunci).
 
-const fmt = (n) => (Math.round(n * 10) / 10).toFixed(1);
-
 export default function LeagueTab({ league, onChange, locked, onGoMatch }) {
-  const [msg, setMsg] = useState(null);
   const [editing, setEditing] = useState(null); // profil yang sedang diubah | null
   const [profileError, setProfileError] = useState(null);
   if (!league) return null;
@@ -66,20 +50,6 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch }) {
       setProfileError(profileErrText(e.message));
     }
   }
-
-  function act(fn) {
-    const r = fn();
-    if (r.error) setMsg(r.error);
-    else {
-      setMsg(null);
-      onChange(r.league);
-    }
-  }
-
-  const slots = getFormation(getStyle(user.style).formation);
-  const byUid = new Map(user.players.map((p) => [p.uid, p]));
-  const starters = new Set(Object.values(user.lineup));
-  const bench = user.players.filter((p) => !starters.has(p.uid)).sort((a, b) => overall(b) - overall(a));
 
   return (
     <div className="league">
@@ -205,85 +175,6 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch }) {
             <p className="tac-note">{t('Laga klub lain dihitung cepat dari kekuatan skuad saat pekan ditutup.')}</p>
           </div>
         )}
-      </section>
-
-      {msg && (
-        <p className="script-warn" role="status">
-          ⚠️ {errText(msg)}
-        </p>
-      )}
-      {locked && <p className="zone-notice">{t('Laga liga sedang berjalan — skuad & bursa terkunci sampai peluit akhir.')}</p>}
-
-      <section aria-label={t('Skuad')}>
-        <h4>
-          {t('Skuad')} ({user.players.length}/{LEAGUE.squadMax}) · {t('nilai = rata-rata stat')}
-        </h4>
-        <ul className="squad-list">
-          {slots.map((s) => {
-            const p = byUid.get(user.lineup[s.number]);
-            return (
-              <li key={s.number}>
-                <span className="squad-num">{s.number}</span>
-                <span className="squad-role">{s.role}</span>
-                <span className="squad-name">
-                  {p.fullName} <small>({p.role})</small>
-                </span>
-                <span className="squad-val">{fmt(overall(p))}</span>
-                <select
-                  aria-label={t('Ganti pemain nomor {n}', { n: s.number })}
-                  value=""
-                  disabled={locked}
-                  onChange={(e) => e.target.value && onChange(setStarter(league, s.number, e.target.value))}
-                >
-                  <option value="">{t('ganti…')}</option>
-                  {bench.map((b) => (
-                    <option key={b.uid} value={b.uid}>
-                      {b.shortName} ({b.role}, {fmt(overall(b))})
-                    </option>
-                  ))}
-                </select>
-              </li>
-            );
-          })}
-        </ul>
-        <h5>{t('Cadangan (7 teratas ikut ke laga)')}</h5>
-        <ul className="squad-list">
-          {bench.map((p, i) => (
-            <li key={p.uid} className={i >= LEAGUE.benchInMatch ? 'is-out' : undefined}>
-              <span className="squad-num">{i < LEAGUE.benchInMatch ? 'C' : '–'}</span>
-              <span className="squad-role">{p.role}</span>
-              <span className="squad-name">{p.fullName}</span>
-              <span className="squad-val">{fmt(overall(p))}</span>
-              <button type="button" className="link-btn" disabled={locked} onClick={() => act(() => sellPlayer(league, p.uid))}>
-                {t('jual {n} jt', { n: Math.round(playerValue(p) * LEAGUE.sellRate) })}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <section aria-label={t('Bursa')}>
-        <h4>{t('Bursa pemain bebas (berganti sebagian tiap pekan)')}</h4>
-        <ul className="squad-list">
-          {[...league.market.players]
-            .sort((a, b) => overall(b) - overall(a))
-            .map((p) => (
-              <li key={p.uid}>
-                <span className="squad-num">·</span>
-                <span className="squad-role">{p.role}</span>
-                <span className="squad-name">{p.fullName}</span>
-                <span className="squad-val">{fmt(overall(p))}</span>
-                <button
-                  type="button"
-                  className="link-btn"
-                  disabled={locked || playerValue(p) > league.budget}
-                  onClick={() => act(() => buyPlayer(league, p.uid))}
-                >
-                  {t('beli {n} jt', { n: playerValue(p) })}
-                </button>
-              </li>
-            ))}
-        </ul>
       </section>
 
       <section aria-label={t('Profil klub')}>

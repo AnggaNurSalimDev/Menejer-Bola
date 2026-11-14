@@ -2064,3 +2064,172 @@ details.fold {
   margin-right: 8px;
   align-self: center;
 }
+
+/* ── Tata letak ringkas (14 Nov): tab + menu satu baris, lapangan muat layar, kontrol menempel ── */
+.tabs-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #2b313a;
+}
+.tabs-bar .tabs {
+  margin-bottom: 0;
+  border-bottom: 0;
+  flex-wrap: wrap;
+}
+.tabs-bar .lang-switch {
+  margin: 0 0 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.match-layout {
+  display: grid;
+  gap: 12px;
+}
+.match-layout[hidden] {
+  display: none;
+}
+/* Lapangan dibatasi tinggi layar: 0,6726 = (68+8)/(105+8), rasio kanvas di MatchView. */
+.match-layout .pitch-wrap {
+  width: 100%;
+  max-width: max(420px, calc((100dvh - 260px) / 0.6726));
+  margin-inline: auto;
+}
+.match-layout .match-stats {
+  margin-top: 0;
+  gap: 4px;
+  font-size: 0.85rem;
+}
+.match-layout .match-stats .stage-note {
+  margin: 6px 0 0;
+  font-size: 0.75rem;
+}
+@media (min-width: 1000px) {
+  .match-layout {
+    grid-template-columns: minmax(0, 1fr) 280px;
+    align-items: start;
+  }
+  .match-layout .match-stats {
+    max-width: none;
+    margin-inline: 0;
+  }
+}
+.controls {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  background: rgba(20, 24, 29, 0.94);
+  border-top: 1px solid #2b313a;
+  padding: 8px 0 calc(8px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ── Tab Skuad & bursa ── */
+.sm-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+  font-size: 0.9rem;
+  color: #ced4da;
+  margin-bottom: 8px;
+}
+.sm-columns {
+  display: grid;
+  gap: 16px;
+}
+@media (min-width: 900px) {
+  .sm-columns {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+.sm-columns h4 {
+  margin: 4px 0 6px;
+}
+.sm-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-bottom: 8px;
+  font-size: 0.85rem;
+}
+.sm-confirm {
+  display: inline-flex;
+  gap: 6px;
+}
+.market-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.market-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 0.85rem;
+}
+.market-row__main {
+  display: grid;
+  grid-template-columns: 3em 1fr 3em;
+  gap: 6px;
+  align-items: center;
+}
+.market-row__meta {
+  grid-column: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+  font-size: 0.75rem;
+  color: #adb5bd;
+}
+.market-row__buy {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+}
+.market-row__why {
+  color: #868e96;
+  font-size: 0.7rem;
+}
+.delta-chip {
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 0.72rem;
+  border: 1px solid #343a40;
+}
+.delta-chip--up {
+  color: #8ce99a;
+  border-color: #2b8a3e;
+}
+.delta-chip--down {
+  color: #adb5bd;
+}
+.delta-chip--flat {
+  color: #ffe066;
+  border-color: #5c4d00;
+}
+@media (max-width: 640px) {
+  /* HP: tab satu baris yang bisa digeser, bukan dua baris. */
+  .tabs-bar .tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    width: 100%;
+  }
+  .tabs-bar .tabs button {
+    white-space: nowrap;
+    padding: 8px 10px;
+  }
+}

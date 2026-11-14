@@ -11,6 +11,7 @@ import { createDemoTeams } from '../src/engine/teams.js';
 import { createMatchState, validateMatchState, gameClock } from '../src/engine/state.js';
 import { createSimulation } from '../src/engine/simulation.js';
 import { createRng } from '../src/engine/rng.js';
+import { marketRows, weakestStarters, squadCounts, strengths, BLOCK } from '../src/engine/market.js';
 import { TICK_RATE, HALF_TICKS } from '../src/engine/constants.js';
 import { computeAnchor, PHASES } from '../src/engine/shape.js';
 import { PITCH, distance } from '../src/engine/pitch.js';
@@ -49,7 +50,7 @@ import { THROW_IN, throwRange } from '../src/engine/simulation.js';
 import { logoErrors, initials, cleanLogoText, contrastColor } from '../src/engine/logo.js';
 import { readSaves, writeSlot, deleteSlot, slotSummary, SLOTS, SAVE_KEY } from '../src/saves.js';
 import { updateProfile, colorDistance } from '../src/engine/league.js';
-import { createLeague, leagueErrors, buildMatchTeams, completeWeek, standings, parseLeague, newSeason, buyPlayer, sellPlayer, setStarter, playerValue, clubById } from '../src/engine/league.js';
+import { createLeague, leagueErrors, buildMatchTeams, completeWeek, standings, parseLeague, newSeason, buyPlayer, sellPlayer, setStarter, playerValue, clubById, roleGroup } from '../src/engine/league.js';
 import { CLUB_STYLES, STYLE_KEYS, styleTactics, styleErrors, randomStyle } from '../src/engine/clubStyles.js';
 import { GROUP_ZONES, groupErrors, activeGroup, groupPassBonus, renameInGroups } from '../src/engine/groups.js';
 import { scriptErrors, renameInScripts, SCRIPT_ZONES, triggerMet, advanceScript } from '../src/engine/scripts.js';
@@ -949,6 +950,35 @@ console.log('Profil karier, logo & simpanan (14 Nov)');
   check('nomor slot di luar 1–3 ditolak', wthrow ? [] : ['diterima']);
   const full = { getItem: () => null, setItem: () => { throw new Error('QuotaExceeded'); }, removeItem: () => {} };
   check('penyimpanan penuh → writeSlot mengembalikan false (tidak melempar)', writeSlot(0, lg2, full) === false ? [] : ['salah']);
+}
+
+console.log('Tab skuad & bursa (14 Nov)');
+{
+  const lg = createLeague(11);
+  const all = marketRows(lg);
+  check('bursa: semua pemain bursa tampil, terurut nilai menurun', all.length === lg.market.players.length && all.every((r, i) => i === 0 || all[i - 1].rating >= r.rating) ? [] : ['salah']);
+  const fw = marketRows(lg, { group: 'FW' });
+  check('saring kelompok: hanya penyerang', fw.every((r) => r.group === 'FW') && fw.length === lg.market.players.filter((p) => roleGroup(p.role) === 'FW').length ? [] : ['salah']);
+  const cheap = marketRows(lg, { sort: 'harga' });
+  check('urut harga menaik', cheap.every((r, i) => i === 0 || cheap[i - 1].price <= r.price) ? [] : ['salah']);
+  const weak = weakestStarters(lg);
+  check('selisih = nilai − inti terlemah kelompoknya', all.every((r) => r.delta === null || Math.abs(r.delta - (r.rating - weak[r.group])) < 1e-9) && ['GK', 'DF', 'MF', 'FW'].every((g) => Number.isFinite(weak[g])) ? [] : [JSON.stringify(weak)]);
+  const poor = { ...lg, budget: 0 };
+  check('anggaran 0 → semua ditandai "anggaran"; terkunci menang atas anggaran', marketRows(poor).every((r) => r.block === BLOCK.budget) && marketRows(poor, { locked: true }).every((r) => r.block === BLOCK.locked) ? [] : ['salah']);
+  let bad = 0;
+  for (const o of [{ group: 'XX' }, { sort: 'umur' }]) {
+    try {
+      marketRows(lg, o);
+    } catch {
+      bad += 1;
+    }
+  }
+  check('kelompok/urutan tak dikenal ditolak', bad === 2 ? [] : [`${bad}/2`]);
+  const gk = lg.clubs[0].players.find((p) => p.role === 'GK');
+  const st = strengths(gk);
+  check('kekuatan kiper dari stat kiper; tanpa kecerobohan', st.length === 3 && st.every(([k]) => ['refleks', 'penempatan', 'tangkapan', 'posisi', 'antisipasi'].includes(k)) ? [] : [JSON.stringify(st)]);
+  const c = squadCounts(lg);
+  check('hitung skuad per kelompok = jumlah skuad', c.GK + c.DF + c.MF + c.FW === clubById(lg, lg.userClubId).players.length ? [] : [JSON.stringify(c)]);
 }
 
 console.log('Liga (10 Nov)');

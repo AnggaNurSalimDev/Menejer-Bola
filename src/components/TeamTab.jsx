@@ -185,7 +185,9 @@ function EnergyBar({ value }) {
   );
 }
 
-export default function TeamTab({ state, teamId, simulation, onChange, namesById }) {
+// view = 'tactics' (racik strategi) | 'subs' (pergantian) — dua tab terpisah sejak 14 Nov supaya tidak perlu gulir jauh.
+export default function TeamTab({ state, teamId, simulation, onChange, namesById, view = 'tactics' }) {
+  if (view !== 'tactics' && view !== 'subs') throw new RangeError(`TeamTab: view tidak dikenal ${view}`);
   const [outId, setOutId] = useState(null);
   const [inId, setInId] = useState(null);
   const [message, setMessage] = useState(null);
@@ -283,6 +285,8 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
         <p className="team-tab__live">● {t('Pertandingan tetap berjalan')}</p>
       </header>
 
+      {view === 'tactics' && (
+        <>
       <Fold
         id="strategy"
         className="strategy"
@@ -558,8 +562,13 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
         </p>
       </Fold>
 
+        </>
+      )}
+
       {message && <p className={`team-msg team-msg--${message.tone}`}>{message.text}</p>}
 
+      {view === 'subs' && (
+        <>
       <div className="team-columns">
         <div className="team-col">
           <h3>{t('Di lapangan')} ({onPitch.length})</h3>
@@ -646,6 +655,8 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
           </ul>
         )}
       </div>
+        </>
+      )}
     </section>
   );
 }

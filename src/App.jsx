@@ -9,6 +9,7 @@ import { CLUB_STYLES, STYLE_KEYS, styleTactics, randomStyle } from './engine/clu
 import { buildMatchTeams, completeWeek, seasonOver } from './engine/league.js';
 import ClubLogo from './components/ClubLogo.jsx';
 import LeagueTab from './components/LeagueTab.jsx';
+import SquadMarketTab from './components/SquadMarketTab.jsx';
 import { t, tk, LANGS } from './i18n.js';
 
 const TEAM_SEED = 2026;
@@ -16,6 +17,10 @@ const SPEEDS = [1, 2, 4, 8];
 const USER_TEAM = 'home'; // tim yang diatur pengguna; tim tamu diatur AI pelatih
 const TEAM_VIEW_EVERY_TICKS = 5; // tab Tim diperbarui 2× per detik (cukup untuk bar tenaga)
 const SUB_NOTICE_TICKS = 50;
+// Tab (14 Nov): pergantian & bursa jadi tab sendiri supaya tidak perlu gulir jauh.
+const TABS = ['league', 'match', 'team', 'subs', 'squad'];
+const LEAGUE_ONLY_TABS = new Set(['league', 'squad']);
+const TAB_LABEL = { league: tk('Liga'), match: tk('Pertandingan'), team: tk('Taktik'), subs: tk('Pergantian'), squad: tk('Skuad & bursa') };
 
 // Gaya lawan (7 Nov): pilihan pengguna disimpan di perangkat; "acak" ditentukan dari seed laga
 // (seed sama → gaya sama, jadi ?seed=… tetap memutar ulang laga yang sama).
@@ -233,7 +238,7 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
       };
       const { stats } = state;
 
-      if (tabRef.current === 'team' && state.tick % TEAM_VIEW_EVERY_TICKS === 0) setTeamView(state);
+      if ((tabRef.current === 'team' || tabRef.current === 'subs') && state.tick % TEAM_VIEW_EVERY_TICKS === 0) setTeamView(state);
 
       // Pemberitahuan pergantian pemain (kedua tim), tampil beberapa detik.
       const toast = subToastRef.current;
@@ -396,6 +401,13 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
     restart();
   }
 
+  function openTab(k) {
+    if (!TABS.includes(k)) throw new RangeError(`openTab: tab tidak dikenal ${k}`);
+    if (LEAGUE_ONLY_TABS.has(k) && !league) return;
+    if (k === 'team' || k === 'subs') setTeamView(simulation.getState());
+    setTab(k);
+  }
+
   function startSecondHalf() {
     if (simulation.getState().period !== 'halftime') return;
     const next = simulation.startSecondHalf();
@@ -460,68 +472,50 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
       </div>
       )}
 
-      <div className="lang-switch" role="group" aria-label="Bahasa / Language">
-        {confirmExit ? (
-          <span className="exit-confirm">
-            {t('Laga liga belum selesai — keluar akan mengulang laga pekan ini.')}{' '}
-            <button type="button" onClick={onExitToMenu}>
-              {t('Keluar ke menu')}
+      {/* Satu baris (14 Nov): tab di kiri, menu/manajer/bahasa di kanan — hemat satu baris layar. */}
+      <div className="tabs-bar">
+        <nav className="tabs" role="tablist" aria-label={t('Tampilan')}>
+          {TABS.filter((k) => league || !LEAGUE_ONLY_TABS.has(k)).map((k) => (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              aria-selected={tab === k}
+              className={tab === k ? 'is-active' : undefined}
+              onClick={() => openTab(k)}
+            >
+              {t(TAB_LABEL[k])}
             </button>
-            <button type="button" onClick={() => setConfirmExit(false)}>
-              {t('Batal')}
+          ))}
+        </nav>
+        <div className="lang-switch" role="group" aria-label="Bahasa / Language">
+          {confirmExit ? (
+            <span className="exit-confirm">
+              {t('Laga liga belum selesai — keluar akan mengulang laga pekan ini.')}{' '}
+              <button type="button" onClick={onExitToMenu}>
+                {t('Keluar ke menu')}
+              </button>
+              <button type="button" onClick={() => setConfirmExit(false)}>
+                {t('Batal')}
+              </button>
+            </span>
+          ) : (
+            <button type="button" className="menu-link" onClick={() => (leagueInProgress ? setConfirmExit(true) : onExitToMenu())}>
+              ☰ {t('Menu utama')}
             </button>
-          </span>
-        ) : (
-          <button type="button" className="menu-link" onClick={() => (leagueInProgress ? setConfirmExit(true) : onExitToMenu())}>
-            ☰ {t('Menu utama')}
-          </button>
-        )}
-        {league && (
-          <span className="manager-chip">
-            {t('Manajer')}: {league.profile.managerName}
-          </span>
-        )}
-        {LANGS.map((l) => (
-          <button key={l} type="button" className={l === lang ? 'is-active' : undefined} onClick={() => chooseLang(l)} aria-pressed={l === lang}>
-            {l === 'id' ? 'ID' : 'EN'}
-          </button>
-        ))}
+          )}
+          {league && (
+            <span className="manager-chip">
+              {t('Manajer')}: {league.profile.managerName}
+            </span>
+          )}
+          {LANGS.map((l) => (
+            <button key={l} type="button" className={l === lang ? 'is-active' : undefined} onClick={() => chooseLang(l)} aria-pressed={l === lang}>
+              {l === 'id' ? 'ID' : 'EN'}
+            </button>
+          ))}
+        </div>
       </div>
-
-      <nav className="tabs" role="tablist" aria-label={t('Tampilan')}>
-        {league && (
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'league'}
-            className={tab === 'league' ? 'is-active' : undefined}
-            onClick={() => setTab('league')}
-          >
-            {t('Liga')}
-          </button>
-        )}
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'match'}
-          className={tab === 'match' ? 'is-active' : undefined}
-          onClick={() => setTab('match')}
-        >
-          {t('Pertandingan')}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'team'}
-          className={tab === 'team' ? 'is-active' : undefined}
-          onClick={() => {
-            setTeamView(simulation.getState());
-            setTab('team');
-          }}
-        >
-          {t('Tim')} · {home.name}
-        </button>
-      </nav>
 
       <div ref={whistleRef} className="whistle-banner" hidden aria-live="polite" />
       <div ref={subToastRef} className="sub-toast" hidden aria-live="polite" />
@@ -541,9 +535,15 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
         </div>
       )}
 
-      {/* Tab Tim: simulasi tetap berjalan di belakang. */}
-      <div hidden={tab !== 'team'}>
-        <TeamTab state={teamView} teamId={USER_TEAM} simulation={simulation} onChange={setTeamView} namesById={namesById} />
+      {league && (
+        <div hidden={tab !== 'squad'}>
+          <SquadMarketTab league={league} onChange={changeLeague} locked={leagueInProgress} />
+        </div>
+      )}
+
+      {/* Tab Taktik & Pergantian: simulasi tetap berjalan di belakang. */}
+      <div hidden={tab !== 'team' && tab !== 'subs'}>
+        <TeamTab state={teamView} teamId={USER_TEAM} simulation={simulation} onChange={setTeamView} namesById={namesById} view={tab === 'subs' ? 'subs' : 'tactics'} />
         {breakState?.period === 'halftime' && (
           <div className="team-break">
             <span>{t('Turun minum. Antrian pergantian dijalankan saat babak 2 dimulai.')}</span>
@@ -555,7 +555,7 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
       </div>
 
       {/* Tab Pertandingan. Disembunyikan (bukan dilepas) supaya loop & canvas tetap hidup. */}
-      <div hidden={tab !== 'match'}>
+      <div hidden={tab !== 'match'} className="match-layout">
         <div className="pitch-wrap">
           <MatchView simulation={simulation} running={running} speed={speed} onTick={handleTick} />
           <div ref={goalBannerRef} className="goal-banner" hidden aria-live="polite">
@@ -597,6 +597,7 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
               </span>
             </div>
           ))}
+          <p className="stage-note">{t('Bayangan = bola melambung · bar = tenaga menipis · titik merah = kurang percaya diri · titik oranye = on fire.')}</p>
         </section>
       </div>
 
@@ -616,9 +617,7 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
             {t('Ulang (seed baru)')}
           </button>
         )}
-        <span className="stage-note">
-          {t('Bayangan = bola melambung · bar = tenaga menipis · titik merah = kurang percaya diri · titik oranye = on fire.')} Seed: {matchSeed}
-        </span>
+        <span className="stage-note">Seed: {matchSeed}</span>
       </div>
     </main>
   );
@@ -656,7 +655,7 @@ function BreakScreen({ state, home, away, onContinue, continueLabel }) {
             </div>
           ))}
         </dl>
-        {isHalftime && <p className="break-note">{t('Atur taktik dan pergantian di tab Tim sebelum babak 2.')}</p>}
+        {isHalftime && <p className="break-note">{t('Atur taktik dan pergantian di tab Taktik & Pergantian sebelum babak 2.')}</p>}
         <button type="button" className="break-button" onClick={onContinue} autoFocus>
           {isHalftime ? t('Lanjut babak 2') : (continueLabel ?? t('Main lagi (seed baru)'))}
         </button>
