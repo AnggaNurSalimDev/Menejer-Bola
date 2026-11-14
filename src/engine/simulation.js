@@ -301,6 +301,7 @@ function conditionContext(player, players, match, extra = {}) {
     trailing: match.goals[player.teamId] < match.goals[opponentTeamId],
     minute: match.minute,
     pressured,
+    understanding: match.understanding?.[player.teamId] ?? 0,
     ...extra,
   };
 }
@@ -1476,6 +1477,34 @@ export function kickoffTargets(players, kickOffTeamId) {
 //   hanya tim lawan, karena tim kandang diatur pengguna).
 // options.startSentOff: daftar id pemain yang sudah dikartu merah sejak awal laga (untuk uji &
 // kalibrasi "bermain dengan 10 orang"; tidak dipakai di laga biasa).
+// Pemahaman taktik (15 Nov). Besaran pada kekurangan pemahaman penuh (d = 1); efek linear terhadap d.
+export const UNDERSTANDING = Object.freeze({
+  drift: 1.5, // meter: titik bentuk pemain lapangan melenceng paling jauh (kiper tidak; d = 1 → menang 20% vs 33%)
+  driftTicks: 100,
+  scriptMiss: 0.7, // peluang skema tidak dimulai walau syarat terpenuhi
+  stepAbort: 0.15, // peluang skema batal di tiap langkah baru
+  blunder: 0.15, // tambahan pengali blunder (keputusan & eksekusi)
+  looseCompact: 0.15, // lebar blok bertahan +15%
+  lessPress: 0.15, // zona menekan −15%
+  dropLine: 1, // meter: blok bertahan mundur
+});
+
+function driftTarget(target, playerId, tick, d) {
+  const bucket = Math.floor(tick / UNDERSTANDING.driftTicks);
+  const angle = hash01(`${playerId}:${bucket}:a`) * Math.PI * 2;
+  const r = UNDERSTANDING.drift * d * hash01(`${playerId}:${bucket}:r`);
+  return { x: target.x + Math.cos(angle) * r, y: target.y + Math.sin(angle) * r };
+}
+
+function looseStyle(style, d) {
+  return {
+    ...style,
+    compact: (style.compact ?? 1) * (1 + UNDERSTANDING.looseCompact * d),
+    pressZone: style.pressZone * (1 - UNDERSTANDING.lessPress * d),
+    blockShift: (style.blockShift ?? 0) - UNDERSTANDING.dropLine * d,
+  };
+}
+
 export function createSimulation(home, away, seed, options = {}) {
   if (!Number.isInteger(seed)) throw new TypeError(`createSimulation: seed harus bilangan bulat, dapat ${seed}`);
 
@@ -1491,6 +1520,12 @@ export function createSimulation(home, away, seed, options = {}) {
   // Cedera (14 Nov): RNG sendiri supaya urutan acak laga tidak bergeser; options.injuries = false mematikan.
   const injuriesOn = options.injuries !== false;
   const injuryScale = options.injuryScale ?? 1; // uji: perbesar peluang cedera
+  // Pemahaman taktik (15 Nov): options.understanding { idTim: kekurangan 0–1 } — 0 = paham penuh (laga
+  // sama persis seperti tanpa opsi ini). Kurang paham → posisi melenceng, skema sering batal, keputusan
+  // lebih buruk, pressing kurang kompak. Semua "acak"-nya dari hash (id, waktu), bukan RNG laga.
+  const understanding = { ...(options.understanding ?? {}) };
+  for (const [id, d] of Object.entries(understanding)) if (!(d >= 0 && d <= 1)) throw new RangeError(`createSimulation: kekurangan pemahaman ${id} di luar 0–1 (${d})`);
+  const gap = (teamId) => understanding[teamId] ?? 0;
   if (!(injuryScale >= 0)) throw new RangeError(`createSimulation: injuryScale tidak valid ${injuryScale}`);
   const injuryRng = createRng((seed * 7919 + 104729) % 2147483647);
   if (options.startSentOff?.length) {
@@ -1875,7 +1910,7 @@ export function createSimulation(home, away, seed, options = {}) {
     // Kondisi (tahap 6): skor & menit untuk konteks, dan peristiwa percaya diri
     // yang dikumpulkan sepanjang tick lalu diterapkan di akhir.
     const philosophies = Object.fromEntries(teamIds.map((id) => [id, getPhilosophy(teams[id].philosophy)]));
-    const match = { goals: prev.stats.goals, minute: gameClock(prev).minute, teamIds, philosophies };
+    const match = { goals: prev.stats.goals, minute: gameClock(prev).minute, teamIds, philosophies, understanding };
     // Taktik aktif tiap tim: tim yang diatur AI menyesuaikan diri (kalah jumlah → garis rendah);
     // tim pengguna memakai taktiknya apa adanya. Lalu gaya efektif tick ini, termasuk jendela
     // transisi (baru kehilangan / merebut bola).
@@ -1893,6 +1928,7 @@ export function createSimulation(home, away, seed, options = {}) {
         : teams[id].tactics;
       const since = (at) => (at === null || at === undefined ? Infinity : tick - at);
       styles[id] = teamStyle(teams[id].activeTactics, since(teams[id].lostAt), since(teams[id].wonAt));
+      if (gap(id) > 0) styles[id] = looseStyle(styles[id], gap(id));
       teams[id].runScale = styles[id].runScale;
     }
     match.styles = styles;
@@ -1933,6 +1969,11 @@ export function createSimulation(home, away, seed, options = {}) {
           if (run.lastPass && !run.lastPass.received && ball.ownerId === run.lastPass.to) run = { ...run, lastPass: { ...run.lastPass, received: true } };
           const script = scripts.find((x) => x.id === run.id);
           const res = advanceScript(script, run, { tick, byId, attacksRight: team.attacksRight });
+          // Kurang paham: tiap langkah baru berpeluang dibatalkan (pemain lupa urutannya).
+          if (!res.ended && res.run && res.run.step > run.step && gap(id) > 0 && hash01(`${run.id}:${tick}:langkah`) < UNDERSTANDING.stepAbort * gap(id)) {
+            endScript('aborted');
+            continue;
+          }
           if (res.ended) {
             team.script = run;
             endScript('aborted');
@@ -1947,7 +1988,12 @@ export function createSimulation(home, away, seed, options = {}) {
           const weights = zoneWeights(toTeamFrame(ball, team.attacksRight));
           const zone = Object.entries(weights).sort((x, y) => y[1] - x[1])[0][0];
           const anchorOf = (pl) => computeAnchor({ ...pl, slot: zonedSlot(pl, team.activeTactics, 'in', weights) }, ball, team.attacksRight, 'attack', styles[id]);
-          const started = tryStartScript(scripts, { tick, ownerId: holderNow.id, zone, anchorOf, byId, cooldowns: team.scriptCooldowns });
+          let started = tryStartScript(scripts, { tick, ownerId: holderNow.id, zone, anchorOf, byId, cooldowns: team.scriptCooldowns });
+          // Kurang paham: pemain tidak "membaca" bahwa skema seharusnya dimulai.
+          if (started && gap(id) > 0 && hash01(`${started.id}:${tick}`) < UNDERSTANDING.scriptMiss * gap(id)) {
+            team.scriptCooldowns = { ...(team.scriptCooldowns ?? {}), [started.id]: tick + SCRIPT.cooldownTicks };
+            started = null;
+          }
           if (started) {
             bumpScript(id, started.id, 'started');
             const res = advanceScript(scripts.find((x) => x.id === started.id), started, { tick, byId, attacksRight: team.attacksRight });
@@ -2459,6 +2505,8 @@ export function createSimulation(home, away, seed, options = {}) {
       const dive = dives.get(player.id);
       if (dive) target = dive.target;
 
+      // Kurang paham taktik: titik bentuk tim melenceng (berganti tiap ±10 dtk).
+      if (task === 'shape' && player.role !== 'GK' && gap(player.teamId) > 0) target = driftTarget(target, player.id, tick, gap(player.teamId));
       target = clampToPitch(target);
       const moveTarget = task === 'shape' ? applySeparation(target, player, prev.players) : target;
       // Penekan yang gagal menekel kehilangan momentum.
@@ -3104,6 +3152,14 @@ export function createSimulation(home, away, seed, options = {}) {
     return state;
   }
 
+  // Pemahaman taktik bisa berubah sebelum/saat laga (pengguna ganti template atau taktik).
+  function setUnderstanding(teamId, d) {
+    if (!teamIds.includes(teamId)) throw new RangeError(`setUnderstanding: tim tidak dikenal ${teamId}`);
+    if (!(d >= 0 && d <= 1)) throw new RangeError(`setUnderstanding: kekurangan ${d} di luar 0–1`);
+    understanding[teamId] = d;
+    return state;
+  }
+
   return {
     getState: () => state,
     step,
@@ -3111,5 +3167,7 @@ export function createSimulation(home, away, seed, options = {}) {
     queueSubstitution,
     cancelSubstitution,
     setTactics,
+    setUnderstanding,
+    getUnderstanding: (teamId) => understanding[teamId] ?? 0,
   };
 }

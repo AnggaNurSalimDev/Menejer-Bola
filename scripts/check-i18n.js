@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { EN } from '../src/i18n.en.js';
 import { CLUB_STYLES } from '../src/engine/clubStyles.js';
 import { PHILOSOPHIES } from '../src/engine/philosophy.js';
+import { TEMPLATES } from '../src/engine/tacticTemplates.js';
 
 const files = [];
 (function walk(dir) {
@@ -26,6 +27,10 @@ for (const f of files) {
 }
 for (const s of Object.values(CLUB_STYLES)) keys.add(s.label);
 for (const p of Object.values(PHILOSOPHIES)) keys.add(p.label);
+for (const tp of Object.values(TEMPLATES)) {
+  keys.add(tp.label);
+  keys.add(tp.idea);
+}
 
 // Kunci ganda di kamus (objek JS diam-diam memakai yang terakhir) — dicari dari teks berkas.
 const enSrc = readFileSync('src/i18n.en.js', 'utf8');

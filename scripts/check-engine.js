@@ -14,6 +14,7 @@ import { createRng } from '../src/engine/rng.js';
 import { matchInjuries } from '../src/engine/injury.js';
 import { koWinner, roundDates } from '../src/engine/calendar.js';
 import { matchRatings } from '../src/engine/playerStats.js';
+import { TEMPLATE_KEYS, templateErrors, templateComplexity, templateBase, templateDetails, complexityOf, effectiveUnderstanding, rankTemplates, weakSpots } from '../src/engine/tacticTemplates.js';
 import { recover, developMonth, overall, retireChance, potentialRange, toStars } from '../src/engine/development.js';
 import { AMATEUR_IDS } from '../src/engine/clubs.js';
 import { marketRows, weakestStarters, squadCounts, strengths, BLOCK } from '../src/engine/market.js';
@@ -55,7 +56,7 @@ import { THROW_IN, throwRange } from '../src/engine/simulation.js';
 import { logoErrors, initials, cleanLogoText, contrastColor, defaultLogo } from '../src/engine/logo.js';
 import { readSaves, writeSlot, deleteSlot, slotSummary, SLOTS, SAVE_KEY } from '../src/saves.js';
 import { updateProfile, colorDistance } from '../src/engine/league.js';
-import { createLeague, leagueErrors, buildMatchTeams, completeWeek, standings, parseLeague, newSeason, buyPlayer, sellPlayer, setStarter, playerValue, clubById, roleGroup, clubLogo, statKey, currentRound, topPlayers, restTired, setTraining, clubStrength, simulateToUserMatch, TIERS, isKnockout, userFixture, packLeague, migrateLeague, matchReportFromState, effectiveLineup, isAvailable, wageBill, renewContract, seasonOver, absentPlayers, LEAGUE } from '../src/engine/league.js';
+import { createLeague, leagueErrors, buildMatchTeams, completeWeek, standings, parseLeague, newSeason, buyPlayer, sellPlayer, setStarter, playerValue, clubById, roleGroup, clubLogo, setActiveTemplate, understandingFor, familiarityOf, statKey, currentRound, topPlayers, restTired, setTraining, clubStrength, simulateToUserMatch, TIERS, isKnockout, userFixture, packLeague, migrateLeague, matchReportFromState, effectiveLineup, isAvailable, wageBill, renewContract, seasonOver, absentPlayers, LEAGUE } from '../src/engine/league.js';
 import { CLUB_STYLES, STYLE_KEYS, styleTactics, styleErrors, randomStyle } from '../src/engine/clubStyles.js';
 import { GROUP_ZONES, groupErrors, activeGroup, groupPassBonus, renameInGroups } from '../src/engine/groups.js';
 import { scriptErrors, renameInScripts, SCRIPT_ZONES, triggerMet, advanceScript } from '../src/engine/scripts.js';
@@ -923,7 +924,7 @@ console.log('Profil karier, logo & simpanan (14 Nov)');
   const v1 = { ...createLeague(3), version: 1 };
   delete v1.profile;
   const mig = parseLeague(JSON.stringify(v1));
-  check('liga v1 (sebelum menu utama) dimigrasi: profil bawaan, valid', mig && mig.version === 5 && mig.profile.managerName === 'Manajer' && logoErrors(mig.profile.logo).length === 0 ? [] : ['gagal']);
+  check('liga v1 (sebelum menu utama) dimigrasi: profil bawaan, valid', mig && mig.version === 6 && mig.profile.managerName === 'Manajer' && logoErrors(mig.profile.logo).length === 0 ? [] : ['gagal']);
 
   // Simpanan dengan penyimpanan tiruan.
   const mem = () => {
@@ -1093,7 +1094,7 @@ console.log('Cedera, absen, skorsing & kontrak (14 Nov)');
     delete p.yellows;
   }
   const m3 = parseLeague(JSON.stringify(v2));
-  check('liga v2 dimigrasi (lewat v3) ke v4: kontrak, pemasukan, tanpa absen', m3 && m3.version === 5 && m3.income > 0 && leagueErrors(m3).length === 0 ? [] : ['gagal']);
+  check('liga v2 dimigrasi (lewat v3) ke v4: kontrak, pemasukan, tanpa absen', m3 && m3.version === 6 && m3.income > 0 && leagueErrors(m3).length === 0 ? [] : ['gagal']);
   // Satu musim penuh: semua klub kehilangan pemain sesekali, AI juga.
   let full = createLeague(43);
   let maxAbsentAi = 0;
@@ -1193,7 +1194,7 @@ console.log('Liga 3 kasta, piala & naik-turun (15 Nov; dasar 10 Nov)');
   delete v3.history;
   v3.fixtures = [];
   const mig = migrateLeague(v3);
-  check('liga v3 (10 klub) dimigrasi ke dunia 3 kasta: valid, klub lama di Liga 1, anggaran tetap', mig && mig.version === 5 && leagueErrors(mig).length === 0 && v3.clubs.every((c) => clubById(mig, c.id).tier === 1) && mig.budget === v3.budget ? [] : mig ? leagueErrors(mig).slice(0, 2) : ['null']);
+  check('liga v3 (10 klub) dimigrasi ke dunia 3 kasta: valid, klub lama di Liga 1, anggaran tetap', mig && mig.version === 6 && leagueErrors(mig).length === 0 && v3.clubs.every((c) => clubById(mig, c.id).tier === 1) && mig.budget === v3.budget ? [] : mig ? leagueErrors(mig).slice(0, 2) : ['null']);
 }
 
 console.log('Statistik pemain, umur, potensi, kondisi, latihan (15 Nov)');
@@ -1274,6 +1275,88 @@ console.log('Statistik pemain, umur, potensi, kondisi, latihan (15 Nov)');
   }
   const after = TIERS.map((t) => avgTier(w, t));
   check(`3 musim: rata-rata nilai tiap kasta bergeser < 1 (${before.map((x) => x.toFixed(2)).join('/')} → ${after.map((x) => x.toFixed(2)).join('/')})`, before.every((b, i) => Math.abs(after[i] - b) < 1) && leagueErrors(w).length === 0 ? [] : ['bergeser']);
+}
+
+console.log('Template taktik & pemahaman (15 Nov)');
+{
+  check('template: formasi dikenal', templateErrors());
+  const cx = TEMPLATE_KEYS.map((k) => templateComplexity(k));
+  check(`kerumitan template 1–5 & berurutan sederhana → rumit (${cx.join(', ')})`, cx[0] === 1 && cx.every((c) => c >= 1 && c <= 5) && Math.max(...cx) === 5 ? [] : ['salah']);
+  const errs = [];
+  for (const key of TEMPLATE_KEYS) {
+    const tm = createDemoTeams(3);
+    const sim = createSimulation(tm.home, tm.away, 5, { aiTeams: ['away'] });
+    try {
+      let st = sim.setTactics('home', templateBase(key));
+      st = sim.setTactics('home', templateDetails(key, st.players.filter((p) => p.teamId === 'home'), st.teams.home.tactics));
+      if (Math.abs(complexityOf(st.teams.home.tactics) - templateComplexity(key)) > 0.5) errs.push(`${key}: kerumitan terpasang ${complexityOf(st.teams.home.tactics)}`);
+      for (let i = 0; i < 400; i += 1) {
+        st = sim.step();
+        if (i % 100 === 0) errs.push(...validateMatchState(st).map((e) => `${key}: ${e}`));
+      }
+    } catch (e) {
+      errs.push(`${key}: ${e.message}`);
+    }
+  }
+  check('tiap template bisa dipasang (2 langkah) & laga berjalan valid', errs.slice(0, 5));
+  // Pemahaman 0 = laga identik dengan tanpa opsi.
+  const tm = createDemoTeams(8);
+  const run = (opts) => {
+    const sim = createSimulation(tm.home, tm.away, 21, opts);
+    let st = sim.getState();
+    for (let i = 0; i < 1500; i += 1) st = sim.step();
+    return JSON.stringify([st.stats.goals, st.stats.passes, st.ball.x, st.ball.y]);
+  };
+  check('kekurangan pemahaman 0 → laga sama persis dengan tanpa opsi', run({}) === run({ understanding: { home: 0 } }) ? [] : ['berbeda']);
+  check('kekurangan pemahaman > 0 mengubah laga', run({}) !== run({ understanding: { home: 1 } }) ? [] : ['sama']);
+  let badU = 0;
+  for (const bad of [{ home: 2 }, { home: -0.1 }]) {
+    try {
+      createSimulation(tm.home, tm.away, 1, { understanding: bad });
+    } catch {
+      badU += 1;
+    }
+  }
+  const s1 = createSimulation(tm.home, tm.away, 1);
+  try {
+    s1.setUnderstanding('home', 3);
+  } catch {
+    badU += 1;
+  }
+  check('kekurangan pemahaman di luar 0–1 ditolak (opsi & setUnderstanding)', badU === 3 ? [] : [`${badU}/3`]);
+  check('taktik buatan sendiri: skema & kelompok menaikkan kerumitan', complexityOf({ ...defaultTactics('4-4-2'), scripts: [{}, {}], groups: [{}] }) > complexityOf(defaultTactics('4-4-2')) + 1.5 ? [] : ['salah']);
+  // Liga: keakraban & kekurangan.
+  let lg = simulateToUserMatch(createLeague(61));
+  check('dasar keakraban 30%: 4-4-2 klasik langsung paham, Penguasaan Posisional belum', understandingFor(lg, templateComplexity('klasik442'), 'klasik442').gap === 0 && understandingFor(lg, templateComplexity('posisional'), 'posisional').gap > 0.4 ? [] : ['salah']);
+  lg = setActiveTemplate(lg, 'posisional');
+  let slow = lg;
+  let fast = setTraining(lg, { focus: 'taktik' });
+  for (let i = 0; i < 8; i += 1) {
+    slow = completeWeek(slow, 1, 1);
+    fast = completeWeek(fast, 1, 1);
+  }
+  check('keakraban naik dari laga; fokus latihan "taktik" lebih cepat; template lain tidak naik', familiarityOf(slow, 'posisional') > 30 && familiarityOf(fast, 'posisional') > familiarityOf(slow, 'posisional') && familiarityOf(slow, 'gegenpress') === 30 ? [] : [`${familiarityOf(slow, 'posisional')} / ${familiarityOf(fast, 'posisional')}`]);
+  check('kekurangan pemahaman turun setelah berlatih', understandingFor(fast, 5).gap < understandingFor(lg, 5).gap ? [] : ['tidak turun']);
+  let badT = false;
+  try {
+    setActiveTemplate(lg, 'ngawur');
+  } catch {
+    badT = true;
+  }
+  check('template tak dikenal ditolak', badT ? [] : ['diterima']);
+  const meNew = clubById(lg, lg.userClubId);
+  const fresh = effectiveUnderstanding(80, meNew.players.slice(0, 11).map((p) => ({ ...p, ten: 0 })));
+  const settled = effectiveUnderstanding(80, meNew.players.slice(0, 11).map((p) => ({ ...p, ten: 10 })));
+  check('pemain baru (belum menyatu) menurunkan pemahaman efektif', fresh < settled * 0.7 ? [] : [`${fresh.toFixed(1)} vs ${settled.toFixed(1)}`]);
+  // Kecocokan skuad: skuad cepat & kuat stamina → gegenpress di atas penguasaan posisional; skuad jago operan → sebaliknya.
+  const squad = meNew.players.filter((p) => !p.absence);
+  const boost = (keys) => squad.map((p) => ({ ...p, stats: Object.fromEntries(Object.entries(p.stats).map(([k, v]) => [k, keys.includes(k) ? Math.min(20, v + 6) : Math.max(1, v - 2)])) }));
+  const fastSquad = boost(['stamina', 'kecepatan', 'akselerasi', 'tackling']);
+  const passSquad = boost(['passing', 'kontrol', 'visi', 'keputusan']);
+  const pos = (sq, k) => rankTemplates(sq).findIndex((r) => r.key === k);
+  check('kecocokan: skuad cepat → Gegenpress di atas Posisional; skuad jago operan → sebaliknya', pos(fastSquad, 'gegenpress') < pos(fastSquad, 'posisional') && pos(passSquad, 'posisional') < pos(passSquad, 'gegenpress') ? [] : ['salah']);
+  const weak = weakSpots('posisional', squad, lg.market.players);
+  check('posisi lemah: terurut dari yang paling tidak cocok, saran bursa lebih cocok dari pemain sekarang', weak.length > 0 && weak.every((w, i) => i === 0 || weak[i - 1].fit <= w.fit) && weak.every((w) => w.better.every((b) => b.fit > w.fit)) ? [] : ['salah']);
 }
 
 console.log('Gaya klub AI (7 Nov)');

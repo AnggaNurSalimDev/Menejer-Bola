@@ -16,6 +16,8 @@ import { defaultLogo } from './engine/logo.js';
 import ClubLogo from './components/ClubLogo.jsx';
 import LeagueTab from './components/LeagueTab.jsx';
 import SquadMarketTab from './components/SquadMarketTab.jsx';
+import { templateBase, templateDetails, complexityOf, getTemplate } from './engine/tacticTemplates.js';
+import { setActiveTemplate, understandingFor, familiarityOf, isAvailable } from './engine/league.js';
 import { t, tk, LANGS } from './i18n.js';
 
 const TEAM_SEED = 2026;
@@ -165,6 +167,8 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
       const st = sim.getState();
       sim.setTactics('away', styleTactics(m.opponent.style, st.players.filter((p) => p.teamId === 'away'), st.teams.away.tactics));
       applyUserTactics(sim, lg.userTactics);
+      // Pemahaman taktik (15 Nov): kekurangan pemahaman tim pengguna untuk taktik yang terpasang.
+      sim.setUnderstanding('home', understandingFor(lg, complexityOf(sim.getState().teams.home.tactics)).gap);
       return {
         home: m.home,
         away: m.away,
@@ -437,6 +441,37 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
     restart();
   }
 
+  // Pemahaman ikut taktik yang sedang terpasang (template atau ubahan sendiri).
+  function syncUnderstanding(st) {
+    const lg = leagueRef.current;
+    if (!leagueMatch || !lg || !st) return;
+    simulation.setUnderstanding('home', understandingFor(lg, complexityOf(st.teams.home.tactics)).gap);
+  }
+  function changeTeamView(st) {
+    setTeamView(st);
+    syncUnderstanding(st);
+  }
+  function applyTemplate(key) {
+    let st = simulation.setTactics(USER_TEAM, templateBase(key));
+    st = simulation.setTactics(USER_TEAM, templateDetails(key, st.players.filter((p) => p.teamId === USER_TEAM), st.teams[USER_TEAM].tactics));
+    setTeamView(st);
+    const lg = leagueRef.current;
+    if (lg) {
+      const next = { ...setActiveTemplate(lg, key), userTactics: st.teams[USER_TEAM].tactics };
+      leagueRef.current = next;
+      setLeague(next);
+    }
+    syncUnderstanding(st);
+  }
+  function customTemplate() {
+    const lg = leagueRef.current;
+    if (!lg) return;
+    const next = setActiveTemplate(lg, 'kustom');
+    leagueRef.current = next;
+    setLeague(next);
+    syncUnderstanding(simulation.getState());
+  }
+
   function openTab(k) {
     if (!TABS.includes(k)) throw new RangeError(`openTab: tab tidak dikenal ${k}`);
     if (LEAGUE_ONLY_TABS.has(k) && !league) return;
@@ -451,6 +486,27 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
     setBreakState(null);
     setRunning(true);
   }
+
+  // Data panel template (15 Nov). Karier: skuad yang bisa main + bursa; persahabatan: pemain di laga.
+  const templateProps = (() => {
+    if (league) {
+      const club = clubById(league, league.userClubId);
+      const active = league.tactic.template;
+      return {
+        squad: club.players.filter(isAvailable),
+        market: league.market.players,
+        active,
+        famOf: (k) => familiarityOf(league, k),
+        understand: (cx, k = active) => understandingFor(league, cx, k),
+        onApply: applyTemplate,
+        onCustom: customTemplate,
+        summary: `${active === 'kustom' ? t('Taktik sendiri') : t(getTemplate(active).label)} · ${t('akrab {p}%', { p: Math.round(familiarityOf(league)) })}`,
+      };
+    }
+    const st = teamView ?? simulation.getState();
+    const squad = [...st.players.filter((p) => p.teamId === USER_TEAM), ...st.teams[USER_TEAM].bench].map((p) => ({ uid: p.id, shortName: p.shortName, role: p.naturalRole ?? p.role, stats: p.skills }));
+    return { squad, market: [], active: 'kustom', famOf: () => 100, understand: (cx) => ({ effective: 100, need: Math.min(100, 18 * cx), gap: 0 }), onApply: applyTemplate, onCustom: () => {}, summary: t('Laga persahabatan: pemahaman tidak dihitung') };
+  })();
 
   return (
     <main className="app">
@@ -599,7 +655,15 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
 
       {/* Tab Taktik & Pergantian: simulasi tetap berjalan di belakang. */}
       <div hidden={tab !== 'team' && tab !== 'subs'}>
-        <TeamTab state={teamView} teamId={USER_TEAM} simulation={simulation} onChange={setTeamView} namesById={namesById} view={tab === 'subs' ? 'subs' : 'tactics'} />
+        <TeamTab
+          state={teamView}
+          teamId={USER_TEAM}
+          simulation={simulation}
+          onChange={changeTeamView}
+          namesById={namesById}
+          view={tab === 'subs' ? 'subs' : 'tactics'}
+          templates={templateProps}
+        />
         {breakState?.period === 'halftime' && (
           <div className="team-break">
             <span>{t('Turun minum. Antrian pergantian dijalankan saat babak 2 dimulai.')}</span>

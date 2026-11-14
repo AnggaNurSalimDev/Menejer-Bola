@@ -20,6 +20,7 @@ import { CLUB_DEFS, GUEST_DEFS, FOREIGN_IDS, AMATEUR_IDS, TIERS, CLUBS_PER_TIER,
 import { DEV, DEFAULT_TRAINING, INTENSITY_INJURY, trainingErrors, overall, rollAgePot, developMonth, retireChance, recover } from './development.js';
 import { COMP, COMP_KEYS, seasonSkeleton, SKELETON_LENGTH, stagesOf, drawPairs, koWinner, shootout, tableOf, eliteGroups, groupMatchdays, roundDate } from './calendar.js';
 import { matchRatings } from './playerStats.js';
+import { TEMPLATE_KEYS, FAMILIARITY, learnRate, effectiveUnderstanding, understandingGap, requiredUnderstanding } from './tacticTemplates.js';
 
 export { USER_CLUB, TIERS, CLUBS_PER_TIER, COMP };
 export const SEASON_ROUNDS = SKELETON_LENGTH;
@@ -35,7 +36,8 @@ const cleanName = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, NA
 //   v3 dimigrasi: 10 klub lama jadi bagian Liga 1, musim berjalan dimulai ulang dengan kalender baru.
 // v5 (15 Nov): umur, potensi, kondisi (fit) per pemain; latihan tim; statistik pemain per ajang
 //   (pstats) & penghargaan akhir musim. v4 dimigrasi: umur/potensi diundi, kondisi 100, statistik kosong.
-export const LEAGUE_VERSION = 5;
+// v6 (15 Nov): template taktik & pemahaman tim — league.tactic { template, fam }, pemain.ten (babak di klub).
+export const LEAGUE_VERSION = 6;
 
 export const LEAGUE = Object.freeze({
   clubs: TIERS.length * CLUBS_PER_TIER,
@@ -185,7 +187,7 @@ export function createLeague(seed = 2026, profile = {}) {
   const cup = seasonCup(top1.slice(0, 4).map((c) => c.id), [top1[0].id, top1[1].id], rng);
   const calendar = buildCalendar(signed, cup, rng);
   const income = round1(Math.max(LEAGUE.tierIncome[userDef.tier], wageBill(userDef) + LEAGUE.incomeMargin));
-  const base = { version: LEAGUE_VERSION, seed, season: 1, week: 0, userClubId: clubId, clubs: signed, calendar, cup, history: [], pstats: {}, training: { ...DEFAULT_TRAINING }, budget: LEAGUE.startBudget, income, news: [], market, userTactics: null, rngState: rng.int(1, 1e9) };
+  const base = { version: LEAGUE_VERSION, seed, season: 1, week: 0, userClubId: clubId, clubs: signed, calendar, cup, history: [], pstats: {}, training: { ...DEFAULT_TRAINING }, tactic: { template: 'kustom', fam: {} }, budget: LEAGUE.startBudget, income, news: [], market, userTactics: null, rngState: rng.int(1, 1e9) };
   const name = cleanName(profile.clubName) || def.name;
   const league = updateProfile(
     { ...base, profile: { managerName: 'Manajer', logo: defaultLogo({ name, colors: def.colors }) } },
@@ -245,6 +247,9 @@ export function leagueErrors(league) {
   e.push(...calendarErrors(league, ids));
   e.push(...trainingErrors(league.training));
   if (!league.pstats || typeof league.pstats !== 'object') e.push('statistik pemain tidak valid');
+  const tac = league.tactic;
+  if (!tac || !(tac.template === 'kustom' || TEMPLATE_KEYS.includes(tac.template))) e.push('template taktik tidak valid');
+  else for (const [k, v] of Object.entries(tac.fam ?? {})) if (!(k === 'kustom' || TEMPLATE_KEYS.includes(k)) || !(v >= 0 && v <= 100)) e.push(`keakraban ${k} tidak valid`);
   // Anggaran boleh minus (gaji melebihi pemasukan); pembelian ditolak selama minus.
   if (!Number.isFinite(league.budget)) e.push('anggaran tidak valid');
   const pr = league.profile;
@@ -318,7 +323,13 @@ export function migrateLeague(l) {
     const rng = createRng((Number(l.seed) || 1) + 4242);
     const clubs = l.clubs.map((c) => ({ ...c, players: c.players.map((p) => withSquadFields(p, rng)) }));
     const market = { ...l.market, players: (l.market?.players ?? []).map((p) => (Number.isInteger(p.age) ? p : { ...p, ...rollAgePot(p, rng), fit: 100 })) };
-    return { ...l, version: 5, clubs, market, pstats: {}, training: { ...DEFAULT_TRAINING } };
+    return migrateLeague({ ...l, version: 5, clubs, market, pstats: {}, training: { ...DEFAULT_TRAINING } });
+  }
+  if (l.version === 5) {
+    if (!Array.isArray(l.clubs)) return null;
+    const clubs = l.clubs.map((c) => ({ ...c, players: c.players.map((p) => ({ ...p, ten: Number.isInteger(p.ten) ? p.ten : FAMILIARITY.tenureFull })) }));
+    // Taktik yang sudah dipakai selama ini = "kustom" yang sudah cukup akrab.
+    return { ...l, version: 6, clubs, tactic: { template: 'kustom', fam: { kustom: 70 } } };
   }
   return l;
 }
@@ -503,7 +514,7 @@ export function completeWeek(league, userGoals, oppGoals, userTactics = null, re
       let fit = p.fit ?? 100;
       if (isUser && userEnergy.has(p.uid)) fit = Math.min(fit, Math.round(userEnergy.get(p.uid) * 100));
       else if (!isUser && played?.has(p.uid)) fit = Math.max(20, fit - rng.int(DEV.aiMatchCost[0], DEV.aiMatchCost[1]));
-      let q = { ...p, fit: recover(fit, days, intensity) };
+      let q = { ...p, fit: recover(fit, days, intensity), ten: isUser ? Math.min(99, (p.ten ?? 0) + 1) : (p.ten ?? FAMILIARITY.tenureFull) };
       if (monthTurn) q = developMonth(q, rng, { starter: starters.has(p.uid), training: isUser ? league.training : DEFAULT_TRAINING });
       return q;
     });
@@ -535,6 +546,7 @@ export function completeWeek(league, userGoals, oppGoals, userTactics = null, re
     }
   }
   const budget = round1(league.budget + league.income - wageBill(user) + prize);
+  const tactic = growFamiliarity(league, user, Boolean(done));
   let next = {
     ...league,
     clubs,
@@ -544,6 +556,7 @@ export function completeWeek(league, userGoals, oppGoals, userTactics = null, re
     budget,
     news: [...news, ...league.news].slice(0, LEAGUE.newsMax),
     pstats,
+    tactic,
     userTactics: done ? (userTactics ?? league.userTactics) : league.userTactics,
     market: refreshMarket(league.market, rng),
   };
@@ -648,6 +661,46 @@ export function seasonLine(league, uid) {
     rsum += row[3];
   }
   return { apps, goals, assists, rating: apps ? rsum / 10 / apps : null };
+}
+
+// ---------------------------------------------------------------- pemahaman taktik (15 Nov)
+
+export const familiarityOf = (league, key = league.tactic.template) => league.tactic.fam?.[key] ?? FAMILIARITY.base;
+
+function starterPlayers(league, club = userClub(league)) {
+  const lineup = effectiveLineup(club, league.userFormation).lineup;
+  return Object.values(lineup).map((u) => club.players.find((p) => p.uid === u)).filter(Boolean);
+}
+
+// Keakraban naik dari laga memakai template & fokus latihan "taktik"; template lain turun pelan.
+function growFamiliarity(league, user, played) {
+  const key = league.tactic.template;
+  const rate = learnRate(starterPlayers(league, user));
+  const fam = { ...(league.tactic.fam ?? {}) };
+  for (const k of [...TEMPLATE_KEYS, 'kustom']) {
+    const cur = fam[k] ?? FAMILIARITY.base;
+    let v = cur;
+    if (k === key) {
+      if (played) v += FAMILIARITY.perMatch * rate;
+      if (league.training.focus === 'taktik') v += FAMILIARITY.perTraining * rate;
+    } else if (cur > FAMILIARITY.base) v = Math.max(FAMILIARITY.base, cur - FAMILIARITY.decay);
+    if (v !== FAMILIARITY.base || fam[k] !== undefined) fam[k] = Math.round(Math.min(100, v) * 10) / 10;
+  }
+  return { ...league.tactic, fam };
+}
+
+export function setActiveTemplate(league, key) {
+  if (!(key === 'kustom' || TEMPLATE_KEYS.includes(key))) throw new RangeError(`setActiveTemplate: template tidak dikenal ${key}`);
+  const next = { ...league, tactic: { ...league.tactic, template: key } };
+  assertLeague(next);
+  return next;
+}
+
+// Pemahaman tim untuk taktik dengan kerumitan tertentu: { familiarity, effective, need, gap }.
+export function understandingFor(league, complexity, key = league.tactic.template) {
+  const familiarity = familiarityOf(league, key);
+  const effective = effectiveUnderstanding(familiarity, starterPlayers(league));
+  return { familiarity, effective, need: requiredUnderstanding(complexity), gap: understandingGap(complexity, effective) };
 }
 
 // Hitung cepat semua babak tanpa klub pengguna sampai laga pengguna berikutnya / akhir musim.
@@ -792,6 +845,7 @@ function withSquadFields(p, rng) {
     ...p,
     ...ap,
     fit: Number.isFinite(p.fit) ? p.fit : 100,
+    ten: Number.isInteger(p.ten) ? p.ten : FAMILIARITY.tenureFull, // skuad awal sudah saling kenal
     absence: p.absence ?? null,
     yellows: p.yellows ?? 0,
     contract: p.contract ?? { seasons: rng.int(LEAGUE.contractSeasons[0], LEAGUE.contractSeasons[1]), wage: wageFor(p) },
@@ -808,6 +862,7 @@ function squadFieldErrors(p) {
   if (!(Number.isInteger(p.age) && p.age >= 14 && p.age <= 40)) e.push('umur tidak valid');
   if (!(Number.isFinite(p.pot) && p.pot >= 1 && p.pot <= 20)) e.push('potensi tidak valid');
   if (!(Number.isFinite(p.fit) && p.fit >= 0 && p.fit <= 100)) e.push('kondisi tidak valid');
+  if (!(Number.isInteger(p.ten) && p.ten >= 0)) e.push('lama di klub tidak valid');
   if (!p.contract || !(Number.isInteger(p.contract.seasons) && p.contract.seasons >= 1 && p.contract.seasons <= LEAGUE.contractSeasons[1])) e.push('sisa kontrak tidak valid');
   else if (!(p.contract.wage > 0)) e.push('gaji tidak valid');
   return e;
@@ -1099,7 +1154,7 @@ function makeYouth(rng, n, clubId, tier = 3) {
   const p = { uid: `${clubId}-y${n}`, fullName: src.fullName, shortName: src.shortName, role: src.role, stats: { ...src.stats } };
   const age = rng.int(DEV.youthAge[0], DEV.youthAge[1]);
   const pot = Math.round(Math.min(19, overall(p) + rng.range(2, 6)) * 10) / 10;
-  return { ...p, age, pot, fit: 100, absence: null, yellows: 0, contract: { seasons: 2, wage: wageFor(p) } };
+  return { ...p, age, pot, fit: 100, ten: 0, absence: null, yellows: 0, contract: { seasons: 2, wage: wageFor(p) } };
 }
 
 // Susunan tersimpan yang menunjuk pemain yang sudah pergi: isi dengan pemain terbaik yang tersisa.
@@ -1145,7 +1200,7 @@ export function buyPlayer(league, uid) {
   if (price > league.budget) return { league, error: `Anggaran kurang (butuh ${price} jt, ada ${round1(league.budget)} jt)` };
   if (club.players.length >= LEAGUE.squadMax) return { league, error: `Skuad penuh (maks ${LEAGUE.squadMax})` };
   const newUid = `${club.id}-b${league.market.nextId}-${uid}`;
-  const next = withUserClub({ ...league, budget: league.budget - price, market: { ...league.market, players: league.market.players.filter((x) => x.uid !== uid) } }, { ...club, players: [...club.players, { ...p, uid: newUid, absence: null, yellows: 0, contract: { seasons: LEAGUE.buyContractSeasons, wage: wageFor(p) } }] });
+  const next = withUserClub({ ...league, budget: league.budget - price, market: { ...league.market, players: league.market.players.filter((x) => x.uid !== uid) } }, { ...club, players: [...club.players, { ...p, uid: newUid, absence: null, yellows: 0, ten: 0, contract: { seasons: LEAGUE.buyContractSeasons, wage: wageFor(p) } }] });
   assertLeague(next);
   return { league: next, error: null };
 }

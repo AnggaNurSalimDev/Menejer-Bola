@@ -49,7 +49,7 @@ const strengthText = (p) =>
     .map(([k, v]) => `${STAT_LABEL[k] ? t(STAT_LABEL[k]) : k} ${v}`)
     .join(' · ');
 
-const FOCUS_LABEL = { seimbang: tk('Seimbang'), serang: tk('Menyerang'), bertahan: tk('Bertahan'), fisik: tk('Fisik'), teknik: tk('Teknik') };
+const FOCUS_LABEL = { seimbang: tk('Seimbang'), serang: tk('Menyerang'), bertahan: tk('Bertahan'), fisik: tk('Fisik'), teknik: tk('Teknik'), taktik: tk('Taktik') };
 const INTENSITY_LABEL = { ringan: tk('Ringan'), normal: tk('Normal'), berat: tk('Berat') };
 
 // Baris kecil di bawah nama pemain: umur · potensi · kondisi · statistik musim ini.

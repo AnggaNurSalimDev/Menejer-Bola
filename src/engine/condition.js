@@ -145,6 +145,8 @@ export function blunderScale(player, context = {}) {
     c.form;
   if (context.pressured) penalty += (1 - composure) * CONDITION.pressureBlunder;
   if (context.bigChance) penalty += (1 - composure) * CONDITION.bigChanceBlunder;
+  // Kurang paham taktik (15 Nov): keputusan & eksekusi lebih buruk (0 = tidak ada efek).
+  if (context.understanding > 0) penalty += context.understanding * 0.15; // = UNDERSTANDING.blunder (simulation.js)
   const nerfed = 1 + Math.min(CONDITION.maxBlunderPenalty, Math.max(0, penalty));
   return nerfed * (1 - onFireAmount(c) * CONDITION.fireBlunderBonus);
 }

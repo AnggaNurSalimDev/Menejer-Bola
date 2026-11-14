@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { t, tk } from '../i18n.js';
+import TemplatePanel from './TemplatePanel.jsx';
+import { complexityOf } from '../engine/tacticTemplates.js';
 import { LayerPitch } from './LaneDiagram.jsx';
 import ZoneBoard from './ZoneBoard.jsx';
 import { SUBS, substitutionErrors, roleLine } from '../engine/substitution.js';
@@ -186,7 +188,7 @@ function EnergyBar({ value }) {
 }
 
 // view = 'tactics' (racik strategi) | 'subs' (pergantian) — dua tab terpisah sejak 14 Nov supaya tidak perlu gulir jauh.
-export default function TeamTab({ state, teamId, simulation, onChange, namesById, view = 'tactics' }) {
+export default function TeamTab({ state, teamId, simulation, onChange, namesById, view = 'tactics', templates = null }) {
   if (view !== 'tactics' && view !== 'subs') throw new RangeError(`TeamTab: view tidak dikenal ${view}`);
   const [outId, setOutId] = useState(null);
   const [inId, setInId] = useState(null);
@@ -287,6 +289,12 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
 
       {view === 'tactics' && (
         <>
+      {templates && (
+        <Fold id="templates" className="strategy" title={<span className="strategy__title">{t('Template taktik')}</span>} summary={templates.summary} defaultOpen={false}>
+          <TemplatePanel {...templates} currentComplexity={complexityOf(team.tactics)} disabled={locked} />
+        </Fold>
+      )}
+
       <Fold
         id="strategy"
         className="strategy"

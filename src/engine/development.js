@@ -37,7 +37,7 @@ export const DEV = Object.freeze({
   freshFrom: 85,
 });
 
-export const TRAINING_FOCUS = Object.freeze(['seimbang', 'serang', 'bertahan', 'fisik', 'teknik']);
+export const TRAINING_FOCUS = Object.freeze(['seimbang', 'serang', 'bertahan', 'fisik', 'teknik', 'taktik']);
 export const TRAINING_INTENSITY = Object.freeze(['ringan', 'normal', 'berat']);
 export const DEFAULT_TRAINING = Object.freeze({ focus: 'seimbang', intensity: 'normal' });
 const INTENSITY_GROWTH = { ringan: 0.8, normal: 1, berat: 1.25 };
@@ -48,6 +48,7 @@ const FOCUS_STATS = {
   bertahan: ['tackling', 'posisi', 'antisipasi', 'duelUdara', 'kekuatan'],
   fisik: ['kecepatan', 'akselerasi', 'kelincahan', 'stamina', 'kekuatan'],
   teknik: ['passing', 'kontrol', 'dribbling', 'finishing', 'visi'],
+  taktik: ['keputusan', 'posisi', 'antisipasi', 'visi'], // + mempercepat pemahaman template (league.js)
 };
 const PHYSICAL = ['kecepatan', 'akselerasi', 'kelincahan', 'stamina'];
 
