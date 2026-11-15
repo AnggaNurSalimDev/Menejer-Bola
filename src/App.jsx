@@ -1,3 +1,4 @@
+import Guide, { FeedbackLink, useGuide } from './components/Guide.jsx';
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import MatchView from './components/MatchView.jsx';
 import TeamTab from './components/TeamTab.jsx';
@@ -148,6 +149,7 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
   const [teamView, setTeamView] = useState(null);
   const tabRef = useRef(tab);
   tabRef.current = tab;
+  const guide = useGuide();
   const subToastRef = useRef(null);
   const scriptChipRef = useRef(null);
 
@@ -513,8 +515,9 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
 
   return (
     <main className="app">
+      {guide.open && <Guide onClose={guide.close} />}
       <header className="scoreboard">
-        <TeamLabel team={home} align="right" mentalityRef={mentalityRefs.home} formationRef={formationRefs.home} logo={leagueMatch && league ? league.profile.logo : defaultLogo(home)} />
+        <TeamLabel team={home} align="right" venue={leagueMatch ? (leagueMatch.userIsHome ? t('kandang') : t('tandang')) : null} mentalityRef={mentalityRefs.home} formationRef={formationRefs.home} logo={leagueMatch && league ? league.profile.logo : defaultLogo(home)} />
         <div className="score">
           <span ref={scoreRef}>0 – 0</span>
           <span ref={clockRef} className="clock">
@@ -614,6 +617,10 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
               ☰ {t('Menu utama')}
             </button>
           )}
+          <button type="button" className="menu-link" onClick={guide.show}>
+            ? {t('Panduan')}
+          </button>
+          <FeedbackLink />
           {league && (
             <span className="manager-chip">
               {t('Manajer')}: {league.profile.managerName}
@@ -828,11 +835,12 @@ function RatingsBlock({ state, home, away, namesById }) {
   );
 }
 
-function TeamLabel({ team, align, mentalityRef, formationRef, logo }) {
+function TeamLabel({ team, align, mentalityRef, formationRef, logo, venue = null }) {
   return (
     <div className={`team-label team-label--${align}`}>
       {logo ? <ClubLogo logo={logo} size={22} title={team.name} /> : <span className="team-swatch" style={{ background: team.colors.shirt }} />}
       <span className="team-name">{team.name}</span>
+      {venue && <span className="team-venue">{venue}</span>}
       <span ref={formationRef} className="team-formation">
         {team.formation}
       </span>
