@@ -6,6 +6,7 @@
 
 import { createMusic } from './music.js';
 import { createCrowd } from './crowd.js';
+import { loadSamples } from './samples.js';
 
 const KEY = 'menejer-bola:musik:v1';
 export const SOUND_DEFAULTS = Object.freeze({ on: true, volume: 0.5, sfx: true, sfxVolume: 0.8 });
@@ -42,6 +43,8 @@ export const subscribe = (fn) => {
   return () => hub.listeners.delete(fn);
 };
 export const soundState = snapshot;
+// Untuk pemeriksaan (konsol / uji otomatis): apakah rekaman penonton termuat.
+if (typeof window !== 'undefined') window.__menejerSound = () => ({ context: hub.ctx?.state ?? null, recordings: hub.crowd?.hasRecordings() ?? false });
 
 function ensure() {
   if (hub.ctx) return true;
@@ -60,6 +63,8 @@ function ensure() {
   comp.ratio.value = 6;
   hub.sfxBus.connect(comp).connect(hub.ctx.destination);
   hub.crowd = createCrowd(hub.ctx, hub.sfxBus);
+  // Rekaman penonton (bila ada di build) dimuat di belakang; sebelum siap, penonton diam.
+  loadSamples(hub.ctx).then((smp) => hub.crowd.setSamples(smp)).catch(() => {});
   return true;
 }
 

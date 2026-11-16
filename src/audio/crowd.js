@@ -1,214 +1,170 @@
-// Suara stadion (16 Nov): penonton, peluit wasit, sorakan gol. Semua disintesis Web Audio dari derau &
-// osilator — tanpa rekaman, bebas hak cipta.
+// Suara stadion (16 Nov, revisi setelah masukan pengguna: peluit terdengar seperti klakson, penonton
+// sintesis terdengar mengganggu).
 //
-//   createCrowd(ctx, out)
-//     bed      : derau berulang → bandpass → gain; setExcitement(0–1) menaikkan keras & kecerahan
-//     roar(s)  : gelombang sorak (gol), s = 0–1 (pendukung tuan rumah lebih keras)
-//     ooh()    : "uuuh" peluang gagal  · groan(): kecewa · applause(): tepuk tangan
-//     whistle(kind): 'short' | 'long' | 'end' (tiga tiupan)
-//   setActive(false) memudarkan semua bunyi latar (laga dijeda / bukan di layar laga).
+//   peluit  : disintesis ulang meniru peluit wasit berbola (pea whistle). Klakson = dua nada tetap
+//             yang dibunyikan bersamaan; peluit = SATU nada ±3,2 kHz yang bergetar cepat naik-turun
+//             (bola kecil di dalamnya memotong aliran udara ±25×/dtk) + desis napas.
+//   penonton: hanya dari REKAMAN (samples.js). Tanpa rekaman: diam. Derau sintesis tidak dipakai lagi.
+//
+//   createCrowd(ctx, out, samples)
+//     setActive(on) · setVolume(v) · setExcitement(0–1) · celebrate(s) · ooh() · groan() · applause()
+//     whistle('short' | 'long')
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
-function makeNoise(ctx, seconds = 3, brown = false) {
-  const b = ctx.createBuffer(1, Math.floor(ctx.sampleRate * seconds), ctx.sampleRate);
+// Satu tiupan peluit mulai di t selama dur detik.
+export function whistleBlow(ctx, out, t, dur, { level = 0.22 } = {}) {
+  if (!(dur > 0.05)) throw new RangeError(`whistleBlow: durasi ${dur}`);
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0.0001, t);
+  env.gain.exponentialRampToValueAtTime(level, t + 0.012);
+  env.gain.setValueAtTime(level, t + dur - 0.07);
+  env.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  env.connect(out);
+
+  // Nada pokok: naik cepat ke ±3,2 kHz saat tiupan mulai, lalu bergetar (FM) oleh "bola" peluit.
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(2700, t);
+  osc.frequency.exponentialRampToValueAtTime(3200, t + 0.045);
+  const rattle = ctx.createOscillator();
+  rattle.type = 'sine';
+  rattle.frequency.setValueAtTime(23, t);
+  rattle.frequency.linearRampToValueAtTime(27, t + dur);
+  const rattleDepth = ctx.createGain();
+  rattleDepth.gain.value = 260;
+  rattle.connect(rattleDepth).connect(osc.frequency);
+  // Getar yang sama sedikit mengubah kekerasan (tiupan tidak rata).
+  const trem = ctx.createGain();
+  trem.gain.value = 0.75;
+  const tremDepth = ctx.createGain();
+  tremDepth.gain.value = 0.25;
+  rattle.connect(tremDepth).connect(trem.gain);
+  osc.connect(trem).connect(env);
+
+  // Harmonik kedua tipis (peluit logam tidak murni sinus).
+  const h2 = ctx.createOscillator();
+  h2.type = 'sine';
+  h2.frequency.setValueAtTime(5400, t);
+  h2.frequency.exponentialRampToValueAtTime(6400, t + 0.045);
+  const h2Depth = ctx.createGain();
+  h2Depth.gain.value = 520;
+  rattle.connect(h2Depth).connect(h2.frequency);
+  const h2Gain = ctx.createGain();
+  h2Gain.gain.value = 0.07;
+  h2.connect(h2Gain).connect(env);
+
+  // Desis napas di sekitar nada.
+  const n = ctx.createBufferSource();
+  n.buffer = noiseBuffer(ctx);
+  n.loop = true;
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.value = 3300;
+  bp.Q.value = 3;
+  const nGain = ctx.createGain();
+  nGain.gain.value = 0.35;
+  n.connect(bp).connect(nGain).connect(env);
+
+  for (const node of [osc, rattle, h2, n]) {
+    node.start(t);
+    node.stop(t + dur + 0.05);
+  }
+}
+
+const noiseCache = new WeakMap();
+function noiseBuffer(ctx) {
+  let b = noiseCache.get(ctx);
+  if (b) return b;
+  b = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 1), ctx.sampleRate);
   const d = b.getChannelData(0);
-  let seed = 987654;
-  let last = 0;
+  let seed = 4242;
   for (let i = 0; i < d.length; i += 1) {
     seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-    const w = (seed / 0x7fffffff) * 2 - 1;
-    if (brown) {
-      last = (last + 0.02 * w) / 1.02;
-      d[i] = last * 3.5;
-    } else d[i] = w;
+    d[i] = (seed / 0x7fffffff) * 2 - 1;
   }
-  // Ujung disilangkan supaya putaran ulang tidak berbunyi "klik".
-  const fade = Math.floor(ctx.sampleRate * 0.05);
-  for (let i = 0; i < fade; i += 1) {
-    const k = i / fade;
-    d[i] = d[i] * k + d[d.length - fade + i] * (1 - k);
-  }
+  noiseCache.set(ctx, b);
   return b;
 }
 
-export function createCrowd(ctx, out) {
+export function createCrowd(ctx, out, samples = {}) {
   if (!ctx || typeof ctx.createBufferSource !== 'function') throw new TypeError('createCrowd: AudioContext tidak valid');
-  const white = makeNoise(ctx, 3, false);
-  const brown = makeNoise(ctx, 4, true);
   const master = ctx.createGain();
   master.gain.value = 0;
   master.connect(out);
-
-  // Lapisan dasar: gemuruh (derau coklat) + riuh suara (derau putih di pita suara manusia).
-  const bedGain = ctx.createGain();
-  bedGain.gain.value = 0.32;
-  const rumble = ctx.createBufferSource();
-  rumble.buffer = brown;
-  rumble.loop = true;
-  const rumbleLp = ctx.createBiquadFilter();
-  rumbleLp.type = 'lowpass';
-  rumbleLp.frequency.value = 500;
-  rumble.connect(rumbleLp).connect(bedGain);
-  const chatter = ctx.createBufferSource();
-  chatter.buffer = white;
-  chatter.loop = true;
-  const band = ctx.createBiquadFilter();
-  band.type = 'bandpass';
-  band.frequency.value = 700;
-  band.Q.value = 0.7;
-  const chatterGain = ctx.createGain();
-  chatterGain.gain.value = 0.35;
-  chatter.connect(band).connect(chatterGain).connect(bedGain);
-  bedGain.connect(master);
-  rumble.start();
-  chatter.start();
-
-  let volume = 0.6;
+  let volume = 0.8;
   let active = false;
-  let excitement = 0;
-  let excitementLevel = 0;
+  let bed = null; // { src, gain }
+  let level = 0;
 
-  function setActive(on) {
-    active = Boolean(on);
-    master.gain.setTargetAtTime(active ? volume : 0, ctx.currentTime, active ? 0.4 : 0.8);
-  }
-  function setVolume(v) {
-    if (!(v >= 0 && v <= 1)) throw new RangeError(`crowd.setVolume: ${v} di luar 0–1`);
-    volume = v;
-    if (active) master.gain.setTargetAtTime(volume, ctx.currentTime, 0.1);
-  }
-  function setExcitement(x) {
-    const e = clamp(x, 0, 1);
-    if (Math.abs(e - excitement) < 0.02) return;
-    excitement = e;
-    // Naik cepat (penonton bereaksi seketika), turun pelan.
-    const tc = e > excitementLevel ? 0.25 : 1.2;
-    excitementLevel = e;
-    bedGain.gain.setTargetAtTime(0.32 + e * e * 0.7, ctx.currentTime, tc);
-    band.frequency.setTargetAtTime(650 + e * 700, ctx.currentTime, tc);
-    chatterGain.gain.setTargetAtTime(0.35 + e * 0.35, ctx.currentTime, tc);
+  function startBed() {
+    if (bed || !samples.ambience) return;
+    const src = ctx.createBufferSource();
+    src.buffer = samples.ambience;
+    src.loop = true;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.45;
+    src.connect(gain).connect(master);
+    src.start(ctx.currentTime, Math.random() * Math.max(0, samples.ambience.duration - 1));
+    bed = { src, gain };
   }
 
-  // Satu "gelombang" derau yang naik lalu turun.
-  function swell({ peak, attack, hold, release, freq, freqEnd = freq, q = 0.8, buffer = white }) {
-    const t = ctx.currentTime;
-    const s = ctx.createBufferSource();
-    s.buffer = buffer;
-    s.loop = true;
-    const f = ctx.createBiquadFilter();
-    f.type = 'bandpass';
-    f.Q.value = q;
-    f.frequency.setValueAtTime(freq, t);
-    f.frequency.linearRampToValueAtTime(freqEnd, t + attack + hold + release);
+  function play(buffer, gain = 1, rate = 1) {
+    if (!buffer) return false;
+    const src = ctx.createBufferSource();
+    src.buffer = buffer;
+    src.playbackRate.value = rate;
     const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(peak, t + attack);
-    g.gain.setValueAtTime(peak, t + attack + hold);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + attack + hold + release);
-    s.connect(f).connect(g).connect(master);
-    s.start(t, Math.random() * 2);
-    s.stop(t + attack + hold + release + 0.1);
+    g.gain.value = gain;
+    src.connect(g).connect(master);
+    src.start();
+    return true;
   }
 
   return {
-    setActive,
-    setVolume,
-    setExcitement,
-    roar(strength = 1) {
-      const s = clamp(strength, 0.1, 1);
-      swell({ peak: 0.9 * s, attack: 0.25, hold: 1.6, release: 3.5, freq: 900, freqEnd: 650, q: 0.6 });
-      swell({ peak: 0.5 * s, attack: 0.3, hold: 1.4, release: 3, freq: 300, freqEnd: 220, q: 0.7, buffer: brown });
+    hasRecordings: () => Boolean(samples.ambience || samples.goal),
+    setSamples(next) {
+      samples = { ...next };
+      if (bed) {
+        bed.src.stop();
+        bed = null;
+      }
+      if (active) startBed();
     },
-    // Pesta gol: sorak besar + gemuruh + tepuk tangan panjang + tepukan berirama (3 ketuk) setelahnya.
+    setActive(on) {
+      active = Boolean(on);
+      if (active) startBed();
+      master.gain.setTargetAtTime(active ? volume : 0, ctx.currentTime, active ? 0.4 : 0.8);
+    },
+    setVolume(v) {
+      if (!(v >= 0 && v <= 1)) throw new RangeError(`crowd.setVolume: ${v} di luar 0–1`);
+      volume = v;
+      if (active) master.gain.setTargetAtTime(volume, ctx.currentTime, 0.1);
+    },
+    // Rekaman dengung dikeraskan saat serangan berbahaya (naik cepat, turun pelan).
+    setExcitement(x) {
+      const e = clamp(x, 0, 1);
+      if (!bed || Math.abs(e - level) < 0.02) return;
+      const tc = e > level ? 0.25 : 1.2;
+      level = e;
+      bed.gain.gain.setTargetAtTime(0.45 + e * e * 0.9, ctx.currentTime, tc);
+    },
     celebrate(strength = 1) {
       const s = clamp(strength, 0.2, 1);
-      swell({ peak: 1.4 * s, attack: 0.2, hold: 3, release: 4, freq: 950, freqEnd: 650, q: 0.55 });
-      swell({ peak: 0.8 * s, attack: 0.25, hold: 2.6, release: 3.5, freq: 320, freqEnd: 220, q: 0.6, buffer: brown });
-      swell({ peak: 0.5 * s, attack: 0.3, hold: 2, release: 3, freq: 2200, freqEnd: 1600, q: 1.2 });
-      this.applause(6 * s);
-      const t0 = ctx.currentTime + 4.2;
-      for (let k = 0; k < 4 * Math.round(2 * s); k += 1) {
-        const bar = Math.floor(k / 4);
-        const beat = k % 4;
-        if (beat === 3) continue; // "plok-plok-plok … " lalu jeda
-        const t = t0 + bar * 1.2 + beat * 0.28;
-        for (let n = 0; n < 14; n += 1) {
-          const tt = t + Math.random() * 0.03;
-          const src = ctx.createBufferSource();
-          src.buffer = white;
-          const f = ctx.createBiquadFilter();
-          f.type = 'bandpass';
-          f.frequency.value = 1200 + Math.random() * 1800;
-          f.Q.value = 1;
-          const g = ctx.createGain();
-          g.gain.setValueAtTime(0.0001, tt);
-          g.gain.exponentialRampToValueAtTime(0.09 * s, tt + 0.004);
-          g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.06);
-          src.connect(f).connect(g).connect(master);
-          src.start(tt, Math.random() * 2);
-          src.stop(tt + 0.07);
-        }
-      }
+      play(samples.goal, 1.1 * s);
     },
     ooh() {
-      swell({ peak: 0.5, attack: 0.25, hold: 0.25, release: 1.1, freq: 520, freqEnd: 300, q: 2.5 });
+      if (!play(samples.ooh, 0.8)) play(samples.goal, 0.25, 0.92); // tanpa rekaman "uuuh": sorak kecil
     },
     groan() {
-      swell({ peak: 0.35, attack: 0.3, hold: 0.3, release: 1.6, freq: 380, freqEnd: 240, q: 2 });
+      /* tanpa rekaman khusus: diam */
     },
-    applause(seconds = 2.5) {
-      // Tepukan = banyak letupan derau pendek pita tinggi.
-      const t0 = ctx.currentTime;
-      const n = Math.round(seconds * 40);
-      for (let i = 0; i < n; i += 1) {
-        const t = t0 + Math.random() * seconds;
-        const s = ctx.createBufferSource();
-        s.buffer = white;
-        const f = ctx.createBiquadFilter();
-        f.type = 'bandpass';
-        f.frequency.value = 1500 + Math.random() * 2500;
-        f.Q.value = 1.2;
-        const g = ctx.createGain();
-        const fadeOut = 1 - (t - t0) / seconds;
-        g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(0.05 * (0.4 + fadeOut), t + 0.004);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
-        s.connect(f).connect(g).connect(master);
-        s.start(t, Math.random() * 2);
-        s.stop(t + 0.06);
-      }
+    applause() {
+      /* bagian dari rekaman gol / dengung */
     },
     whistle(kind = 'short') {
-      if (!['short', 'long', 'end'].includes(kind)) throw new RangeError(`whistle: jenis ${kind}`);
-      const blows = kind === 'end' ? [0, 0.45, 0.9] : [0];
-      const len = kind === 'short' ? 0.28 : kind === 'long' ? 1.4 : 0.35;
-      for (const off of blows) {
-        const t = ctx.currentTime + off;
-        const dur = kind === 'end' && off === 0.9 ? 1.1 : len;
-        const g = ctx.createGain();
-        g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(0.12, t + 0.02);
-        g.gain.setValueAtTime(0.12, t + dur - 0.05);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-        // Getar bola kecil di dalam peluit = modulasi amplitudo ±30 Hz.
-        const trem = ctx.createOscillator();
-        trem.frequency.value = 32;
-        const tremGain = ctx.createGain();
-        tremGain.gain.value = 0.05;
-        trem.connect(tremGain).connect(g.gain);
-        for (const f of [2750, 3150]) {
-          const o = ctx.createOscillator();
-          o.type = 'sine';
-          o.frequency.value = f;
-          o.connect(g);
-          o.start(t);
-          o.stop(t + dur + 0.05);
-        }
-        trem.start(t);
-        trem.stop(t + dur + 0.05);
-        g.connect(out); // peluit tidak ikut dipudarkan dengan penonton
-      }
+      if (!['short', 'long'].includes(kind)) throw new RangeError(`whistle: jenis ${kind}`);
+      whistleBlow(ctx, out, ctx.currentTime + 0.01, kind === 'short' ? 0.32 : 1.3);
     },
   };
 }
