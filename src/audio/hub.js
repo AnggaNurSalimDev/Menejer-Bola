@@ -96,8 +96,12 @@ export function nextTrack() {
   hub.music?.next();
 }
 
+// Hanya memberi tahu bila bahasa benar-benar berubah (memberi tahu tanpa perubahan memicu render
+// ulang MusicControl → efeknya memanggil ini lagi → putaran render tanpa henti; bug 16 Nov).
 export function setLanguage(lang) {
-  hub.lang = lang === 'en' ? 'en' : 'id';
+  const next = lang === 'en' ? 'en' : 'id';
+  if (hub.lang === next) return;
+  hub.lang = next;
   notify();
 }
 

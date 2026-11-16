@@ -10,7 +10,8 @@ export default function MusicControl() {
   const [s, setS] = useState(soundState);
   const [open, setOpen] = useState(false);
   useEffect(() => subscribe(setS), []);
-  useEffect(() => setLanguage(getLang()));
+  const lang = getLang();
+  useEffect(() => setLanguage(lang), [lang]);
   const anyOn = s.on || s.sfx;
   return (
     <span className="music-control">
