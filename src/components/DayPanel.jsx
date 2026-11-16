@@ -5,6 +5,8 @@ import { getTemplate } from '../engine/tacticTemplates.js';
 import { compLabel, roundLabel, dateLabel } from './compLabels.js';
 import { absenceText } from './Status.jsx';
 import ClubLogo from './ClubLogo.jsx';
+import TrainingLoad from './TrainingLoad.jsx';
+import { STAT_LABEL } from './SquadMarketTab.jsx';
 import { t, tk } from '../i18n.js';
 
 // Hari demi hari (16 Nov). Hari bergulir sendiri (± 3 hari/detik) dan berhenti saat ada event penting
@@ -14,7 +16,7 @@ import { t, tk } from '../i18n.js';
 //                                                └ hariLaga ─▶ [Ke laga]
 
 const STEP_MS = 330;
-const KIND_LABEL = { latihan: tk('latihan'), pemulihan: tk('pemulihan'), laga: tk('hari laga') };
+const KIND_LABEL = { latihan: tk('latihan'), istirahat: tk('istirahat'), pemulihan: tk('pemulihan'), laga: tk('hari laga') };
 const TARGET_LABEL = { juara: tk('juara liga'), atas: tk('papan atas'), tengah: tk('papan tengah'), bertahan: tk('bertahan di liga') };
 const SESSION_LABEL = { bagus: tk('bagus'), biasa: tk('biasa'), buruk: tk('buruk') };
 
@@ -37,8 +39,12 @@ export function diaryText(league, e) {
       return `${e.gf > e.ga ? '✅' : e.gf < e.ga ? '❌' : '➖'} ${t('{c}: {gf}–{ga} vs {o}', { c: compLabel(e.comp), gf: e.gf, ga: e.ga, o: club(e.opp) })}`;
     case 'sesiTaktik':
       return `🧠 ${t('Sesi taktik {r}: pemahaman {tpl} +{g} → {f}%', { r: t(SESSION_LABEL[e.result]), tpl: e.template === 'kustom' ? t('taktik sendiri') : t(getTemplate(e.template).label), g: e.gain, f: Math.round(e.fam) })}`;
+    case 'latihanHarian':
+      return `🏃 ${t('Latihan {p}%', { p: e.load })}${Number.isFinite(e.gain) ? ` · ${t('perkembangan tim +{g}', { g: e.gain.toFixed(1) })}` : ''}: ${e.ups.length ? e.ups.map((u) => `${u.name} ${STAT_LABEL[u.stat] ? t(STAT_LABEL[u.stat]).toLowerCase() : u.stat} → ${u.to}`).join(', ') + (e.more ? ` ${t('(+{n} lagi)', { n: e.more })}` : '') : t('belum ada stat yang naik hari ini')}`;
+    case 'istirahat':
+      return `😴 ${t('Istirahat — kondisi pulih')}`;
     case 'sesiBatal':
-      return `💤 ${t('Sesi taktik dilewati — hari pemulihan setelah laga')}`;
+      return `💤 ${e.why === 'istirahat' ? t('Sesi taktik dilewati — hari istirahat') : t('Sesi taktik dilewati — hari pemulihan setelah laga')}`;
     case 'tawaran':
       return `📨 ${t('Tawaran melatih {c}', { c: club(e.clubId) })}`;
     case 'tolak':
@@ -225,6 +231,8 @@ export default function DayPanel({ league, onChange, onGoMatch, locked }) {
           </button>
         </div>
       )}
+
+      {!c.pending && !over && <TrainingLoad league={league} onChange={onChange} locked={locked} compact />}
 
       {!c.pending && !matchDay && !over && (
         <div className="day-actions">

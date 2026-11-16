@@ -25,7 +25,7 @@
 import { createRng } from './rng.js';
 import { defaultLogo } from './logo.js';
 import { roundDate, koWinner } from './calendar.js';
-import { DEV, INTENSITY_INJURY } from './development.js';
+import { DEV, DAILY, trainDay, loadOfIntensity } from './development.js';
 import { FAMILIARITY, learnRate, iqOf, TEMPLATE_KEYS } from './tacticTemplates.js';
 import { rollSeverity } from './injury.js';
 import { MASTERY } from './simulation.js';
@@ -61,7 +61,7 @@ export const CAREER = Object.freeze({
   // Peluang harian per pemain (dari peluang per babak liga.js × 62 babak / ±290 hari musim).
   illness: 0.0013,
   personal: 0.0006,
-  trainingInjury: 0.0012, // hanya hari latihan, × intensitas
+  trainingInjury: 0.002, // per pemain per hari latihan (17 Nov: beban dari banyaknya hari latihan, bukan pengali)
   // Sesi taktik: tambahan keakraban template aktif (× kecepatan belajar pemain inti).
   session: Object.freeze({ bagus: 3, biasa: 1.6, buruk: 0.4 }),
   // Tawaran: peluang per hari bila ada klub yang cocok; tidak di 14 hari pertama di klub.
@@ -179,6 +179,7 @@ export function careerErrors(league) {
     } else e.push('event tertunda tidak dikenal');
   }
   if (!Array.isArray(c.diary)) e.push('catatan harian tidak valid');
+  if (c.trainAcc !== undefined && !(c.trainAcc >= 0 && c.trainAcc < 2)) e.push('akumulator latihan tidak valid');
   if (c.labResults !== undefined && (typeof c.labResults !== 'object' || c.labResults === null || Object.values(c.labResults).some((r) => !(r.completed >= 0 && r.completed <= r.started)))) e.push('hasil uji skema tidak valid');
   if (!Array.isArray(c.tacticDays) || c.tacticDays.length > CAREER.tacticDaysMax || c.tacticDays.some((d) => !WEEKDAYS.includes(d)) || new Set(c.tacticDays).size !== c.tacticDays.length) e.push('hari latihan taktik tidak valid');
   return e;
@@ -210,7 +211,23 @@ export function dayKind(league, day = career(league).day) {
   const last = career(league).lastMatchDay;
   if (last !== null && day === last) return 'laga';
   if (last !== null && day - last === DAY) return 'pemulihan';
+  // Hari latihan / istirahat ditentukan saat hari itu tiba (advanceDay, menurut beban latihan).
+  const c = career(league);
+  if (day === c.day && (c.todayKind === 'latihan' || c.todayKind === 'istirahat')) return c.todayKind;
   return 'latihan';
+}
+
+// Beban latihan 0–100 (simpanan lama: dari intensitas).
+export const trainingLoad = (league) => league.training.load ?? loadOfIntensity(league.training.intensity);
+
+// Hari non-laga: latihan atau istirahat. Akumulator membagi hari tepat sesuai persentase (60% →
+// 3 dari 5 hari latihan), hari sesi taktik selalu latihan. → { kind, acc }
+export function planDay(acc, load, tacticDay) {
+  if (!(load >= 0 && load <= 100)) throw new RangeError(`planDay: beban ${load}`);
+  const a = (Number.isFinite(acc) ? acc : 0) + load / 100;
+  if (tacticDay) return { kind: 'latihan', acc: Math.max(0, a - 1) };
+  if (a >= 1 - 1e-9) return { kind: 'latihan', acc: Math.max(0, a - 1) };
+  return { kind: 'istirahat', acc: a };
 }
 
 const pushDiary = (c, entries) => ({ ...c, diary: [...entries.slice().reverse(), ...c.diary].slice(0, CAREER.diaryMax) });
@@ -425,7 +442,8 @@ export function advanceDay(league) {
   if (seasonOver(league)) throw new Error('advanceDay: musim sudah selesai');
   if (isMatchDay(league)) throw new Error('advanceDay: hari laga — mainkan laganya dulu');
   const day = c0.day + DAY;
-  let l = { ...league, career: { ...c0, day } };
+  // todayKind milik hari kemarin: dikosongkan supaya hari baru direncanakan ulang.
+  let l = { ...league, career: { ...c0, day, todayKind: null } };
   // Babak tanpa pengguna yang tanggalnya sudah tiba: hitung cepat (hari tetap).
   for (let guard = 0; guard < 80 && !seasonOver(l) && !userFixture(l) && roundDate(l.season, l.week) <= day; guard += 1) l = completeWeek(l, 0, 0);
   if (seasonOver(l)) {
@@ -433,7 +451,14 @@ export function advanceDay(league) {
     assertCareer(next);
     return { league: next, events: [], stop: 'akhirMusim' };
   }
-  const kind = dayKind(l, day);
+  let kind = dayKind(l, day);
+  let trainAcc = c0.trainAcc ?? 0;
+  if (kind === 'latihan') {
+    // Beban 0% = istirahat penuh: sesi taktik terjadwal pun dilewati.
+    const plan = planDay(trainAcc, trainingLoad(l), trainingLoad(l) > 0 && c0.tacticDays.includes(weekday(day)));
+    kind = plan.kind;
+    trainAcc = plan.acc;
+  }
   const rng = dayRng(l, day);
   const events = [];
   const user = clubById(l, l.userClubId);
@@ -445,7 +470,7 @@ export function advanceDay(league) {
       if (p.absence) return p;
       const r = rng.next();
       let out = null;
-      const inj = CAREER.trainingInjury * INTENSITY_INJURY[l.training.intensity];
+      const inj = CAREER.trainingInjury;
       if (r < CAREER.illness) out = ['sakit', rng.int(LEAGUE.absence.illnessWeeks[0], LEAGUE.absence.illnessWeeks[1]), null];
       else if (r < CAREER.illness + CAREER.personal) out = ['izin', 1, null];
       else if (kind === 'latihan' && r < CAREER.illness + CAREER.personal + inj) {
@@ -458,6 +483,26 @@ export function advanceDay(league) {
       news.push({ week: l.week, uid: p.uid, name: p.fullName, type: out[0], weeks: out[1], detail: out[2] });
       return q;
     });
+  }
+  // Latihan / istirahat harian (17 Nov): kondisi pulih per hari; hari latihan membuat stat berkembang.
+  {
+    const xi = new Set(starterPlayers({ ...l, clubs: l.clubs.map((c) => (c.id === user.id ? { ...c, players } : c)) }).map((p) => p.uid));
+    const ups = [];
+    let teamGain = 0;
+    players = players.map((p) => {
+      const fit = p.fit ?? 100;
+      if (kind !== 'latihan' || p.absence) return kind === 'laga' ? p : { ...p, fit: Math.min(100, fit + DAILY.recoverRest) };
+      let q = { ...p, fit: Math.min(100, fit + DAILY.recoverTraining) };
+      if (Number.isInteger(q.age)) {
+        const r = trainDay(q, rng, { starter: xi.has(p.uid), training: l.training, growthScale: DAILY.perTrainingDay });
+        for (const u of r.ups) ups.push({ name: p.shortName ?? p.fullName, stat: u.stat, to: u.to });
+        teamGain += r.gained;
+        q = r.player;
+      }
+      return q;
+    });
+    if (kind === 'latihan') events.push({ day, type: 'latihanHarian', load: trainingLoad(l), focus: l.training.focus, gain: Math.round(teamGain * 100) / 100, ups: ups.slice(0, 6), more: Math.max(0, ups.length - 6) });
+    else if (kind === 'istirahat') events.push({ day, type: 'istirahat' });
   }
   let tactic = l.tactic;
   // Sesi latihan taktik terjadwal.
@@ -473,8 +518,8 @@ export function advanceDay(league) {
     if (!(key === 'kustom' || TEMPLATE_KEYS.includes(key))) throw new Error(`sesi taktik: template ${key}`);
     tactic = { ...tactic, fam: { ...tactic.fam, [key]: val } };
     events.push({ day, type: 'sesiTaktik', result, template: key, gain: round1(val - cur), fam: val });
-  } else if (kind === 'pemulihan' && c0.tacticDays.includes(weekday(day))) {
-    events.push({ day, type: 'sesiBatal' });
+  } else if ((kind === 'pemulihan' || kind === 'istirahat') && c0.tacticDays.includes(weekday(day))) {
+    events.push({ day, type: 'sesiBatal', why: kind });
   }
   // Tawaran klub lain.
   let pending = null;
@@ -495,7 +540,7 @@ export function advanceDay(league) {
     clubs,
     tactic,
     news: [...news, ...l.news].slice(0, LEAGUE.newsMax),
-    career: pushDiary({ ...l.career, pending, lastOfferDay: pending ? day : (l.career.lastOfferDay ?? null) }, events.filter((e) => e.type !== 'hariLaga')),
+    career: pushDiary({ ...l.career, pending, lastOfferDay: pending ? day : (l.career.lastOfferDay ?? null), trainAcc, todayKind: kind }, events.filter((e) => e.type !== 'hariLaga')),
   };
   assertCareer(next);
   const stop = events.find((e) => STOP_EVENTS.includes(e.type))?.type ?? (kind === 'laga' ? 'hariLaga' : null);

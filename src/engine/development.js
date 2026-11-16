@@ -39,7 +39,16 @@ export const DEV = Object.freeze({
 
 export const TRAINING_FOCUS = Object.freeze(['seimbang', 'serang', 'bertahan', 'fisik', 'teknik', 'taktik']);
 export const TRAINING_INTENSITY = Object.freeze(['ringan', 'normal', 'berat']);
-export const DEFAULT_TRAINING = Object.freeze({ focus: 'seimbang', intensity: 'normal' });
+// Beban latihan (17 Nov, permintaan pengguna: pilih berapa persen latihan & istirahat). load 0–100 =
+// porsi hari non-laga yang dipakai berlatih (sisanya istirahat). intensity lama diturunkan dari load
+// supaya jalur lama (klub AI, liga tanpa hari demi hari) tetap sama.
+export const DEFAULT_TRAINING = Object.freeze({ focus: 'seimbang', intensity: 'normal', load: 60 });
+export const LOAD_STEP = 5;
+export const intensityOfLoad = (load) => (load < 45 ? 'ringan' : load < 75 ? 'normal' : 'berat');
+export const loadOfIntensity = (i) => ({ ringan: 35, normal: 60, berat: 85 })[i] ?? 60;
+// Hari demi hari (klub pengguna): pemulihan kondisi per hari menurut jenis hari; perkembangan stat
+// dibagi: 30% bulanan (pengalaman laga) + 70% dari hari latihan (±12,7 hari latihan/bulan pada 60%, diukur).
+export const DAILY = Object.freeze({ recoverRest: 15, recoverTraining: 1, monthlyShare: 0.3, perTrainingDay: 0.7 / 12.7 });
 const INTENSITY_GROWTH = { ringan: 0.8, normal: 1, berat: 1.25 };
 export const INTENSITY_INJURY = Object.freeze({ ringan: 0.7, normal: 1, berat: 1.4 });
 const FOCUS_STATS = {
@@ -57,6 +66,7 @@ export function trainingErrors(t) {
   if (!t || typeof t !== 'object') return ['latihan tidak valid'];
   if (!TRAINING_FOCUS.includes(t.focus)) e.push(`fokus latihan tidak dikenal: ${t.focus}`);
   if (!TRAINING_INTENSITY.includes(t.intensity)) e.push(`intensitas latihan tidak dikenal: ${t.intensity}`);
+  if (t.load !== undefined && !(Number.isInteger(t.load) && t.load >= 0 && t.load <= 100 && t.load % LOAD_STEP === 0)) e.push(`beban latihan tidak valid: ${t.load}`);
   return e;
 }
 
@@ -100,12 +110,14 @@ const ageFactor = (age) => (DEV.ageGrowth.find(([upTo]) => age <= upTo)?.[1] ?? 
 
 // Satu langkah perkembangan bulanan untuk satu pemain.
 //   starter: masuk susunan efektif · training: { focus, intensity } (klub AI: bawaan)
-export function developMonth(player, rng, { starter = true, training = DEFAULT_TRAINING } = {}) {
+//   growthScale: pengali peluang tumbuh (hari latihan & bagian bulanan hari demi hari) · decline: ikut menua
+export function developMonth(player, rng, { starter = true, training = DEFAULT_TRAINING, growthScale = 1, decline = true } = {}) {
+  if (!(growthScale >= 0 && growthScale <= 2)) throw new RangeError(`developMonth: growthScale ${growthScale}`);
   if (!Number.isInteger(player.age)) throw new TypeError(`developMonth: umur tidak valid ${player.uid}`);
   const stats = { ...player.stats };
   const keys = overallKeys(player.role);
   const head = Math.max(0, player.pot - overall(player));
-  const grow = DEV.growth * ageFactor(player.age) * (starter ? 1 : DEV.benchGrowth) * INTENSITY_GROWTH[training.intensity] * Math.min(2, head / 2);
+  const grow = DEV.growth * ageFactor(player.age) * (starter ? 1 : DEV.benchGrowth) * INTENSITY_GROWTH[training.intensity] * Math.min(2, head / 2) * growthScale;
   const focus = FOCUS_STATS[training.focus] ?? [];
   let changed = false;
   if (grow > 0) {
@@ -118,7 +130,7 @@ export function developMonth(player, rng, { starter = true, training = DEFAULT_T
       }
     }
   }
-  if (player.age >= DEV.declineFrom) {
+  if (decline && player.age >= DEV.declineFrom) {
     const q = DEV.decline * (player.age - (DEV.declineFrom - 1));
     for (const k of player.role === 'GK' ? ['refleks', ...PHYSICAL] : [...PHYSICAL, 'kontrol', 'passing']) {
       if (!Number.isFinite(stats[k])) continue;
@@ -147,4 +159,44 @@ export function retireChance(age) {
 export function recover(fit, days, intensity = 'normal') {
   if (!(days >= 0)) throw new RangeError(`recover: hari tidak valid ${days}`);
   return Math.min(100, Math.round(fit + days * DEV.recoverPerDay[intensity]));
+}
+
+// Hari latihan (17 Nov): perkembangan terkumpul, bukan undian per stat. Peluang tiap stat sama dengan
+// developMonth (× growthScale), jumlahnya ditabung di player.prog; tiap kali tabungan ≥ 1, satu stat
+// (dipilih acak sebanding peluangnya — fokus latihan lebih sering) naik +1. Rata-ratanya sama dengan
+// undian, tapi kemajuannya terlihat setiap hari (bilah "menuju +1").
+//   → { player, ups: [{ stat, to }], gained }   (gained = poin perkembangan hari ini)
+export function trainDay(player, rng, { starter = true, training = DEFAULT_TRAINING, growthScale = 1 } = {}) {
+  if (!Number.isInteger(player.age)) throw new TypeError(`trainDay: umur tidak valid ${player.uid}`);
+  if (!(growthScale >= 0 && growthScale <= 2)) throw new RangeError(`trainDay: growthScale ${growthScale}`);
+  const keys = overallKeys(player.role).filter((k) => Number.isFinite(player.stats[k]));
+  const head = Math.max(0, player.pot - overall(player));
+  const grow = DEV.growth * ageFactor(player.age) * (starter ? 1 : DEV.benchGrowth) * Math.min(2, head / 2) * growthScale;
+  const focus = FOCUS_STATS[training.focus] ?? [];
+  const chances = keys.map((k) => [k, player.stats[k] >= 20 ? 0 : Math.min(0.5, grow * (focus.length === 0 ? 1 : focus.includes(k) ? 1.8 : 0.7))]);
+  const gained = chances.reduce((a, [, c]) => a + c, 0);
+  // Tabungan awal disebar menurut uid supaya kenaikan tidak datang serentak di hari yang sama.
+  let seed0 = 0;
+  for (const ch of String(player.uid ?? player.id ?? '')) seed0 = (seed0 * 31 + ch.charCodeAt(0)) % 1000;
+  let prog = (Number.isFinite(player.prog) ? player.prog : seed0 / 1000) + gained;
+  const stats = { ...player.stats };
+  const ups = [];
+  for (let guard = 0; prog >= 1 && guard < 5; guard += 1) {
+    const total = chances.reduce((a, [, c]) => a + c, 0);
+    if (total <= 0) break;
+    let r = rng.next() * total;
+    const pick = chances.find(([, c]) => (r -= c) < 0) ?? chances[chances.length - 1];
+    stats[pick[0]] = clampStat(stats[pick[0]] + 1);
+    ups.push({ stat: pick[0], to: stats[pick[0]] });
+    prog -= 1;
+  }
+  const next = { ...player, stats, prog: Math.round(Math.min(0.999, Math.max(0, prog)) * 1000) / 1000 };
+  if (ups.length) next.pot = round1(Math.max(player.pot, overall(next)));
+  return { player: next, ups, gained };
+}
+
+// Stat yang naik antara dua versi pemain (untuk catatan harian).
+export function statUps(before, after) {
+  if (before === after) return [];
+  return Object.keys(after.stats).filter((k) => after.stats[k] > before.stats[k]).map((k) => ({ stat: k, to: after.stats[k] }));
 }

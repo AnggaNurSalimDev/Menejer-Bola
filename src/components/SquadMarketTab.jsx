@@ -3,6 +3,7 @@ import { getStyle } from '../engine/clubStyles.js';
 import { getFormation } from '../engine/formations.js';
 import { LEAGUE, clubById, overall, playerValue, buyPlayer, sellPlayer, setStarter, roleGroup, isAvailable, effectiveLineup, matchBench, wageBill, wageFor, renewContract, renewWage, restTired, setTraining, seasonLine, roleReference } from '../engine/league.js';
 import { setTacticDays, sessionOdds, CAREER } from '../engine/career.js';
+import TrainingLoad from './TrainingLoad.jsx';
 import { potentialRange, DEV, TRAINING_FOCUS, TRAINING_INTENSITY } from '../engine/development.js';
 import { AbsenceBadge, PotentialStars, FitBar } from './Status.jsx';
 import FitChip from './FitChip.jsx';
@@ -27,7 +28,7 @@ const fmt = (n) => (Math.round(n * 10) / 10).toFixed(1);
 const GROUP_LABEL = { semua: tk('Semua'), GK: tk('Kiper'), DF: tk('Belakang'), MF: tk('Tengah'), FW: tk('Depan') };
 const SORT_LABEL = { nilai: tk('Nilai'), harga: tk('Harga termurah'), selisih: tk('Paling menambah inti') };
 const BLOCK_LABEL = { [BLOCK.locked]: tk('terkunci saat laga'), [BLOCK.full]: tk('skuad penuh'), [BLOCK.budget]: tk('anggaran kurang') };
-const STAT_LABEL = {
+export const STAT_LABEL = {
   kecepatan: tk('Kecepatan'),
   akselerasi: tk('Akselerasi'),
   kelincahan: tk('Kelincahan'),
@@ -53,7 +54,6 @@ const strengthText = (p) =>
     .join(' · ');
 
 const FOCUS_LABEL = { seimbang: tk('Seimbang'), serang: tk('Menyerang'), bertahan: tk('Bertahan'), fisik: tk('Fisik'), teknik: tk('Teknik'), taktik: tk('Taktik') };
-const INTENSITY_LABEL = { ringan: tk('Ringan'), normal: tk('Normal'), berat: tk('Berat') };
 
 // Baris kecil di bawah nama pemain: umur · potensi · kondisi · statistik musim ini.
 function PlayerMeta({ league, p, withStats = true, fitKey = null, reference = null }) {
@@ -61,6 +61,12 @@ function PlayerMeta({ league, p, withStats = true, fitKey = null, reference = nu
   return (
     <span className="player-meta">
       {t('{a} th', { a: p.age })} · <PotentialStars range={potentialRange(p)} /> <FitBar fit={p.fit} /> <FitChip templateKey={fitKey} player={p} reference={reference} />
+      {Number.isFinite(p.prog) && (
+        <small className="prog-chip" title={t('Kemajuan latihan menuju +1 stat berikutnya')}>
+          {' '}
+          📈 {Math.round(p.prog * 100)}%
+        </small>
+      )}
       {line && line.apps > 0 && (
         <small>
           {' '}
@@ -156,18 +162,9 @@ export default function SquadMarketTab({ league, onChange, locked, part = 'squad
                 ))}
               </div>
             </div>
-            <div className="training-row">
-              <span className="tac-label">{t('Intensitas')}</span>
-              <div className="tac-options">
-                {TRAINING_INTENSITY.map((k) => (
-                  <button key={k} type="button" className={league.training.intensity === k ? 'is-active' : undefined} aria-pressed={league.training.intensity === k} onClick={() => onChange(setTraining(league, { intensity: k }))}>
-                    {t(INTENSITY_LABEL[k])}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <TrainingLoad league={league} onChange={onChange} locked={locked} />
             {league.career && <TacticDays league={league} onChange={onChange} locked={locked} />}
-            <p className="tac-note">{t('Berat: pemain muda berkembang ±25% lebih cepat, tapi kondisi pulih lebih lambat (9%/hari, normal 11%, ringan 13%) dan cedera latihan lebih sering. Fokus mempercepat stat terkait. Perkembangan dihitung tiap awal bulan; pemain inti berkembang lebih cepat dari cadangan; mulai usia 30 stat fisik menurun.')}</p>
+            <p className="tac-note">{t('Hari latihan: stat berkembang (fokus mempercepat stat terkait), kondisi hanya pulih +1%, ada risiko cedera. Hari istirahat: kondisi pulih +15%. Sehari setelah laga selalu pemulihan. Pemain inti berkembang lebih cepat dari cadangan; mulai usia 30 stat fisik menurun.')}</p>
           </div>
           {tired.length > 0 && (
             <div className="zone-notice tired-row">

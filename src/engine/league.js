@@ -17,7 +17,7 @@ import { TECHNICAL_STATS, GOALKEEPER_STATS, PSYCHOLOGICAL_STATS, STAT_MIN, STAT_
 import { logoErrors, defaultLogo, contrastColor } from './logo.js';
 import { INJURY, rollSeverity } from './injury.js';
 import { CLUB_DEFS, GUEST_DEFS, FOREIGN_IDS, AMATEUR_IDS, TIERS, CLUBS_PER_TIER, USER_CLUB, isGuestId } from './clubs.js';
-import { DEV, DEFAULT_TRAINING, INTENSITY_INJURY, trainingErrors, overall, rollAgePot, developMonth, retireChance, recover } from './development.js';
+import { DEV, DEFAULT_TRAINING, INTENSITY_INJURY, DAILY, intensityOfLoad, loadOfIntensity, trainingErrors, overall, rollAgePot, developMonth, retireChance, recover } from './development.js';
 import { COMP, COMP_KEYS, seasonSkeleton, SKELETON_LENGTH, stagesOf, drawPairs, koWinner, shootout, tableOf, eliteGroups, groupMatchdays, roundDate } from './calendar.js';
 import { matchRatings } from './playerStats.js';
 import { TEMPLATE_KEYS, FAMILIARITY, learnRate, effectiveUnderstanding, understandingGap, requiredUnderstanding } from './tacticTemplates.js';
@@ -522,8 +522,13 @@ export function completeWeek(league, userGoals, oppGoals, userTactics = null, re
       let fit = p.fit ?? 100;
       if (isUser && userEnergy.has(p.uid)) fit = Math.min(fit, Math.round(userEnergy.get(p.uid) * 100));
       else if (!isUser && played?.has(p.uid)) fit = Math.max(20, fit - rng.int(DEV.aiMatchCost[0], DEV.aiMatchCost[1]));
-      let q = { ...p, fit: recover(fit, days, intensity), ten: isUser ? Math.min(99, (p.ten ?? 0) + 1) : (p.ten ?? FAMILIARITY.tenureFull) };
-      if (monthTurn) q = developMonth(q, rng, { starter: starters.has(p.uid), training: isUser ? league.training : DEFAULT_TRAINING });
+      // Hari demi hari (17 Nov): kondisi klub pengguna pulih per hari di career.advanceDay (latihan /
+      // istirahat), dan 70% perkembangannya datang dari hari latihan — di sini hanya bagian bulanan.
+      let q = { ...p, fit: dailyUser ? fit : recover(fit, days, intensity), ten: isUser ? Math.min(99, (p.ten ?? 0) + 1) : (p.ten ?? FAMILIARITY.tenureFull) };
+      if (monthTurn)
+        q = dailyUser
+          ? developMonth(q, rng, { starter: starters.has(p.uid), training: { ...league.training, intensity: 'normal' }, growthScale: DAILY.monthlyShare })
+          : developMonth(q, rng, { starter: starters.has(p.uid), training: isUser ? league.training : DEFAULT_TRAINING });
       return q;
     });
     return { ...c, players };
@@ -899,6 +904,7 @@ function squadFieldErrors(p) {
   if (!(Number.isFinite(p.pot) && p.pot >= 1 && p.pot <= 20)) e.push('potensi tidak valid');
   if (!(Number.isFinite(p.fit) && p.fit >= 0 && p.fit <= 100)) e.push('kondisi tidak valid');
   if (!(Number.isInteger(p.ten) && p.ten >= 0)) e.push('lama di klub tidak valid');
+  if (p.prog !== undefined && !(p.prog >= 0 && p.prog < 1)) e.push('tabungan perkembangan tidak valid');
   if (!p.contract || !(Number.isInteger(p.contract.seasons) && p.contract.seasons >= 1 && p.contract.seasons <= LEAGUE.contractSeasons[1])) e.push('sisa kontrak tidak valid');
   else if (!(p.contract.wage > 0)) e.push('gaji tidak valid');
   return e;
@@ -995,6 +1001,9 @@ export function restTired(league, threshold = DEV.tiredBelow) {
 
 export function setTraining(league, training) {
   const t = { ...league.training, ...training };
+  // Beban (persen) & intensitas lama selalu searah.
+  if (training.load !== undefined) t.intensity = intensityOfLoad(training.load);
+  else if (training.intensity !== undefined) t.load = loadOfIntensity(training.intensity);
   const e = trainingErrors(t);
   if (e.length) throw new RangeError(`setTraining: ${e[0]}`);
   const next = { ...league, training: t };

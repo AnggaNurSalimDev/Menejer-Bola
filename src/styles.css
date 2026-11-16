@@ -2792,3 +2792,10 @@ details.fold {
 .drill-rep sub { font-size: 0.6rem; opacity: 0.8; }
 .drill-result.is-ok { color: #8fe3a5; }
 .drill-result.is-bad { color: #ff9b8f; }
+
+/* Porsi latihan (17 Nov) */
+.training-load { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+.training-load input[type='range'] { flex: 1; min-width: 140px; max-width: 320px; }
+.training-load.is-compact { font-size: 0.9rem; }
+.day-kind--istirahat { opacity: 0.75; }
+.prog-chip { opacity: 0.8; }

@@ -1232,7 +1232,7 @@ console.log('Statistik pemain, umur, potensi, kondisi, latihan (15 Nov)');
   check('laga pengguna tercatat di statistik ajang (rating dari engine)', myRows.length >= 11 && myRows.reduce((a, [, r]) => a + r[1], 0) === g.home ? [] : [`${myRows.length}`]);
   const me1 = clubById(l1, l1.userClubId);
   check('kondisi pemain yang main turun (lalu pulih per hari, maks 100)', me1.players.some((p) => p.fit < 100) && me1.players.every((p) => p.fit >= 0 && p.fit <= 100) ? [] : ['salah']);
-  check('pemulihan: 3 hari normal = +33, tidak lewat 100', recover(50, 3) === 83 && recover(90, 3) === 100 && recover(50, 3, 'berat') === 77 ? [] : ['salah']);
+  check('pemulihan (jalur lama): 3 hari normal = +33, tidak lewat 100', recover(50, 3) === 83 && recover(90, 3) === 100 && recover(50, 3, 'berat') === 77 ? [] : ['salah']);
   // Satu musim: statistik semua kasta, top skor, penghargaan.
   let lg = lg0;
   while (!seasonOver(lg)) lg = completeWeek(lg, 1, 1);
@@ -1345,6 +1345,43 @@ console.log('Uji skema = latihan (16 Nov)');
   try { CAR.saveLabResult(l, 'k2', { rows: [], started: 1, completed: 2 }); } catch { th2 = true; }
   if (!th2) e3.push('hasil mustahil diterima');
   check('uji cepat: hasil tersimpan, hasil mustahil ditolak', e3);
+}
+
+console.log('Porsi latihan & istirahat harian (17 Nov)');
+{
+  const errs = [];
+  for (const load of [0, 30, 60, 85, 100]) {
+    let acc = 0;
+    let n = 0;
+    for (let i = 0; i < 100; i += 1) {
+      const r = CAR.planDay(acc, load, false);
+      acc = r.acc;
+      if (r.kind === 'latihan') n += 1;
+      if (!(acc >= 0 && acc < 1.0001)) errs.push(`akumulator ${acc}`);
+    }
+    if (Math.abs(n - load) > 1) errs.push(`beban ${load}%: ${n} hari latihan dari 100`);
+  }
+  check('pembagian hari tepat sesuai persen (0/30/60/85/100%)', errs);
+  const e2 = [];
+  let l = CAR.withCareer(setTraining(createLeague(41), { load: 100 }));
+  if (l.training.intensity !== 'berat' || setTraining(l, { intensity: 'ringan' }).training.load !== 35) e2.push('beban ↔ intensitas tidak searah');
+  let threw = false;
+  try { setTraining(l, { load: 33 }); } catch { threw = true; }
+  if (!threw) e2.push('beban 33 diterima');
+  const kinds = new Set();
+  let ups = 0;
+  for (let i = 0; i < 40 && !seasonOver(l); i += 1) {
+    if (CAR.isMatchDay(l)) { l = CAR.closeUserRound(l, 1, 1); continue; }
+    const r = CAR.advanceDay(l);
+    for (const e of r.events) { kinds.add(e.type); if (e.type === 'latihanHarian') ups += e.ups.length + e.more; }
+    l = r.league;
+    if (r.events.some((e) => e.type === 'istirahat')) e2.push('beban 100% tapi ada hari istirahat');
+  }
+  if (!kinds.has('latihanHarian')) e2.push('tidak ada hari latihan');
+  if (CAR.careerErrors(l).length) e2.push(...CAR.careerErrors(l));
+  let l0 = CAR.withCareer(setTraining(createLeague(41), { load: 0 }));
+  for (let i = 0; i < 20; i += 1) { if (CAR.isMatchDay(l0)) { l0 = CAR.closeUserRound(l0, 1, 1); continue; } const r = CAR.advanceDay(l0); if (r.events.some((e) => e.type === 'latihanHarian')) e2.push('beban 0% tapi ada latihan'); l0 = r.league; }
+  check(`latihan harian: event terlihat (${ups} stat naik dalam ±40 hari pada 100%), 0% = istirahat penuh, guard beban`, e2.slice(0, 5));
 }
 
 console.log('Latihan skema beranimasi & penguasaan (17 Nov)');
