@@ -251,6 +251,7 @@ export function leagueErrors(league) {
   if (!league.pstats || typeof league.pstats !== 'object') e.push('statistik pemain tidak valid');
   const tac = league.tactic;
   if (!tac || !(tac.template === 'kustom' || TEMPLATE_KEYS.includes(tac.template))) e.push('template taktik tidak valid');
+  if (tac?.mastery !== undefined && (typeof tac.mastery !== 'object' || tac.mastery === null || Object.values(tac.mastery).some((v) => !(v >= 0 && v <= 100)))) e.push('penguasaan skema tidak valid');
   else for (const [k, v] of Object.entries(tac.fam ?? {})) if (!(k === 'kustom' || TEMPLATE_KEYS.includes(k)) || !(v >= 0 && v <= 100)) e.push(`keakraban ${k} tidak valid`);
   // Anggaran boleh minus (gaji melebihi pemasukan); pembelian ditolak selama minus.
   if (!Number.isFinite(league.budget)) e.push('anggaran tidak valid');

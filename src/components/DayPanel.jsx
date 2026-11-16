@@ -57,6 +57,8 @@ export function diaryText(league, e) {
       return `⬇️ ${t('Terdegradasi ke Liga {n}', { n: e.tier })}`;
     case 'ujiSkema':
       return `🧪 ${t('Latihan uji skema "{n}": pemahaman +{g} → {f}%', { n: e.name, g: e.gain, f: Math.round(e.fam) })}`;
+    case 'latihanSkema':
+      return `🏋️ ${t('Latihan skema "{n}": {ok}/{r} berhasil · penguasaan +{g} → {m}', { n: e.name, ok: e.ok, r: e.reps, g: e.gain, m: Math.round(e.mastery) })}`;
     case 'akhirMusim':
       return `🏁 ${t('Musim selesai')}`;
     default:

@@ -1,5 +1,7 @@
 import PresetLibrary from './PresetLibrary.jsx';
 import ScriptLab from './ScriptLab.jsx';
+import DrillPanel from './DrillPanel.jsx';
+import { MASTERY } from '../engine/simulation.js';
 import { useEffect, useRef, useState } from 'react';
 import ScriptEditor, { ScriptOverlay, blankScript, ACTION_LABEL } from './ScriptEditor.jsx';
 import { PITCH } from '../engine/pitch.js';
@@ -55,7 +57,7 @@ export function zoneCount(tactics, key, zone) {
   return Object.keys(tactics?.[key]?.[zone] ?? {}).length;
 }
 
-export default function ZoneBoard({ players, tactics, color, locked, onSetTactics, nameOf, scriptStats = {}, groupStats = null, lab = null }) {
+export default function ZoneBoard({ players, tactics, color, locked, onSetTactics, nameOf, scriptStats = {}, groupStats = null, lab = null, drill = null }) {
   const pref = readPref();
   const [phase, setPhase] = useState(pref.phase === 'defend' ? 'defend' : 'attack');
   const [zone, setZone] = useState(ZONES.includes(pref.zone) ? pref.zone : 'lawanKiri');
@@ -66,6 +68,7 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
   const [picking, setPicking] = useState(null); // { step, action, cb } — menunggu klik titik
   const [libOpen, setLibOpen] = useState(false); // pustaka skema siap pakai
   const [labId, setLabId] = useState(null); // skema yang sedang diuji (panel Uji skema)
+  const [drillId, setDrillId] = useState(null); // skema yang sedang dilatih (panel Latihan, 17 Nov)
   const [gdraft, setGdraft] = useState(null); // Kelompok yang sedang diedit: { id, zone, memberIds }
   const svgRef = useRef(null);
   // Esc membatalkan mode memilih titik (2 Nov: pengguna mengira papan "tidak bisa diklik").
@@ -496,13 +499,19 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
                     </span>
                     <span className="scripts__stats">
                       {t('laga ini: aktif {a} · selesai {b}', { a: scriptStats[x.id]?.started ?? 0, b: scriptStats[x.id]?.completed ?? 0 })}
+                      {drill && ` · ${t('penguasaan {m}', { m: Math.round(drill.mastery?.[x.id] ?? MASTERY.default) })}`}
                       {(scriptStats[x.id]?.started ?? 0) > 0 ? ` (${Math.round((100 * (scriptStats[x.id]?.completed ?? 0)) / scriptStats[x.id].started)}%)` : ''} · {t('batal')} {scriptStats[x.id]?.aborted ?? 0} · {t('tembakan')}{' '}
                       {scriptStats[x.id]?.shots ?? 0}
                     </span>
                   </button>
+                  {drill && (
+                    <button type="button" className="link-btn" onClick={() => setDrillId(drillId === x.id ? null : x.id)} aria-expanded={drillId === x.id}>
+                      🏋️ {t('latih')}
+                    </button>
+                  )}
                   {lab && (
                     <button type="button" className="link-btn" onClick={() => setLabId(labId === x.id ? null : x.id)} aria-expanded={labId === x.id}>
-                      🧪 {t('uji')}
+                      🧪 {t('uji cepat')}
                     </button>
                   )}
                   <button type="button" className="link-btn" disabled={locked} onClick={() => setDraft(JSON.parse(JSON.stringify(x)))}>
@@ -514,6 +523,9 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
                 </li>
               ))}
             </ul>
+          )}
+          {drill && drillId && scripts.some((x) => x.id === drillId) && (
+            <DrillPanel key={drillId} script={scripts.find((x) => x.id === drillId)} drill={drill} nameOf={nameOf} onClose={() => setDrillId(null)} />
           )}
           {!draft && lab && labId && zoneScripts.some((x) => x.id === labId) && (
             <ScriptLab key={labId} script={zoneScripts.find((x) => x.id === labId)} lab={lab} nameOf={nameOf} onClose={() => setLabId(null)} />

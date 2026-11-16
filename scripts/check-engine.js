@@ -22,6 +22,7 @@ import { TICK_RATE, HALF_TICKS } from '../src/engine/constants.js';
 import * as CAR from '../src/engine/career.js';
 import { diffMatch, excitementOf, createPicker, LINES } from '../src/audio/commentary.js';
 import { createLab, labErrors, margin as labMargin, scriptKey } from '../src/engine/scriptLab.js';
+import { createDrill, DRILL } from '../src/engine/drill.js';
 import { PRESET_KEYS, PRESETS, PRESET_MEASURED, buildPreset, uniqueScriptId } from '../src/engine/scriptPresets.js';
 import { computeAnchor, PHASES } from '../src/engine/shape.js';
 import { PITCH, distance } from '../src/engine/pitch.js';
@@ -1335,25 +1336,82 @@ console.log('Uji skema = latihan (16 Nov)');
   if (scriptKey(script) === scriptKey({ ...script, steps: script.steps.slice(0, 1) })) e2.push('kunci tidak berubah saat skema diubah');
   if (labMargin(0, 0) !== null || !(labMargin(5, 10) > 0.3)) e2.push('margin salah');
   check('guard uji: pemain di luar susunan ditolak, kunci isi skema, margin', e2);
-  // Sesi latihan di karier.
+  // Hasil uji cepat tersimpan.
   const e3 = [];
   let l = CAR.withCareer(createLeague(31));
-  if (CAR.labBlocker(l) !== null) e3.push(`hari pramusim terblokir: ${CAR.labBlocker(l)}`);
-  const famBefore = l.tactic.fam?.kustom ?? 30;
-  const fitBefore = starterPlayers(l)[0].fit;
-  l = CAR.labSession(l, 'uji');
-  if (!((l.tactic.fam.kustom ?? 0) > famBefore)) e3.push('pemahaman tidak naik');
-  if (!(starterPlayers(l)[0].fit < fitBefore || fitBefore <= 20)) e3.push('kondisi tidak turun');
-  if (CAR.labBlocker(l) !== 'sudah') e3.push('bisa uji dua kali sehari');
-  let th = false;
-  try { CAR.labSession(l, 'uji'); } catch { th = true; }
-  if (!th) e3.push('labSession tanpa guard');
   l = CAR.saveLabResult(l, 'k1', { rows: [], started: 4, completed: 1 });
   if (l.career.labResults.k1.completed !== 1 || CAR.careerErrors(l).length) e3.push('hasil tidak tersimpan');
   let th2 = false;
   try { CAR.saveLabResult(l, 'k2', { rows: [], started: 1, completed: 2 }); } catch { th2 = true; }
   if (!th2) e3.push('hasil mustahil diterima');
-  check('uji skema di karier: sesi latihan sekali/hari, pemahaman naik, kondisi turun, hasil tersimpan', e3);
+  check('uji cepat: hasil tersimpan, hasil mustahil ditolak', e3);
+}
+
+console.log('Latihan skema beranimasi & penguasaan (17 Nov)');
+{
+  const tm = createDemoTeams(3);
+  const st0 = createSimulation(tm.home, tm.away, 1, {}).getState();
+  const pl = st0.players.filter((p) => p.teamId === 'home');
+  const base = buildPreset('pemainKetiga', 'kiri', pl).script;
+  // 1) Drill 10 ulangan berjalan sampai selesai; skema diubah di tengah → versi baru.
+  const errs = [];
+  let script = base;
+  const d = createDrill({ home: tm.home, tactics: st0.teams.home.tactics, getScript: () => script, formation: '4-3-3', seed: 5 });
+  let g = 0;
+  while (!d.done() && g++ < 6000) {
+    const r = d.tick();
+    if (!r.frame || r.frame.p.length < 20) errs.push('bingkai tidak lengkap');
+    if (d.results().length === 4 && script === base) script = { ...base, steps: base.steps.map((stp) => ({ ...stp, actions: stp.actions.map((ac) => (ac.type === 'lari' ? { ...ac, point: { x: ac.point.x - 3, y: ac.point.y } } : ac)) })) };
+  }
+  const res = d.results();
+  if (!d.done() || res.length !== DRILL.reps) errs.push(`ulangan ${res.length}/${DRILL.reps}`);
+  if (d.versions().length !== 2) errs.push(`versi ${d.versions().length} ≠ 2`);
+  if (res.some((r) => !['selesai', 'bolaHilang', 'bolaMati', 'batal', 'tidakMulai'].includes(r.reason) || r.ok !== (r.reason === 'selesai'))) errs.push('alasan tidak konsisten');
+  if (res.filter((r) => r.version === 1).length === 0) errs.push('versi baru tidak pernah dipakai');
+  check(`drill 10 ulangan, perubahan di tengah = versi 2 (${res.filter((r) => r.ok).length}/10 berhasil, ${g} tick)`, errs.slice(0, 5));
+  // 2) setupDrill: guard & posisi.
+  const e2 = [];
+  const sim = createSimulation(tm.home, tm.away, 2, {});
+  for (let i = 0; i < 80; i += 1) sim.step();
+  const sd = sim.setupDrill({ teamId: 'home', holderId: base.holderId, zone: 'lawanKiri' });
+  if (sd.ball.ownerId !== base.holderId || sd.ball.restartKind !== null || sd.pauseTicks !== 0) e2.push('bola tidak di pemegang / masih bola mati');
+  for (const bad of [{ teamId: 'x', holderId: base.holderId, zone: 'lawanKiri' }, { teamId: 'home', holderId: 'away-1', zone: 'lawanKiri' }, { teamId: 'home', holderId: base.holderId, zone: 'tengah' }]) {
+    let th = false;
+    try { sim.setupDrill(bad); } catch { th = true; }
+    if (!th) e2.push(`diterima: ${JSON.stringify(bad)}`);
+  }
+  check('setupDrill: bola di kaki pemegang, tanpa bola mati, guard tim/pemegang/zona', e2);
+  // 3) Penguasaan: makin dikuasai makin sering berhasil (drill, 4 formasi × 10 ulangan).
+  const rate = (m) => {
+    let ok = 0;
+    let n = 0;
+    for (const f of DRILL.formations) {
+      const dd = createDrill({ home: tm.home, tactics: st0.teams.home.tactics, getScript: () => base, formation: f, seed: 9, mastery: { [base.id]: m } });
+      let k = 0;
+      while (!dd.done() && k++ < 6000) dd.tick();
+      for (const r of dd.results()) { n += 1; if (r.ok) ok += 1; }
+    }
+    return ok / n;
+  };
+  const r0 = rate(0);
+  const r100 = rate(100);
+  check(`penguasaan 0 → ${Math.round(r0 * 100)}% · 100 → ${Math.round(r100 * 100)}% (harus naik)`, r100 > r0 + 0.1 ? [] : ['tidak naik cukup']);
+  // 4) Sesi latihan di karier.
+  const e4 = [];
+  let l = CAR.withCareer(createLeague(31));
+  if (CAR.labBlocker(l) !== null) e4.push(`hari pramusim terblokir: ${CAR.labBlocker(l)}`);
+  const fitBefore = starterPlayers(l)[0].fit;
+  const before = CAR.masteryOf(l, 's1');
+  l = CAR.drillSession(l, { scriptId: 's1', name: 'Uji', results: [{ ok: true }, { ok: false }, { ok: true }] });
+  if (!(CAR.masteryOf(l, 's1') > before)) e4.push('penguasaan tidak naik');
+  if (!(starterPlayers(l)[0].fit < fitBefore || fitBefore <= 20)) e4.push('kondisi tidak turun');
+  if (CAR.labBlocker(l) !== 'sudah') e4.push('bisa latihan dua kali sehari');
+  let th = false;
+  try { CAR.drillSession(l, { scriptId: 's1', name: 'Uji', results: [{ ok: true }] }); } catch { th = true; }
+  if (!th) e4.push('drillSession tanpa guard');
+  if (leagueErrors({ ...l, tactic: { ...l.tactic, mastery: { a: 140 } } }).length === 0) e4.push('penguasaan 140 diterima');
+  if (CAR.careerErrors(l).length || leagueErrors(l).length) e4.push('liga tidak valid');
+  check('latihan di karier: sekali/hari, penguasaan naik, kondisi turun, validasi', e4);
 }
 
 console.log('Hari demi hari & karier manajer (16 Nov)');

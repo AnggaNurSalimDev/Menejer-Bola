@@ -1492,6 +1492,25 @@ export const UNDERSTANDING = Object.freeze({
   dropLine: 1, // meter: blok bertahan mundur
 });
 
+// Penguasaan skema (17 Nov, keputusan pengguna: hasil latihan = penguasaan per skema). Skema yang
+// belum dilatih lebih canggung: kadang tidak dimulai walau syarat terpenuhi, kadang batal di tengah.
+// Penalti × (1 − penguasaan/100): penguasaan 100 = sama persis dengan sebelum fitur ini.
+// options.scriptMastery { idTim: { idSkema: 0–100 } }; tim tanpa peta = tidak terpengaruh (klub AI).
+// Kotak zona untuk drill (bingkai tim, meter; tim menyerang ke x besar, kiri = y kecil). Sedikit
+// menjauh dari garis supaya bola tidak langsung keluar.
+export const DRILL_ZONES = Object.freeze({
+  sendiriKiri: Object.freeze({ x: [12, 46], y: [4, 30] }),
+  sendiriKanan: Object.freeze({ x: [12, 46], y: [38, 64] }),
+  lawanKiri: Object.freeze({ x: [58, 96], y: [4, 30] }),
+  lawanKanan: Object.freeze({ x: [58, 96], y: [38, 64] }),
+});
+
+export const MASTERY = Object.freeze({
+  default: 40, // skema pengguna yang belum pernah dilatih
+  startMiss: 0.35,
+  stepAbort: 0.12,
+});
+
 function driftTarget(target, playerId, tick, d) {
   const bucket = Math.floor(tick / UNDERSTANDING.driftTicks);
   const angle = hash01(`${playerId}:${bucket}:a`) * Math.PI * 2;
@@ -1529,6 +1548,13 @@ export function createSimulation(home, away, seed, options = {}) {
   const understanding = { ...(options.understanding ?? {}) };
   for (const [id, d] of Object.entries(understanding)) if (!(d >= 0 && d <= 1)) throw new RangeError(`createSimulation: kekurangan pemahaman ${id} di luar 0–1 (${d})`);
   const gap = (teamId) => understanding[teamId] ?? 0;
+  const mastery = { ...(options.scriptMastery ?? {}) };
+  for (const [id, m] of Object.entries(mastery)) {
+    if (!m || typeof m !== 'object') throw new TypeError(`createSimulation: penguasaan skema ${id} tidak valid`);
+    for (const [sid, v] of Object.entries(m)) if (!(v >= 0 && v <= 100)) throw new RangeError(`createSimulation: penguasaan ${sid} di luar 0–100 (${v})`);
+  }
+  // Kecanggungan 0–1 sebuah skema: 0 = dikuasai penuh / tim tanpa peta penguasaan.
+  const clumsy = (teamId, scriptId) => (mastery[teamId] ? 1 - (mastery[teamId][scriptId] ?? MASTERY.default) / 100 : 0);
   if (!(injuryScale >= 0)) throw new RangeError(`createSimulation: injuryScale tidak valid ${injuryScale}`);
   const injuryRng = createRng((seed * 7919 + 104729) % 2147483647);
   if (options.startSentOff?.length) {
@@ -1986,6 +2012,11 @@ export function createSimulation(home, away, seed, options = {}) {
             endScript('aborted');
             continue;
           }
+          // Belum dikuasai: langkah baru bisa gagal dieksekusi.
+          if (!res.ended && res.run && res.run.step > run.step && clumsy(id, run.id) > 0 && hash01(`${run.id}:${tick}:kuasa`) < MASTERY.stepAbort * clumsy(id, run.id)) {
+            endScript('aborted');
+            continue;
+          }
           if (res.ended) {
             team.script = run;
             endScript('aborted');
@@ -2003,6 +2034,11 @@ export function createSimulation(home, away, seed, options = {}) {
           let started = tryStartScript(scripts, { tick, ownerId: holderNow.id, zone, anchorOf, byId, cooldowns: team.scriptCooldowns });
           // Kurang paham: pemain tidak "membaca" bahwa skema seharusnya dimulai.
           if (started && gap(id) > 0 && hash01(`${started.id}:${tick}`) < UNDERSTANDING.scriptMiss * gap(id)) {
+            team.scriptCooldowns = { ...(team.scriptCooldowns ?? {}), [started.id]: tick + SCRIPT.cooldownTicks };
+            started = null;
+          }
+          // Belum dikuasai: pemain kadang tidak sigap memulai skema.
+          if (started && clumsy(id, started.id) > 0 && hash01(`${started.id}:${tick}:kuasaMulai`) < MASTERY.startMiss * clumsy(id, started.id)) {
             team.scriptCooldowns = { ...(team.scriptCooldowns ?? {}), [started.id]: tick + SCRIPT.cooldownTicks };
             started = null;
           }
@@ -3172,6 +3208,56 @@ export function createSimulation(home, away, seed, options = {}) {
     return state;
   }
 
+  function setScriptMastery(teamId, map) {
+    if (!teamIds.includes(teamId)) throw new RangeError(`setScriptMastery: tim tidak dikenal ${teamId}`);
+    if (map === null) {
+      delete mastery[teamId];
+      return state;
+    }
+    for (const [sid, v] of Object.entries(map)) if (!(v >= 0 && v <= 100)) throw new RangeError(`setScriptMastery: ${sid} di luar 0–100`);
+    mastery[teamId] = { ...map };
+    return state;
+  }
+
+  // Drill (17 Nov): letakkan semua pemain di posisi bentuknya untuk bola di zona tertentu, bola di kaki
+  // pemegang, lalu permainan berjalan dari situ (tanpa kick-off / bola mati). Dipakai latihan skema.
+  //   teamId: tim penyerang · holderId: pemegang bola · zone: zona skema (bingkai tim)
+  function setupDrill({ teamId, holderId, zone }) {
+    if (!teamIds.includes(teamId)) throw new RangeError(`setupDrill: tim tidak dikenal ${teamId}`);
+    if (!DRILL_ZONES[zone]) throw new RangeError(`setupDrill: zona tidak dikenal ${zone}`);
+    if (state.period !== 'first' && state.period !== 'second') throw new Error(`setupDrill: hanya saat babak berjalan (${state.period})`);
+    const holder = state.players.find((p) => p.id === holderId);
+    if (!holder || holder.teamId !== teamId) throw new RangeError(`setupDrill: pemegang ${holderId} bukan pemain ${teamId}`);
+    const otherId = teamIds.find((x) => x !== teamId);
+    const ar = state.teams[teamId].attacksRight;
+    const box = DRILL_ZONES[zone];
+    const toPitch = (pt) => (ar ? { x: pt.x, y: pt.y } : { x: PITCH.length - pt.x, y: PITCH.width - pt.y });
+    const clampBox = (pt) => ({ x: Math.min(box.x[1], Math.max(box.x[0], pt.x)), y: Math.min(box.y[1], Math.max(box.y[0], pt.y)) });
+    // Titik bola: posisi alami pemegang untuk bola di tengah zona, dijepit ke dalam zona.
+    const center = { x: (box.x[0] + box.x[1]) / 2, y: (box.y[0] + box.y[1]) / 2 };
+    const weights0 = zoneWeights(center);
+    const tactics = state.teams[teamId].activeTactics;
+    const anchorAt = (p, ballPitch, phase, tac, w) => computeAnchor({ ...p, slot: zonedSlot(p, tac, phase === 'attack' ? 'in' : 'out', w) }, ballPitch, p.attacksRight, phase);
+    const natural = toTeamFrame(anchorAt(holder, toPitch(center), 'attack', tactics, weights0), ar);
+    const ballTeam = clampBox(natural);
+    const ballPitch = toPitch(ballTeam);
+    const weights = zoneWeights(ballTeam);
+    const oppTactics = state.teams[otherId].activeTactics;
+    const oppWeights = zoneWeights(toTeamFrame(ballPitch, state.teams[otherId].attacksRight));
+    const players = state.players.map((p) => {
+      const spot =
+        p.id === holderId ? ballPitch : p.teamId === teamId ? anchorAt(p, ballPitch, 'attack', tactics, weights) : anchorAt(p, ballPitch, 'defend', oppTactics, oppWeights);
+      return { ...p, x: spot.x, y: spot.y, vx: 0, vy: 0, target: spot, task: p.id === holderId ? 'hold' : 'shape', tackleCooldown: 0, reactionDelay: 0, runCooldown: 0 };
+    });
+    const teams = Object.fromEntries(teamIds.map((id) => [id, { ...state.teams[id], ...emptyTeamRoles(), script: null, scriptCooldowns: {} }]));
+    const ball = { ...createInitialBall(teamId), x: ballPitch.x, y: ballPitch.y, ownerId: holderId, restartKind: null, restartTeamId: null, lastTouchTeamId: teamId, heldTicks: 0 };
+    const next = { ...state, players, teams, ball, pauseTicks: 0, pauseReason: null, pauseElapsed: 0, incident: null, whistle: null, possessionTeamId: teamId, periodTick: 0 };
+    const errors = validateMatchState(next);
+    if (errors.length > 0) throw new Error(`setupDrill: state tidak valid:\n- ${errors.join('\n- ')}`);
+    state = next;
+    return state;
+  }
+
   return {
     getState: () => state,
     step,
@@ -3181,5 +3267,7 @@ export function createSimulation(home, away, seed, options = {}) {
     setTactics,
     setUnderstanding,
     getUnderstanding: (teamId) => understanding[teamId] ?? 0,
+    setScriptMastery,
+    setupDrill,
   };
 }

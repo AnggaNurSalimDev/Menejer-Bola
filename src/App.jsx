@@ -1,4 +1,8 @@
-import { withCareer, closeUserRound, isMatchDay, nextUserMatch, labBlocker, labSession, saveLabResult } from './engine/career.js';
+import { drillGain } from './engine/drill.js';
+import { MASTERY } from './engine/simulation.js';
+import { learnRate } from './engine/tacticTemplates.js';
+import { starterPlayers } from './engine/league.js';
+import { withCareer, closeUserRound, isMatchDay, nextUserMatch, labBlocker, drillSession, saveLabResult, masteryOf } from './engine/career.js';
 import MusicControl from './components/MusicControl.jsx';
 import { diffMatch, excitementOf, createPicker } from './audio/commentary.js';
 import { playSound, setMatchActive, setExcitement } from './audio/hub.js';
@@ -185,6 +189,8 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
       applyUserTactics(sim, lg.userTactics);
       // Pemahaman taktik (15 Nov): kekurangan pemahaman tim pengguna untuk taktik yang terpasang.
       sim.setUnderstanding('home', understandingFor(lg, complexityOf(sim.getState().teams.home.tactics)).gap);
+      // Penguasaan skema (17 Nov): skema yang belum dilatih lebih canggung.
+      sim.setScriptMastery('home', lg.tactic.mastery ?? {});
       return {
         home: m.home,
         away: m.away,
@@ -557,6 +563,7 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
   // Uji skema (16 Nov): skuad & taktik laga yang sedang disiapkan; di karier = sesi latihan.
   // Memakai setLeague (bukan changeLeague) supaya laga tidak dibangun ulang dan panel uji tidak tertutup.
   const [friendlyLab, setFriendlyLab] = useState({});
+  const [friendlyMastery, setFriendlyMastery] = useState({});
   const labProps = (() => {
     const st = simulation.getState();
     const midMatch = st.tick > 0 && breakState?.period !== 'fulltime';
@@ -566,16 +573,10 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
       getTactics: () => simulation.getState().teams.home.tactics,
       gap: inCareer ? understandingFor(league, complexityOf(st.teams.home.tactics)).gap : 0,
       career: inCareer,
-      blocker: midMatch ? 'berjalan' : league ? (leagueMatch ? labBlocker(league) : 'tanpaLaga') : null,
-      onSession: (name) => {
-        if (!inCareer) return true;
-        try {
-          setLeague(labSession(leagueRef.current, name));
-          return true;
-        } catch {
-          return false;
-        }
-      },
+      // Uji cepat (17 Nov): alat ukur gratis, tanpa efek latihan.
+      blocker: midMatch ? 'berjalan' : league && !leagueMatch ? 'tanpaLaga' : null,
+      mastery: inCareer ? (league.tactic.mastery ?? {}) : friendlyMastery,
+      onSession: () => true,
       // Gabungan hasil uji timmu untuk satu preset pustaka (semua sisi/versi), atau null.
       byPreset: (pk) => {
         const all = Object.values(league ? (leagueRef.current.career.labResults ?? {}) : friendlyLab).filter((r) => r.preset === pk);
@@ -586,6 +587,39 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
       onSave: (key, entry) => {
         if (league) setLeague(saveLabResult(leagueRef.current, key, entry));
         else setFriendlyLab((m) => ({ ...m, [key]: entry }));
+      },
+    };
+  })();
+
+  // Latihan skema beranimasi (17 Nov): sesi latihan hari itu; hasil = penguasaan skema.
+  const drillProps = (() => {
+    const st = simulation.getState();
+    const midMatch = st.tick > 0 && breakState?.period !== 'fulltime';
+    const inCareer = Boolean(league && leagueMatch);
+    return {
+      home,
+      getTactics: () => simulation.getState().teams.home.tactics,
+      gap: labProps.gap,
+      mastery: labProps.mastery,
+      learnRate: inCareer ? learnRate(starterPlayers(league)) : 1,
+      career: inCareer,
+      blocker: midMatch ? 'berjalan' : league ? (leagueMatch ? labBlocker(league) : 'tanpaLaga') : null,
+      onFinish: ({ scriptId, name, results }) => {
+        if (inCareer) {
+          try {
+            const next = drillSession(leagueRef.current, { scriptId, name, results });
+            setLeague(next);
+            // Laga berikutnya memakai penguasaan baru tanpa membangun ulang laga (panel tetap terbuka).
+            simulation.setScriptMastery('home', next.tactic.mastery ?? {});
+            return masteryOf(next, scriptId);
+          } catch {
+            return null;
+          }
+        }
+        const cur = friendlyMastery[scriptId] ?? MASTERY.default;
+        const val = Math.min(100, Math.round((cur + drillGain(results)) * 10) / 10);
+        setFriendlyMastery((m) => ({ ...m, [scriptId]: val }));
+        return val;
       },
     };
   })();
@@ -774,6 +808,7 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
           view={tab === 'subs' ? 'subs' : 'tactics'}
           templates={templateProps}
           lab={labProps}
+          drill={drillProps}
         />
         {breakState?.period === 'halftime' && (
           <div className="team-break">

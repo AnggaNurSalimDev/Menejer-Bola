@@ -62,7 +62,7 @@ export default function ScriptLab({ script, lab, nameOf, onClose }) {
     setError(null);
     let l;
     try {
-      l = createLab({ home: lab.home, tactics: lab.getTactics(), script, gap: lab.gap, seed: (Date.now() % 100000) + 1 });
+      l = createLab({ home: lab.home, tactics: lab.getTactics(), script, gap: lab.gap, mastery: lab.mastery ?? null, seed: (Date.now() % 100000) + 1 });
     } catch (e) {
       setError(e.message.replace(/^createLab: /, ''));
       return;
@@ -95,7 +95,7 @@ export default function ScriptLab({ script, lab, nameOf, onClose }) {
     <div className="script-lab">
       <div className="scripts__head">
         <h5>
-          🧪 {t('Uji skema')}: {script.name}
+          🧪 {t('Uji cepat')}: {script.name}
         </h5>
         <button type="button" className="lane-reset" onClick={onClose}>
           {t('Tutup')}
@@ -103,7 +103,7 @@ export default function ScriptLab({ script, lab, nameOf, onClose }) {
       </div>
       <p className="tac-note">
         {t('Skema ini saja yang dipasang, dengan skuad & taktikmu sekarang, melawan {f} ({n} laga tiap formasi, ±{s} detik). Pemahaman tim ikut dihitung.', { f: LAB.formations.join(', '), n: LAB.matchesPer, s: LAB.formations.length * LAB.matchesPer })}
-        {lab.career && ` ${t('Di karier, uji = sesi latihan hari ini: pemahaman taktik naik sedikit, kondisi pemain inti −3%. Sekali per hari latihan.')}`}
+        {` ${t('Uji cepat hanya mengukur (tanpa efek latihan, bisa kapan saja). Untuk meningkatkan skema, pakai 🏋️ latih.')}`}
       </p>
       {run ? (
         <div className="lab-progress">

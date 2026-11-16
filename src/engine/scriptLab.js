@@ -75,7 +75,7 @@ function reasonOf(st) {
   return 'batal';
 }
 
-export function createLab({ home, tactics, script, gap = 0, seed = 1, matchesPer = LAB.matchesPer }) {
+export function createLab({ home, tactics, script, gap = 0, seed = 1, matchesPer = LAB.matchesPer, mastery = null }) {
   if (!(Number.isInteger(matchesPer) && matchesPer >= 1)) throw new RangeError(`createLab: laga per formasi ${matchesPer}`);
   const err = labErrors({ home, tactics, script });
   if (err.length) throw new RangeError(`createLab: ${err[0]}`);
@@ -95,7 +95,7 @@ export function createLab({ home, tactics, script, gap = 0, seed = 1, matchesPer
     // Nama lawan tidak boleh sama dengan nama punggung pengguna (keunikan per laga).
     const used = new Set([...home.players, ...(home.bench ?? [])].map((p) => p.shortName));
     const opp = addBench(createTeam({ id: 'away', name: m.formation, colors: OPP_COLORS, formation: m.formation, quality, seed: m.seed, usedShortNames: used }), { seed: m.seed + 5, quality, usedShortNames: used });
-    sim = createSimulation(home, opp, m.seed, { aiTeams: ['away'] });
+    sim = createSimulation(home, opp, m.seed, { aiTeams: ['away'], ...(mastery ? { scriptMastery: { home: mastery } } : {}) });
     sim.setTactics('home', { ...tactics, scripts: [{ ...script }] });
     if (gap > 0) sim.setUnderstanding('home', gap);
     st = sim.getState();

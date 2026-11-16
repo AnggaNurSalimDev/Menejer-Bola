@@ -2780,3 +2780,15 @@ details.fold {
 @media (prefers-reduced-motion: reduce) { .goal-banner__confetti { display: none; } .goal-banner { animation: none; } }
 .comment-line { min-height: 1.6em; }
 .comment-line:empty { border-color: transparent; background: transparent; }
+
+/* Latihan skema (17 Nov) */
+.drill-panel .script-actions button.is-active { outline: 2px solid #ffd43b; }
+.drill-plan line { stroke: rgba(255, 212, 59, 0.7); stroke-width: 0.35; stroke-dasharray: 1 0.8; }
+.drill-plan circle { fill: none; stroke: #ffd43b; stroke-width: 0.35; }
+.drill-reps { display: flex; gap: 4px; flex-wrap: wrap; }
+.drill-rep { display: inline-grid; place-items: center; min-width: 26px; height: 26px; border-radius: 6px; font-weight: 700; }
+.drill-rep.is-ok { background: #1f4d2c; color: #8fe3a5; }
+.drill-rep.is-bad { background: #4d1f1f; color: #ff9b8f; }
+.drill-rep sub { font-size: 0.6rem; opacity: 0.8; }
+.drill-result.is-ok { color: #8fe3a5; }
+.drill-result.is-bad { color: #ff9b8f; }

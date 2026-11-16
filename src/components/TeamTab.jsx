@@ -188,7 +188,7 @@ function EnergyBar({ value }) {
 }
 
 // view = 'tactics' (racik strategi) | 'subs' (pergantian) — dua tab terpisah sejak 14 Nov supaya tidak perlu gulir jauh.
-export default function TeamTab({ state, teamId, simulation, onChange, namesById, view = 'tactics', templates = null, lab = null }) {
+export default function TeamTab({ state, teamId, simulation, onChange, namesById, view = 'tactics', templates = null, lab = null, drill = null }) {
   if (view !== 'tactics' && view !== 'subs') throw new RangeError(`TeamTab: view tidak dikenal ${view}`);
   const [outId, setOutId] = useState(null);
   const [inId, setInId] = useState(null);
@@ -538,7 +538,7 @@ export default function TeamTab({ state, teamId, simulation, onChange, namesById
           summary={zoneSummary}
           defaultOpen={!narrow}
         >
-          <ZoneBoard players={onPitch} tactics={team.tactics} color={shirt} locked={locked} onSetTactics={setTactic} nameOf={name} scriptStats={state.stats.scriptById?.[teamId] ?? {}} groupStats={state.stats.groups?.[teamId] ?? null} lab={lab} />
+          <ZoneBoard players={onPitch} tactics={team.tactics} color={shirt} locked={locked} onSetTactics={setTactic} nameOf={name} scriptStats={state.stats.scriptById?.[teamId] ?? {}} groupStats={state.stats.groups?.[teamId] ?? null} lab={lab} drill={drill} />
         </Fold>
 
         <Fold id="setpieces" className="strategy__setpieces" title={t('Bola mati')} summary={`${t('pojok')} ${t(CORNER_LABEL[team.tactics.corner])} · ${t('tendangan bebas')} ${t(FREE_KICK_LABEL[team.tactics.freeKick])}`} defaultOpen={!narrow}>

@@ -28,6 +28,8 @@ import { roundDate, koWinner } from './calendar.js';
 import { DEV, INTENSITY_INJURY } from './development.js';
 import { FAMILIARITY, learnRate, iqOf, TEMPLATE_KEYS } from './tacticTemplates.js';
 import { rollSeverity } from './injury.js';
+import { MASTERY } from './simulation.js';
+import { drillGain } from './drill.js';
 import {
   LEAGUE,
   TIERS,
@@ -76,6 +78,7 @@ export const CAREER = Object.freeze({
   board: Object.freeze({ start: 60, pull: 0.25, perPoint: 2.5, posStep: 4, minGames: 5, sackBelow: 15, sackMinGames: 8, warnBelow: 30, relegationSackBelow: 45, koLoss: -3, trophy: 15, carry: 0.5, carryBase: 30 }),
   switchBudget: Object.freeze({ 1: 60, 2: 35, 3: 20 }),
   labFitCost: 3,
+  masteryMax: 40,
   labResultsMax: 24,
 });
 
@@ -334,9 +337,12 @@ export function chooseAfterSack(league, clubId) {
 
 // ---------------------------------------------------------------- jadwal latihan taktik
 
-// ---------------------------------------------------------------- uji skema = sesi latihan (16 Nov)
+// ---------------------------------------------------------------- latihan skema (17 Nov)
+//   Uji cepat (scriptLab) gratis tanpa efek. Latihan beranimasi (drill.js) = sesi latihan hari itu:
 //   syarat: hari latihan (bukan hari laga / pemulihan), sekali per hari, tidak ada keputusan tertunda
-//   efek  : pemahaman template aktif +sesi "biasa" × kecepatan belajar; kondisi pemain inti −labFitCost
+//   efek  : penguasaan skema itu += (3 per ulangan berhasil, 1 per gagal) × kecepatan belajar;
+//           kondisi pemain inti −labFitCost
+//   league.tactic.mastery { idSkema: 0–100 } (belum ada = MASTERY.default)
 
 export function labBlocker(league) {
   const c = career(league);
@@ -349,22 +355,29 @@ export function labBlocker(league) {
   return null;
 }
 
-export function labSession(league, scriptName) {
+export const masteryOf = (league, scriptId) => league.tactic.mastery?.[scriptId] ?? MASTERY.default;
+
+export function drillSession(league, { scriptId, name, results }) {
   const why = labBlocker(league);
-  if (why) throw new Error(`labSession: tidak bisa uji hari ini (${why})`);
-  if (typeof scriptName !== 'string' || !scriptName) throw new TypeError('labSession: nama skema wajib');
+  if (why) throw new Error(`drillSession: tidak bisa latihan hari ini (${why})`);
+  if (typeof scriptId !== 'string' || !scriptId) throw new TypeError('drillSession: id skema wajib');
+  if (typeof name !== 'string' || !name) throw new TypeError('drillSession: nama skema wajib');
+  if (!Array.isArray(results) || results.length === 0) throw new RangeError('drillSession: belum ada ulangan');
   const c = career(league);
   const starters = starterPlayers(league);
   const xi = new Set(starters.map((p) => p.uid));
-  const key = league.tactic.template;
-  const cur = league.tactic.fam?.[key] ?? FAMILIARITY.base;
-  const val = round1(Math.min(100, cur + CAREER.session.biasa * learnRate(starters)));
+  const cur = masteryOf(league, scriptId);
+  const val = round1(Math.min(100, cur + drillGain(results) * learnRate(starters)));
+  const ok = results.filter((r) => r.ok).length;
   const clubs = league.clubs.map((cl) => (cl.id !== league.userClubId ? cl : { ...cl, players: cl.players.map((p) => (xi.has(p.uid) ? { ...p, fit: Math.max(20, (p.fit ?? 100) - CAREER.labFitCost) } : p)) }));
+  const mastery = { ...(league.tactic.mastery ?? {}), [scriptId]: val };
+  const keys = Object.keys(mastery);
+  while (keys.length > CAREER.masteryMax) delete mastery[keys.shift()];
   const next = {
     ...league,
     clubs,
-    tactic: { ...league.tactic, fam: { ...league.tactic.fam, [key]: val } },
-    career: pushDiary({ ...c, labDay: c.day }, [{ day: c.day, type: 'ujiSkema', name: scriptName, template: key, gain: round1(val - cur), fam: val }]),
+    tactic: { ...league.tactic, mastery },
+    career: pushDiary({ ...c, labDay: c.day }, [{ day: c.day, type: 'latihanSkema', name, ok, reps: results.length, gain: round1(val - cur), mastery: val }]),
   };
   assertCareer(next);
   return next;
