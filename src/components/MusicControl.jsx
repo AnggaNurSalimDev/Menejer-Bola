@@ -38,11 +38,7 @@ export default function MusicControl() {
             <input type="checkbox" checked={s.sfx} onChange={(e) => updateSound({ sfx: e.target.checked })} /> {t('Penonton & peluit')}
             <input type="range" min={0} max={1} step={0.05} value={s.sfxVolume} aria-label={t('Volume penonton')} onChange={(e) => updateSound({ sfxVolume: Number(e.target.value), sfx: true })} />
           </label>
-          <label className="sound-row">
-            <input type="checkbox" checked={s.voice} onChange={(e) => updateSound({ voice: e.target.checked })} /> {t('Suara komentator')}
-          </label>
-          {s.voice && !s.voiceAvailable && <small className="sub-warn">{t('Browser ini tidak punya suara untuk bahasa yang dipilih — komentar tampil sebagai teks saja.')}</small>}
-          <small className="tac-note">{t('Musik, penonton, dan peluit dibuat langsung oleh game (bebas hak cipta). Suara komentator memakai suara bawaan browser/perangkatmu.')}</small>
+          <small className="tac-note">{t('Musik, penonton, dan peluit dibuat langsung oleh game (bebas hak cipta).')}</small>
         </span>
       )}
     </span>

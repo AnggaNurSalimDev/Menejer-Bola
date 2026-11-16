@@ -1,23 +1,21 @@
-// Pusat suara (16 Nov): satu AudioContext untuk musik, penonton/peluit, plus suara komentator
-// (speechSynthesis bawaan browser). Pengaturan disimpan di localStorage.
+// Pusat suara (16 Nov): satu AudioContext untuk musik dan penonton/peluit. Pengaturan di localStorage.
+// (Suara komentator dicoba lalu dihapus atas permintaan pengguna, 16 Nov.)
 //
 //   ctx ─┬─ musicBus ── createMusic   (diredam 35% saat laga berjalan)
 //        └─ sfxBus ──── createCrowd   (penonton hanya berbunyi saat laga berjalan)
-//   speak(teks) ── speechSynthesis, hanya bila ada suara untuk bahasa yang dipilih (tidak memakai
-//                  suara bahasa lain yang akan salah ucap)
 
 import { createMusic } from './music.js';
 import { createCrowd } from './crowd.js';
 
 const KEY = 'menejer-bola:musik:v1';
-export const SOUND_DEFAULTS = Object.freeze({ on: true, volume: 0.5, sfx: true, sfxVolume: 0.7, voice: true });
+export const SOUND_DEFAULTS = Object.freeze({ on: true, volume: 0.5, sfx: true, sfxVolume: 0.8 });
 
 function load() {
   try {
     const v = JSON.parse(window.localStorage.getItem(KEY) ?? 'null');
     if (v && typeof v === 'object') {
       const m = { ...SOUND_DEFAULTS, ...v };
-      if (typeof m.on === 'boolean' && m.volume >= 0 && m.volume <= 1 && typeof m.sfx === 'boolean' && m.sfxVolume >= 0 && m.sfxVolume <= 1 && typeof m.voice === 'boolean') return m;
+      if (typeof m.on === 'boolean' && m.volume >= 0 && m.volume <= 1 && typeof m.sfx === 'boolean' && m.sfxVolume >= 0 && m.sfxVolume <= 1) return m;
     }
   } catch {
     /* abaikan */
@@ -37,7 +35,7 @@ const hub = {
   listeners: new Set(),
 };
 
-const snapshot = () => ({ ...hub.settings, track: hub.track, started: Boolean(hub.music?.playing()), voiceAvailable: voiceFor(hub.lang) !== null });
+const snapshot = () => ({ ...hub.settings, track: hub.track, started: Boolean(hub.music?.playing()) });
 const notify = () => hub.listeners.forEach((fn) => fn(snapshot()));
 export const subscribe = (fn) => {
   hub.listeners.add(fn);
@@ -56,7 +54,11 @@ function ensure() {
     notify();
   });
   hub.sfxBus = hub.ctx.createGain();
-  hub.sfxBus.connect(hub.ctx.destination);
+  // Penonton yang riuh bisa menumpuk; kompresor menjaga supaya tidak pecah.
+  const comp = hub.ctx.createDynamicsCompressor();
+  comp.threshold.value = -10;
+  comp.ratio.value = 6;
+  hub.sfxBus.connect(comp).connect(hub.ctx.destination);
   hub.crowd = createCrowd(hub.ctx, hub.sfxBus);
   return true;
 }
@@ -87,7 +89,6 @@ export function updateSound(patch) {
   } catch {
     /* abaikan */
   }
-  if (!hub.settings.voice) window.speechSynthesis?.cancel?.();
   apply();
 }
 
@@ -109,7 +110,6 @@ export function setLanguage(lang) {
 export function setMatchActive(on) {
   if (hub.matchActive === Boolean(on)) return;
   hub.matchActive = Boolean(on);
-  if (!on) window.speechSynthesis?.cancel?.();
   if (hub.ctx) apply();
 }
 
@@ -122,11 +122,11 @@ export function playSound(name) {
   const c = hub.crowd;
   switch (name) {
     case 'roar':
-      c.roar(1);
+      c.celebrate(1);
       break;
     case 'roarAway':
-      // Gol tim tamu: pendukungnya lebih sedikit; sisanya kecewa.
-      c.roar(0.45);
+      // Gol tim tamu: pendukungnya lebih sedikit (tetap meriah, tapi lebih kecil); sisanya kecewa.
+      c.celebrate(0.6);
       c.groan();
       break;
     case 'ooh':
@@ -145,46 +145,12 @@ export function playSound(name) {
       c.whistle('long');
       break;
     case 'whistleEnd':
-      c.whistle('end');
-      c.applause(4);
+      c.whistle('long');
+      c.applause(5);
       break;
     default:
       throw new RangeError(`playSound: bunyi tidak dikenal ${name}`);
   }
-}
-
-// ---------------------------------------------------------------- komentator bersuara
-
-export function voiceFor(lang) {
-  const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
-  if (!synth?.getVoices) return null;
-  const want = lang === 'en' ? 'en' : 'id';
-  const voices = synth.getVoices();
-  return voices.find((v) => v.lang?.toLowerCase().startsWith(want) && /google|natural|online/i.test(v.name)) ?? voices.find((v) => v.lang?.toLowerCase().startsWith(want)) ?? null;
-}
-if (typeof window !== 'undefined' && window.speechSynthesis) {
-  // Daftar suara sering baru terisi setelah event ini.
-  window.speechSynthesis.addEventListener?.('voiceschanged', notify);
-}
-
-// priority: 5 gol · 4 penalti/kartu merah · 3 kartu/babak · 2 tembakan. Kalimat penting memotong antrean.
-export function speak(text, priority) {
-  const synth = typeof window !== 'undefined' ? window.speechSynthesis : null;
-  if (!synth || !hub.settings.voice || !hub.matchActive) return false;
-  const voice = voiceFor(hub.lang);
-  if (!voice) return false;
-  if (synth.speaking || synth.pending) {
-    if (priority < 4) return false;
-    synth.cancel();
-  }
-  const u = new SpeechSynthesisUtterance(text.replace(/[–—]/g, ' ').replace(/\s+/g, ' '));
-  u.voice = voice;
-  u.lang = voice.lang;
-  u.rate = priority >= 5 ? 1.15 : 1.08;
-  u.pitch = priority >= 5 ? 1.15 : 1;
-  u.volume = Math.min(1, 0.6 + hub.settings.sfxVolume * 0.4);
-  synth.speak(u);
-  return true;
 }
 
 // Mulai saat interaksi pertama (aturan autoplay browser).

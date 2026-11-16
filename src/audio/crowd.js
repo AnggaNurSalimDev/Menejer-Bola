@@ -42,7 +42,7 @@ export function createCrowd(ctx, out) {
 
   // Lapisan dasar: gemuruh (derau coklat) + riuh suara (derau putih di pita suara manusia).
   const bedGain = ctx.createGain();
-  bedGain.gain.value = 0.2;
+  bedGain.gain.value = 0.32;
   const rumble = ctx.createBufferSource();
   rumble.buffer = brown;
   rumble.loop = true;
@@ -67,6 +67,7 @@ export function createCrowd(ctx, out) {
   let volume = 0.6;
   let active = false;
   let excitement = 0;
+  let excitementLevel = 0;
 
   function setActive(on) {
     active = Boolean(on);
@@ -81,8 +82,12 @@ export function createCrowd(ctx, out) {
     const e = clamp(x, 0, 1);
     if (Math.abs(e - excitement) < 0.02) return;
     excitement = e;
-    bedGain.gain.setTargetAtTime(0.2 + e * 0.4, ctx.currentTime, 0.6);
-    band.frequency.setTargetAtTime(650 + e * 600, ctx.currentTime, 0.6);
+    // Naik cepat (penonton bereaksi seketika), turun pelan.
+    const tc = e > excitementLevel ? 0.25 : 1.2;
+    excitementLevel = e;
+    bedGain.gain.setTargetAtTime(0.32 + e * e * 0.7, ctx.currentTime, tc);
+    band.frequency.setTargetAtTime(650 + e * 700, ctx.currentTime, tc);
+    chatterGain.gain.setTargetAtTime(0.35 + e * 0.35, ctx.currentTime, tc);
   }
 
   // Satu "gelombang" derau yang naik lalu turun.
@@ -115,6 +120,37 @@ export function createCrowd(ctx, out) {
       swell({ peak: 0.9 * s, attack: 0.25, hold: 1.6, release: 3.5, freq: 900, freqEnd: 650, q: 0.6 });
       swell({ peak: 0.5 * s, attack: 0.3, hold: 1.4, release: 3, freq: 300, freqEnd: 220, q: 0.7, buffer: brown });
     },
+    // Pesta gol: sorak besar + gemuruh + tepuk tangan panjang + tepukan berirama (3 ketuk) setelahnya.
+    celebrate(strength = 1) {
+      const s = clamp(strength, 0.2, 1);
+      swell({ peak: 1.4 * s, attack: 0.2, hold: 3, release: 4, freq: 950, freqEnd: 650, q: 0.55 });
+      swell({ peak: 0.8 * s, attack: 0.25, hold: 2.6, release: 3.5, freq: 320, freqEnd: 220, q: 0.6, buffer: brown });
+      swell({ peak: 0.5 * s, attack: 0.3, hold: 2, release: 3, freq: 2200, freqEnd: 1600, q: 1.2 });
+      this.applause(6 * s);
+      const t0 = ctx.currentTime + 4.2;
+      for (let k = 0; k < 4 * Math.round(2 * s); k += 1) {
+        const bar = Math.floor(k / 4);
+        const beat = k % 4;
+        if (beat === 3) continue; // "plok-plok-plok … " lalu jeda
+        const t = t0 + bar * 1.2 + beat * 0.28;
+        for (let n = 0; n < 14; n += 1) {
+          const tt = t + Math.random() * 0.03;
+          const src = ctx.createBufferSource();
+          src.buffer = white;
+          const f = ctx.createBiquadFilter();
+          f.type = 'bandpass';
+          f.frequency.value = 1200 + Math.random() * 1800;
+          f.Q.value = 1;
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.0001, tt);
+          g.gain.exponentialRampToValueAtTime(0.09 * s, tt + 0.004);
+          g.gain.exponentialRampToValueAtTime(0.0001, tt + 0.06);
+          src.connect(f).connect(g).connect(master);
+          src.start(tt, Math.random() * 2);
+          src.stop(tt + 0.07);
+        }
+      }
+    },
     ooh() {
       swell({ peak: 0.5, attack: 0.25, hold: 0.25, release: 1.1, freq: 520, freqEnd: 300, q: 2.5 });
     },
@@ -146,7 +182,7 @@ export function createCrowd(ctx, out) {
     whistle(kind = 'short') {
       if (!['short', 'long', 'end'].includes(kind)) throw new RangeError(`whistle: jenis ${kind}`);
       const blows = kind === 'end' ? [0, 0.45, 0.9] : [0];
-      const len = kind === 'short' ? 0.3 : kind === 'long' ? 0.9 : 0.35;
+      const len = kind === 'short' ? 0.28 : kind === 'long' ? 1.4 : 0.35;
       for (const off of blows) {
         const t = ctx.currentTime + off;
         const dur = kind === 'end' && off === 0.9 ? 1.1 : len;

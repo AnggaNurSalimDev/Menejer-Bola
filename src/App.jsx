@@ -1,7 +1,7 @@
 import { withCareer, closeUserRound, isMatchDay, nextUserMatch, labBlocker, labSession, saveLabResult } from './engine/career.js';
 import MusicControl from './components/MusicControl.jsx';
 import { diffMatch, excitementOf, createPicker } from './audio/commentary.js';
-import { playSound, speak, setMatchActive, setExcitement } from './audio/hub.js';
+import { playSound, setMatchActive, setExcitement } from './audio/hub.js';
 import Guide, { FeedbackLink, useGuide } from './components/Guide.jsx';
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import MatchView from './components/MatchView.jsx';
@@ -325,13 +325,11 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
             set(el, `🎙 ${top.text}`);
             el.dataset.until = String(state.tick + 60);
           }
-          // Di kecepatan tinggi hanya gol yang disuarakan (supaya tidak tertinggal jauh).
-          if (top.speak && top.priority >= 2 && (speedRef.current <= 2 || top.priority >= 5)) speak(top.text, top.priority);
         } else if (commentRef.current?.textContent && state.tick > Number(commentRef.current.dataset.until ?? 0)) {
           commentRef.current.textContent = '';
           commentRef.current.dataset.kind = '';
         }
-        if (state.tick % 10 === 0) setExcitement(excitementOf(state));
+        if (state.tick % 4 === 0) setExcitement(excitementOf(state));
       }
 
       if ((tabRef.current === 'team' || tabRef.current === 'subs') && state.tick % TEAM_VIEW_EVERY_TICKS === 0) setTeamView(state);
