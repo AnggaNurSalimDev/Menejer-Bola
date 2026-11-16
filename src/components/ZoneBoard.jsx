@@ -1,4 +1,5 @@
 import PresetLibrary from './PresetLibrary.jsx';
+import ScriptLab from './ScriptLab.jsx';
 import { useEffect, useRef, useState } from 'react';
 import ScriptEditor, { ScriptOverlay, blankScript, ACTION_LABEL } from './ScriptEditor.jsx';
 import { PITCH } from '../engine/pitch.js';
@@ -54,7 +55,7 @@ export function zoneCount(tactics, key, zone) {
   return Object.keys(tactics?.[key]?.[zone] ?? {}).length;
 }
 
-export default function ZoneBoard({ players, tactics, color, locked, onSetTactics, nameOf, scriptStats = {}, groupStats = null }) {
+export default function ZoneBoard({ players, tactics, color, locked, onSetTactics, nameOf, scriptStats = {}, groupStats = null, lab = null }) {
   const pref = readPref();
   const [phase, setPhase] = useState(pref.phase === 'defend' ? 'defend' : 'attack');
   const [zone, setZone] = useState(ZONES.includes(pref.zone) ? pref.zone : 'lawanKiri');
@@ -64,6 +65,7 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
   const [viewId, setViewId] = useState(null); // skema yang garisnya ditampilkan
   const [picking, setPicking] = useState(null); // { step, action, cb } — menunggu klik titik
   const [libOpen, setLibOpen] = useState(false); // pustaka skema siap pakai
+  const [labId, setLabId] = useState(null); // skema yang sedang diuji (panel Uji skema)
   const [gdraft, setGdraft] = useState(null); // Kelompok yang sedang diedit: { id, zone, memberIds }
   const svgRef = useRef(null);
   // Esc membatalkan mode memilih titik (2 Nov: pengguna mengira papan "tidak bisa diklik").
@@ -467,6 +469,7 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
               players={players}
               scripts={scripts}
               locked={locked}
+              ownResult={lab?.byPreset ?? null}
               onClose={() => setLibOpen(false)}
               onAdd={(next, added) => {
                 onSetTactics({ scripts: next }, t('Skema siap pakai ditambahkan: {n}', { n: added.map((x) => x.name).join(', ') }));
@@ -497,6 +500,11 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
                       {scriptStats[x.id]?.shots ?? 0}
                     </span>
                   </button>
+                  {lab && (
+                    <button type="button" className="link-btn" onClick={() => setLabId(labId === x.id ? null : x.id)} aria-expanded={labId === x.id}>
+                      🧪 {t('uji')}
+                    </button>
+                  )}
                   <button type="button" className="link-btn" disabled={locked} onClick={() => setDraft(JSON.parse(JSON.stringify(x)))}>
                     {t('ubah')}
                   </button>
@@ -506,6 +514,9 @@ export default function ZoneBoard({ players, tactics, color, locked, onSetTactic
                 </li>
               ))}
             </ul>
+          )}
+          {!draft && lab && labId && zoneScripts.some((x) => x.id === labId) && (
+            <ScriptLab key={labId} script={zoneScripts.find((x) => x.id === labId)} lab={lab} nameOf={nameOf} onClose={() => setLabId(null)} />
           )}
           {draft && (
             <ScriptEditor

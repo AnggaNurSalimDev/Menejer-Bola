@@ -1,4 +1,4 @@
-import { withCareer, closeUserRound, isMatchDay } from './engine/career.js';
+import { withCareer, closeUserRound, isMatchDay, nextUserMatch, labBlocker, labSession, saveLabResult } from './engine/career.js';
 import Guide, { FeedbackLink, useGuide } from './components/Guide.jsx';
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import MatchView from './components/MatchView.jsx';
@@ -8,7 +8,7 @@ import { createSimulation } from './engine/simulation.js';
 import { gameClock } from './engine/state.js';
 import { getPhilosophy } from './engine/philosophy.js';
 import { CLUB_STYLES, STYLE_KEYS, styleTactics, randomStyle } from './engine/clubStyles.js';
-import { buildMatchTeams, seasonOver, clubLogo, matchReportFromState, effectiveLineup, absentPlayers, clubById, userFixture, currentRound, isKnockout } from './engine/league.js';
+import { buildMatchTeams, seasonOver, clubLogo, matchReportFromState, effectiveLineup, absentPlayers, clubById, isKnockout } from './engine/league.js';
 import { roundLabel, dateLabel } from './components/compLabels.js';
 import { roundDate } from './engine/calendar.js';
 import { INJURY } from './engine/injury.js';
@@ -165,8 +165,9 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
 
   const { home, away, simulation, namesById, awayStyle, leagueMatch } = useMemo(() => {
     const lg = leagueRef.current;
-    if (matchKind === 'liga' && lg && !seasonOver(lg) && userFixture(lg)) {
-      const m = buildMatchTeams(lg);
+    const nm = matchKind === 'liga' && lg && !seasonOver(lg) && lg.career ? nextUserMatch(lg) : null;
+    if (nm) {
+      const m = buildMatchTeams(lg, nm.fixture);
       const names = new Map([...m.home.players, ...m.home.bench, ...m.away.players, ...m.away.bench].map((p) => [p.id, p.shortName]));
       const sim = createSimulation(m.home, m.away, matchSeed, { aiTeams: ['away'], startEnergy: m.startEnergy });
       const st = sim.getState();
@@ -181,11 +182,11 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
         simulation: sim,
         awayStyle: m.opponent.style,
         leagueMatch: {
-          key: `${lg.season}-${lg.week}-${leagueMatchId}`,
+          key: `${lg.season}-${nm.index}-${leagueMatchId}`,
           season: lg.season,
-          week: lg.week,
-          label: `${roundLabel(currentRound(lg), clubById(lg, lg.userClubId).tier)} · ${dateLabel(roundDate(lg.season, lg.week), { year: false })}`,
-          knockout: isKnockout(currentRound(lg)),
+          week: nm.index,
+          label: `${roundLabel(lg.calendar[nm.index], clubById(lg, lg.userClubId).tier)} · ${dateLabel(nm.date, { year: false })}`,
+          knockout: isKnockout(lg.calendar[nm.index]),
           userIsHome: m.userIsHome,
           opponentId: m.opponent.id,
           // Absen (14 Nov): pemain inti pengguna yang diganti otomatis, dan pemain lawan yang absen.
@@ -495,6 +496,42 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
   }
 
   // Data panel template (15 Nov). Karier: skuad yang bisa main + bursa; persahabatan: pemain di laga.
+  // Uji skema (16 Nov): skuad & taktik laga yang sedang disiapkan; di karier = sesi latihan.
+  // Memakai setLeague (bukan changeLeague) supaya laga tidak dibangun ulang dan panel uji tidak tertutup.
+  const [friendlyLab, setFriendlyLab] = useState({});
+  const labProps = (() => {
+    const st = simulation.getState();
+    const midMatch = st.tick > 0 && breakState?.period !== 'fulltime';
+    const inCareer = Boolean(league && leagueMatch);
+    return {
+      home,
+      getTactics: () => simulation.getState().teams.home.tactics,
+      gap: inCareer ? understandingFor(league, complexityOf(st.teams.home.tactics)).gap : 0,
+      career: inCareer,
+      blocker: midMatch ? 'berjalan' : league ? (leagueMatch ? labBlocker(league) : 'tanpaLaga') : null,
+      onSession: (name) => {
+        if (!inCareer) return true;
+        try {
+          setLeague(labSession(leagueRef.current, name));
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      // Gabungan hasil uji timmu untuk satu preset pustaka (semua sisi/versi), atau null.
+      byPreset: (pk) => {
+        const all = Object.values(league ? (leagueRef.current.career.labResults ?? {}) : friendlyLab).filter((r) => r.preset === pk);
+        if (!all.length) return null;
+        return { started: all.reduce((a, r) => a + r.started, 0), completed: all.reduce((a, r) => a + r.completed, 0) };
+      },
+      saved: (key) => (league ? (leagueRef.current.career.labResults?.[key] ?? null) : (friendlyLab[key] ?? null)),
+      onSave: (key, entry) => {
+        if (league) setLeague(saveLabResult(leagueRef.current, key, entry));
+        else setFriendlyLab((m) => ({ ...m, [key]: entry }));
+      },
+    };
+  })();
+
   const templateProps = (() => {
     if (league) {
       const club = clubById(league, league.userClubId);
@@ -676,6 +713,7 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
           namesById={namesById}
           view={tab === 'subs' ? 'subs' : 'tactics'}
           templates={templateProps}
+          lab={labProps}
         />
         {breakState?.period === 'halftime' && (
           <div className="team-break">

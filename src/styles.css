@@ -2729,3 +2729,18 @@ details.fold {
 .career-table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
 .career-table th, .career-table td { padding: 4px 8px; border-bottom: 1px solid #24352b; text-align: left; vertical-align: top; }
 .career-table tr.is-user td { background: #18261d; }
+
+/* Uji skema (16 Nov) */
+.script-lab { border: 1px solid #3b5a46; border-radius: 8px; padding: 8px 10px; margin: 6px 0 10px; display: grid; gap: 6px; }
+.lab-progress { display: flex; gap: 8px; align-items: center; }
+.lab-table td, .lab-table th { white-space: nowrap; }
+.lab-replay svg { width: 100%; max-width: 640px; display: block; }
+.lab-pitch { fill: #1f5d2c; }
+.lab-line { stroke: rgba(255, 255, 255, 0.55); stroke-width: 0.3; fill: none; }
+.lab-dot--home { fill: #4dabf7; }
+.lab-dot--key { fill: #ffd43b; stroke: #1b1b1b; stroke-width: 0.3; }
+.lab-dot--away { fill: #ff6b6b; }
+.lab-ball { fill: #ffffff; stroke: #000; stroke-width: 0.2; }
+.lab-label { font-size: 2.2px; fill: #fff; text-anchor: middle; paint-order: stroke; stroke: #000; stroke-width: 0.4px; }
+.lab-phase { font-size: 0.75rem; border: 1px solid #3b5a46; border-radius: 999px; padding: 0 6px; opacity: 0.7; }
+.lab-phase.is-on { border-color: #ffd43b; color: #ffd43b; opacity: 1; }

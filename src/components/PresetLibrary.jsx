@@ -14,7 +14,7 @@ export const MAX_SCRIPTS = 16;
 const tk = (s) => s;
 const SIDE_LABEL = { kiri: tk('kiri'), kanan: tk('kanan') };
 
-export default function PresetLibrary({ zone, players, scripts, locked, onAdd, onClose }) {
+export default function PresetLibrary({ zone, players, scripts, locked, onAdd, onClose, ownResult = null }) {
   const area = zoneArea(zone);
   const side = zoneSide(zone);
   const keys = PRESET_KEYS.filter((k) => PRESETS[k].area === area).sort((a, b) => PRESETS[a].level - PRESETS[b].level || a.localeCompare(b));
@@ -59,6 +59,10 @@ export default function PresetLibrary({ zone, players, scripts, locked, onAdd, o
                 </span>
                 <b>{t(pr.label)}</b>
                 {Number.isFinite(rate) && <span className={`template-meta ${rate < 0.1 ? 'neg' : ''}`}>{t('berhasil ±{p}%', { p: Math.round(rate * 100) })}</span>}
+                {(() => {
+                  const own = ownResult?.(key);
+                  return own && own.started > 0 ? <span className="template-meta">· {t('uji timmu {p}% ({c}/{s})', { p: Math.round((100 * own.completed) / own.started), c: own.completed, s: own.started })}</span> : null;
+                })()}
               </div>
               <p className="tac-note">{t(pr.idea)}</p>
               {here.error ? (

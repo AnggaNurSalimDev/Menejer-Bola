@@ -75,6 +75,8 @@ export const CAREER = Object.freeze({
   // Dewan: harapan poin/laga dari peringkat kekuatan; kepercayaan ditarik ke target posisi.
   board: Object.freeze({ start: 60, pull: 0.25, perPoint: 2.5, posStep: 4, minGames: 5, sackBelow: 15, sackMinGames: 8, warnBelow: 30, relegationSackBelow: 45, koLoss: -3, trophy: 15, carry: 0.5, carryBase: 30 }),
   switchBudget: Object.freeze({ 1: 60, 2: 35, 3: 20 }),
+  labFitCost: 3,
+  labResultsMax: 24,
 });
 
 export const STOP_EVENTS = Object.freeze(['cedera', 'tawaran', 'dipecat', 'peringatan']);
@@ -174,6 +176,7 @@ export function careerErrors(league) {
     } else e.push('event tertunda tidak dikenal');
   }
   if (!Array.isArray(c.diary)) e.push('catatan harian tidak valid');
+  if (c.labResults !== undefined && (typeof c.labResults !== 'object' || c.labResults === null || Object.values(c.labResults).some((r) => !(r.completed >= 0 && r.completed <= r.started)))) e.push('hasil uji skema tidak valid');
   if (!Array.isArray(c.tacticDays) || c.tacticDays.length > CAREER.tacticDaysMax || c.tacticDays.some((d) => !WEEKDAYS.includes(d)) || new Set(c.tacticDays).size !== c.tacticDays.length) e.push('hari latihan taktik tidak valid');
   return e;
 }
@@ -330,6 +333,56 @@ export function chooseAfterSack(league, clubId) {
 }
 
 // ---------------------------------------------------------------- jadwal latihan taktik
+
+// ---------------------------------------------------------------- uji skema = sesi latihan (16 Nov)
+//   syarat: hari latihan (bukan hari laga / pemulihan), sekali per hari, tidak ada keputusan tertunda
+//   efek  : pemahaman template aktif +sesi "biasa" × kecepatan belajar; kondisi pemain inti −labFitCost
+
+export function labBlocker(league) {
+  const c = career(league);
+  if (c.pending) return 'keputusan';
+  if (seasonOver(league)) return 'musim';
+  const kind = dayKind(league);
+  if (kind === 'laga') return 'hariLaga';
+  if (kind === 'pemulihan') return 'pemulihan';
+  if (c.labDay === c.day) return 'sudah';
+  return null;
+}
+
+export function labSession(league, scriptName) {
+  const why = labBlocker(league);
+  if (why) throw new Error(`labSession: tidak bisa uji hari ini (${why})`);
+  if (typeof scriptName !== 'string' || !scriptName) throw new TypeError('labSession: nama skema wajib');
+  const c = career(league);
+  const starters = starterPlayers(league);
+  const xi = new Set(starters.map((p) => p.uid));
+  const key = league.tactic.template;
+  const cur = league.tactic.fam?.[key] ?? FAMILIARITY.base;
+  const val = round1(Math.min(100, cur + CAREER.session.biasa * learnRate(starters)));
+  const clubs = league.clubs.map((cl) => (cl.id !== league.userClubId ? cl : { ...cl, players: cl.players.map((p) => (xi.has(p.uid) ? { ...p, fit: Math.max(20, (p.fit ?? 100) - CAREER.labFitCost) } : p)) }));
+  const next = {
+    ...league,
+    clubs,
+    tactic: { ...league.tactic, fam: { ...league.tactic.fam, [key]: val } },
+    career: pushDiary({ ...c, labDay: c.day }, [{ day: c.day, type: 'ujiSkema', name: scriptName, template: key, gain: round1(val - cur), fam: val }]),
+  };
+  assertCareer(next);
+  return next;
+}
+
+// Hasil uji disimpan per isi skema (scriptLab.scriptKey); uji ulang menambah data.
+export function saveLabResult(league, key, entry) {
+  if (typeof key !== 'string' || !key) throw new TypeError('saveLabResult: kunci wajib');
+  if (!entry || !Array.isArray(entry.rows) || !(entry.started >= 0) || !(entry.completed >= 0) || entry.completed > entry.started) throw new RangeError('saveLabResult: hasil tidak valid');
+  const c = career(league);
+  const all = { ...(c.labResults ?? {}) };
+  delete all[key];
+  const keys = Object.keys(all);
+  while (keys.length >= CAREER.labResultsMax) delete all[keys.shift()];
+  const next = { ...league, career: { ...c, labResults: { ...all, [key]: entry } } };
+  assertCareer(next);
+  return next;
+}
 
 export function setTacticDays(league, days) {
   if (!Array.isArray(days)) throw new TypeError('setTacticDays: harus daftar');

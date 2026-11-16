@@ -20,6 +20,7 @@ import { AMATEUR_IDS } from '../src/engine/clubs.js';
 import { marketRows, weakestStarters, squadCounts, strengths, BLOCK } from '../src/engine/market.js';
 import { TICK_RATE, HALF_TICKS } from '../src/engine/constants.js';
 import * as CAR from '../src/engine/career.js';
+import { createLab, labErrors, margin as labMargin, scriptKey } from '../src/engine/scriptLab.js';
 import { PRESET_KEYS, PRESETS, PRESET_MEASURED, buildPreset, uniqueScriptId } from '../src/engine/scriptPresets.js';
 import { computeAnchor, PHASES } from '../src/engine/shape.js';
 import { PITCH, distance } from '../src/engine/pitch.js';
@@ -1277,6 +1278,52 @@ console.log('Statistik pemain, umur, potensi, kondisi, latihan (15 Nov)');
   }
   const after = TIERS.map((t) => avgTier(w, t));
   check(`3 musim: rata-rata nilai tiap kasta bergeser < 1 (${before.map((x) => x.toFixed(2)).join('/')} → ${after.map((x) => x.toFixed(2)).join('/')})`, before.every((b, i) => Math.abs(after[i] - b) < 1) && leagueErrors(w).length === 0 ? [] : ['bergeser']);
+}
+
+console.log('Uji skema = latihan (16 Nov)');
+{
+  const errs = [];
+  const tm = createDemoTeams(3);
+  const sim0 = createSimulation(tm.home, tm.away, 1, {});
+  const st0 = sim0.getState();
+  const players = st0.players.filter((p) => p.teamId === 'home');
+  const script = buildPreset('bangunSayap', 'kiri', players).script;
+  const lab = createLab({ home: tm.home, tactics: st0.teams.home.tactics, script, seed: 3, matchesPer: 1 });
+  let guard = 0;
+  while (!lab.step(3000) && guard++ < 100);
+  const r = lab.result();
+  if (!r.done || r.matches !== 4) errs.push('uji tidak selesai 4 laga');
+  if (!(r.started > 0)) errs.push('skema tidak pernah mulai');
+  for (const row of r.rows) {
+    const sum = Object.values(row.reasons).reduce((a, b) => a + b, 0);
+    if (sum !== row.started || row.completed !== row.reasons.selesai) errs.push(`${row.formation}: alasan ${sum} ≠ mulai ${row.started}`);
+  }
+  if (r.replays.ok && r.replays.ok.frames.some((f) => f.p.some(([, , x, y]) => x < -5 || x > 110 || y < -5 || y > 73))) errs.push('bingkai di luar lapangan');
+  check(`uji 4 laga: ${r.completed}/${r.started} berhasil, alasan lengkap, tayangan ulang valid`, errs);
+  const e2 = [];
+  if (labErrors({ home: tm.home, tactics: st0.teams.home.tactics, script: { ...script, holderId: 'home-zzz' } }).length === 0) e2.push('pemain asing diterima');
+  if (scriptKey(script) === scriptKey({ ...script, steps: script.steps.slice(0, 1) })) e2.push('kunci tidak berubah saat skema diubah');
+  if (labMargin(0, 0) !== null || !(labMargin(5, 10) > 0.3)) e2.push('margin salah');
+  check('guard uji: pemain di luar susunan ditolak, kunci isi skema, margin', e2);
+  // Sesi latihan di karier.
+  const e3 = [];
+  let l = CAR.withCareer(createLeague(31));
+  if (CAR.labBlocker(l) !== null) e3.push(`hari pramusim terblokir: ${CAR.labBlocker(l)}`);
+  const famBefore = l.tactic.fam?.kustom ?? 30;
+  const fitBefore = starterPlayers(l)[0].fit;
+  l = CAR.labSession(l, 'uji');
+  if (!((l.tactic.fam.kustom ?? 0) > famBefore)) e3.push('pemahaman tidak naik');
+  if (!(starterPlayers(l)[0].fit < fitBefore || fitBefore <= 20)) e3.push('kondisi tidak turun');
+  if (CAR.labBlocker(l) !== 'sudah') e3.push('bisa uji dua kali sehari');
+  let th = false;
+  try { CAR.labSession(l, 'uji'); } catch { th = true; }
+  if (!th) e3.push('labSession tanpa guard');
+  l = CAR.saveLabResult(l, 'k1', { rows: [], started: 4, completed: 1 });
+  if (l.career.labResults.k1.completed !== 1 || CAR.careerErrors(l).length) e3.push('hasil tidak tersimpan');
+  let th2 = false;
+  try { CAR.saveLabResult(l, 'k2', { rows: [], started: 1, completed: 2 }); } catch { th2 = true; }
+  if (!th2) e3.push('hasil mustahil diterima');
+  check('uji skema di karier: sesi latihan sekali/hari, pemahaman naik, kondisi turun, hasil tersimpan', e3);
 }
 
 console.log('Hari demi hari & karier manajer (16 Nov)');

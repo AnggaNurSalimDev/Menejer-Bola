@@ -1271,8 +1271,11 @@ export function setStarter(league, number, uid) {
 
 // Tim untuk engine: pengguna selalu id 'home' (taktik tersimpan merujuk 'home-<uid>'), lawan 'away'.
 // Nomor punggung starter = nomor posisi formasi; cadangan 12+. Nama punggung dijaga unik per laga.
-export function buildMatchTeams(league) {
-  const f = userFixture(league);
+// fixture (16 Nov): laga pengguna berikutnya yang sudah terjadwal (hari demi hari: babak berjalan bisa
+// babak klub lain, tapi tab Taktik tetap menyiapkan laga pengguna berikutnya).
+export function buildMatchTeams(league, fixture = userFixture(league)) {
+  const f = fixture;
+  if (f && f.home !== league.userClubId && f.away !== league.userClubId) throw new RangeError('buildMatchTeams: laga bukan milik klub pengguna');
   if (!f) throw new Error('buildMatchTeams: tidak ada laga tersisa');
   const user = userClub(league);
   const opp = clubById(league, f.home === user.id ? f.away : f.home);
