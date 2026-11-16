@@ -13,6 +13,22 @@ export const sampleUrls = Object.fromEntries(
   SAMPLE_NAMES.map((n) => [n, Object.entries(found).find(([path]) => path.split('/').pop().split('.')[0] === n)?.[1] ?? null]),
 );
 
+// data: URI diurai sendiri (tanpa fetch): halaman artifact/itch bisa punya Content-Security-Policy
+// yang melarang fetch ke data: — di situ rekaman diam-diam gagal dimuat (bug 16 Nov).
+export function dataUriBytes(uri) {
+  const m = /^data:[^;,]*(;base64)?,(.*)$/s.exec(uri);
+  if (!m) throw new RangeError('dataUriBytes: bukan data URI');
+  if (!m[1]) return new TextEncoder().encode(decodeURIComponent(m[2])).buffer;
+  const bin = atob(m[2]);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
+async function bytesOf(url) {
+  if (url.startsWith('data:')) return dataUriBytes(url);
+  return (await fetch(url)).arrayBuffer();
+}
+
 // → { ambience: AudioBuffer|null, goal, ooh }. Berkas rusak dilewati (bukan menggagalkan semua).
 export async function loadSamples(ctx) {
   if (!ctx || typeof ctx.decodeAudioData !== 'function') throw new TypeError('loadSamples: AudioContext tidak valid');
@@ -22,10 +38,10 @@ export async function loadSamples(ctx) {
     out[n] = null;
     if (!url) continue;
     try {
-      const buf = await (await fetch(url)).arrayBuffer();
-      out[n] = await ctx.decodeAudioData(buf);
-    } catch {
+      out[n] = await ctx.decodeAudioData(await bytesOf(url));
+    } catch (e) {
       out[n] = null;
+      if (typeof console !== 'undefined') console.warn(`[suara] rekaman ${n} gagal dimuat:`, e?.message ?? e);
     }
   }
   return out;
