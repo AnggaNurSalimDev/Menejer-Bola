@@ -1,3 +1,4 @@
+import { withCareer, closeUserRound, isMatchDay } from './engine/career.js';
 import Guide, { FeedbackLink, useGuide } from './components/Guide.jsx';
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import MatchView from './components/MatchView.jsx';
@@ -7,7 +8,7 @@ import { createSimulation } from './engine/simulation.js';
 import { gameClock } from './engine/state.js';
 import { getPhilosophy } from './engine/philosophy.js';
 import { CLUB_STYLES, STYLE_KEYS, styleTactics, randomStyle } from './engine/clubStyles.js';
-import { buildMatchTeams, completeWeek, seasonOver, clubLogo, matchReportFromState, effectiveLineup, absentPlayers, clubById, userFixture, simulateToUserMatch, currentRound, isKnockout } from './engine/league.js';
+import { buildMatchTeams, seasonOver, clubLogo, matchReportFromState, effectiveLineup, absentPlayers, clubById, userFixture, currentRound, isKnockout } from './engine/league.js';
 import { roundLabel, dateLabel } from './components/compLabels.js';
 import { roundDate } from './engine/calendar.js';
 import { INJURY } from './engine/injury.js';
@@ -122,7 +123,7 @@ const STAT_ROWS = [
 // slot (null = hanya laga persahabatan); onSaveLeague(liga) → true bila tersimpan.
 // Liga "diam" (15 Nov): babak tanpa klub pengguna langsung dihitung cepat, jadi babak berjalan selalu
 // berisi laga pengguna — atau musim sudah selesai.
-const atRest = (l) => (!l || seasonOver(l) || userFixture(l) ? l : simulateToUserMatch(l));
+const atRest = (l) => (l ? withCareer(l) : l);
 
 export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, onChooseLang }) {
   const chooseLang = onChooseLang;
@@ -225,11 +226,13 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
     recordedRef.current = leagueMatch.key;
     const g = breakState.stats.goals;
     const final = simulation.getState();
-    setLeague(completeWeek(lg, g.home, g.away, final.teams.home.tactics, matchReportFromState(final, 'home')));
+    setLeague(closeUserRound(lg, g.home, g.away, final.teams.home.tactics, matchReportFromState(final, 'home')));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [breakState, leagueMatch]);
 
   // Laga liga dianggap berjalan sejak mulai diputar (atau sudah lewat menit 0) sampai peluit akhir.
+  // Laga liga baru bisa dimulai di hari laganya (atau sudah berjalan).
+  const notMatchDay = Boolean(leagueMatch) && league && !isMatchDay(league) && simulation.getState().tick === 0 && breakState?.period !== 'fulltime';
   const leagueInProgress = Boolean(leagueMatch) && breakState?.period !== 'fulltime' && (running || simulation.getState().tick > 0);
 
   // Skuad liga berubah sebelum kick-off → bangun ulang laga liga dengan susunan baru.
@@ -733,9 +736,10 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
       </div>
 
       <div className="controls">
-        <button type="button" onClick={() => setRunning((r) => !r)}>
+        <button type="button" disabled={notMatchDay} title={notMatchDay ? t('Belum hari laga — majukan hari di tab Kompetisi') : undefined} onClick={() => setRunning((r) => !r)}>
           {running ? t('Jeda') : t('Lanjut')}
         </button>
+        {notMatchDay && <small className="sub-warn">{t('Belum hari laga — majukan hari di tab Kompetisi')}</small>}
         <div className="speed-group" role="group" aria-label={t('Kecepatan')}>
           {SPEEDS.map((s) => (
             <button key={s} type="button" className={s === speed ? 'is-active' : undefined} onClick={() => setSpeed(s)}>

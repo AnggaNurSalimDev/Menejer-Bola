@@ -37,7 +37,9 @@ const cleanName = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, NA
 // v5 (15 Nov): umur, potensi, kondisi (fit) per pemain; latihan tim; statistik pemain per ajang
 //   (pstats) & penghargaan akhir musim. v4 dimigrasi: umur/potensi diundi, kondisi 100, statistik kosong.
 // v6 (15 Nov): template taktik & pemahaman tim — league.tactic { template, fam }, pemain.ten (babak di klub).
-export const LEAGUE_VERSION = 6;
+// v7 (16 Nov): hari demi hari & karier manajer — league.career (lihat career.js; null = belum
+//   diisi, career.withCareer mengisinya saat dimuat). Absen antar-laga klub pengguna pindah ke undian harian.
+export const LEAGUE_VERSION = 7;
 
 export const LEAGUE = Object.freeze({
   clubs: TIERS.length * CLUBS_PER_TIER,
@@ -187,7 +189,7 @@ export function createLeague(seed = 2026, profile = {}) {
   const cup = seasonCup(top1.slice(0, 4).map((c) => c.id), [top1[0].id, top1[1].id], rng);
   const calendar = buildCalendar(signed, cup, rng);
   const income = round1(Math.max(LEAGUE.tierIncome[userDef.tier], wageBill(userDef) + LEAGUE.incomeMargin));
-  const base = { version: LEAGUE_VERSION, seed, season: 1, week: 0, userClubId: clubId, clubs: signed, calendar, cup, history: [], pstats: {}, training: { ...DEFAULT_TRAINING }, tactic: { template: 'kustom', fam: {} }, budget: LEAGUE.startBudget, income, news: [], market, userTactics: null, rngState: rng.int(1, 1e9) };
+  const base = { version: LEAGUE_VERSION, seed, season: 1, week: 0, userClubId: clubId, clubs: signed, calendar, cup, history: [], pstats: {}, training: { ...DEFAULT_TRAINING }, tactic: { template: 'kustom', fam: {} }, budget: LEAGUE.startBudget, income, news: [], market, userTactics: null, career: null, rngState: rng.int(1, 1e9) };
   const name = cleanName(profile.clubName) || def.name;
   const league = updateProfile(
     { ...base, profile: { managerName: 'Manajer', logo: defaultLogo({ name, colors: def.colors }) } },
@@ -260,6 +262,8 @@ export function leagueErrors(league) {
   }
   const names = league.clubs.map((c) => c.name.toLowerCase());
   if (new Set(names).size !== names.length) e.push('nama klub ganda');
+  // Isi karier diperiksa career.careerErrors (modul itu bergantung pada modul ini, bukan sebaliknya).
+  if (!(league.career === null || (league.career && typeof league.career === 'object'))) e.push('karier tidak valid');
   return e;
 }
 
@@ -329,8 +333,9 @@ export function migrateLeague(l) {
     if (!Array.isArray(l.clubs)) return null;
     const clubs = l.clubs.map((c) => ({ ...c, players: c.players.map((p) => ({ ...p, ten: Number.isInteger(p.ten) ? p.ten : FAMILIARITY.tenureFull })) }));
     // Taktik yang sudah dipakai selama ini = "kustom" yang sudah cukup akrab.
-    return { ...l, version: 6, clubs, tactic: { template: 'kustom', fam: { kustom: 70 } } };
+    return migrateLeague({ ...l, version: 6, clubs, tactic: { template: 'kustom', fam: { kustom: 70 } } });
   }
+  if (l.version === 6) return { ...l, version: 7, career: null };
   return l;
 }
 
@@ -491,8 +496,10 @@ export function completeWeek(league, userGoals, oppGoals, userTactics = null, re
     }
     // Absen antar-laga (semua klub): sakit, izin pribadi, cedera latihan — hanya yang sedang tersedia.
     const ab = LEAGUE.absence;
+    // Klub pengguna (16 Nov): bila hari demi hari aktif (league.career), undiannya harian di career.js.
+    const dailyUser = isUser && league.career;
     players = players.map((p) => {
-      if (p.absence) return p;
+      if (p.absence || dailyUser) return p;
       const r = rng.next();
       let out = null;
       if (r < ab.illness) out = ['sakit', rng.int(ab.illnessWeeks[0], ab.illnessWeeks[1]), null];
@@ -695,7 +702,7 @@ export function roleReference(league, tier) {
 
 export const familiarityOf = (league, key = league.tactic.template) => league.tactic.fam?.[key] ?? FAMILIARITY.base;
 
-function starterPlayers(league, club = userClub(league)) {
+export function starterPlayers(league, club = userClub(league)) {
   const lineup = effectiveLineup(club, league.userFormation).lineup;
   return Object.values(lineup).map((u) => club.players.find((p) => p.uid === u)).filter(Boolean);
 }
@@ -897,7 +904,7 @@ function squadFieldErrors(p) {
 }
 
 // Absen yang lebih lama menang (skorsing 1 laga tidak memperpendek cedera 4 pekan).
-function withAbsence(p, type, weeks, detail = null) {
+export function withAbsence(p, type, weeks, detail = null) {
   if (!ABSENCE_TYPES.includes(type)) throw new RangeError(`withAbsence: jenis tidak dikenal ${type}`);
   if (!(Number.isInteger(weeks) && weeks >= 1)) throw new RangeError(`withAbsence: lama tidak valid ${weeks}`);
   if (p.absence && p.absence.weeks >= weeks) return p;
@@ -910,7 +917,7 @@ function tickAbsence(p) {
 }
 
 // Lama absen cedera menurut tingkat (sama dengan cedera saat laga di engine).
-function injuryWeeks(severity, rng) {
+export function injuryWeeks(severity, rng) {
   const sev = String(severity).replace(/^latihan-/, '');
   const s = INJURY.severities.find((x) => x.key === sev);
   if (!s) throw new RangeError(`injuryWeeks: tingkat tidak dikenal ${severity}`);
@@ -1217,7 +1224,7 @@ function refreshMarket(market, rng) {
   return { nextId, players };
 }
 
-const userClub = (league) => clubById(league, league.userClubId);
+export const userClub = (league) => clubById(league, league.userClubId);
 const withUserClub = (league, club) => ({ ...league, clubs: league.clubs.map((c) => (c.id === club.id ? club : c)) });
 
 export function buyPlayer(league, uid) {

@@ -19,6 +19,7 @@ import { recover, developMonth, overall, retireChance, potentialRange, toStars }
 import { AMATEUR_IDS } from '../src/engine/clubs.js';
 import { marketRows, weakestStarters, squadCounts, strengths, BLOCK } from '../src/engine/market.js';
 import { TICK_RATE, HALF_TICKS } from '../src/engine/constants.js';
+import * as CAR from '../src/engine/career.js';
 import { PRESET_KEYS, PRESETS, PRESET_MEASURED, buildPreset, uniqueScriptId } from '../src/engine/scriptPresets.js';
 import { computeAnchor, PHASES } from '../src/engine/shape.js';
 import { PITCH, distance } from '../src/engine/pitch.js';
@@ -57,7 +58,7 @@ import { THROW_IN, throwRange } from '../src/engine/simulation.js';
 import { logoErrors, initials, cleanLogoText, contrastColor, defaultLogo } from '../src/engine/logo.js';
 import { readSaves, writeSlot, deleteSlot, slotSummary, SLOTS, SAVE_KEY } from '../src/saves.js';
 import { updateProfile, colorDistance } from '../src/engine/league.js';
-import { createLeague, leagueErrors, buildMatchTeams, completeWeek, standings, parseLeague, newSeason, buyPlayer, sellPlayer, setStarter, playerValue, clubById, roleGroup, clubLogo, roleReference, setActiveTemplate, understandingFor, familiarityOf, statKey, currentRound, topPlayers, restTired, setTraining, clubStrength, simulateToUserMatch, TIERS, isKnockout, userFixture, packLeague, migrateLeague, matchReportFromState, effectiveLineup, isAvailable, wageBill, renewContract, seasonOver, absentPlayers, LEAGUE } from '../src/engine/league.js';
+import { createLeague, leagueErrors, buildMatchTeams, completeWeek, standings, parseLeague, newSeason, buyPlayer, sellPlayer, setStarter, playerValue, clubById, roleGroup, clubLogo, roleReference, setActiveTemplate, understandingFor, familiarityOf, statKey, currentRound, topPlayers, restTired, setTraining, clubStrength, simulateToUserMatch, TIERS, isKnockout, userFixture, packLeague, migrateLeague, matchReportFromState, effectiveLineup, isAvailable, wageBill, renewContract, seasonOver, absentPlayers, LEAGUE, quickResult, starterPlayers } from '../src/engine/league.js';
 import { CLUB_STYLES, STYLE_KEYS, styleTactics, styleErrors, randomStyle } from '../src/engine/clubStyles.js';
 import { GROUP_ZONES, groupErrors, activeGroup, groupPassBonus, renameInGroups } from '../src/engine/groups.js';
 import { scriptErrors, renameInScripts, SCRIPT_ZONES, triggerMet, advanceScript } from '../src/engine/scripts.js';
@@ -925,7 +926,7 @@ console.log('Profil karier, logo & simpanan (14 Nov)');
   const v1 = { ...createLeague(3), version: 1 };
   delete v1.profile;
   const mig = parseLeague(JSON.stringify(v1));
-  check('liga v1 (sebelum menu utama) dimigrasi: profil bawaan, valid', mig && mig.version === 6 && mig.profile.managerName === 'Manajer' && logoErrors(mig.profile.logo).length === 0 ? [] : ['gagal']);
+  check('liga v1 (sebelum menu utama) dimigrasi: profil bawaan, valid', mig && mig.version === 7 && mig.profile.managerName === 'Manajer' && logoErrors(mig.profile.logo).length === 0 ? [] : ['gagal']);
 
   // Simpanan dengan penyimpanan tiruan.
   const mem = () => {
@@ -1095,7 +1096,7 @@ console.log('Cedera, absen, skorsing & kontrak (14 Nov)');
     delete p.yellows;
   }
   const m3 = parseLeague(JSON.stringify(v2));
-  check('liga v2 dimigrasi (lewat v3) ke v4: kontrak, pemasukan, tanpa absen', m3 && m3.version === 6 && m3.income > 0 && leagueErrors(m3).length === 0 ? [] : ['gagal']);
+  check('liga v2 dimigrasi (lewat v3) ke v4: kontrak, pemasukan, tanpa absen', m3 && m3.version === 7 && m3.income > 0 && leagueErrors(m3).length === 0 ? [] : ['gagal']);
   // Satu musim penuh: semua klub kehilangan pemain sesekali, AI juga.
   let full = createLeague(43);
   let maxAbsentAi = 0;
@@ -1195,7 +1196,7 @@ console.log('Liga 3 kasta, piala & naik-turun (15 Nov; dasar 10 Nov)');
   delete v3.history;
   v3.fixtures = [];
   const mig = migrateLeague(v3);
-  check('liga v3 (10 klub) dimigrasi ke dunia 3 kasta: valid, klub lama di Liga 1, anggaran tetap', mig && mig.version === 6 && leagueErrors(mig).length === 0 && v3.clubs.every((c) => clubById(mig, c.id).tier === 1) && mig.budget === v3.budget ? [] : mig ? leagueErrors(mig).slice(0, 2) : ['null']);
+  check('liga v3 (10 klub) dimigrasi ke dunia 3 kasta: valid, klub lama di Liga 1, anggaran tetap', mig && mig.version === 7 && leagueErrors(mig).length === 0 && v3.clubs.every((c) => clubById(mig, c.id).tier === 1) && mig.budget === v3.budget ? [] : mig ? leagueErrors(mig).slice(0, 2) : ['null']);
 }
 
 console.log('Statistik pemain, umur, potensi, kondisi, latihan (15 Nov)');
@@ -1276,6 +1277,89 @@ console.log('Statistik pemain, umur, potensi, kondisi, latihan (15 Nov)');
   }
   const after = TIERS.map((t) => avgTier(w, t));
   check(`3 musim: rata-rata nilai tiap kasta bergeser < 1 (${before.map((x) => x.toFixed(2)).join('/')} → ${after.map((x) => x.toFixed(2)).join('/')})`, before.every((b, i) => Math.abs(after[i] - b) < 1) && leagueErrors(w).length === 0 ? [] : ['bergeser']);
+}
+
+console.log('Hari demi hari & karier manajer (16 Nov)');
+{
+  const errs = [];
+  let l = CAR.withCareer(createLeague(21));
+  if (CAR.careerErrors(l).length) errs.push(...CAR.careerErrors(l));
+  if (CAR.withCareer(l) !== l) errs.push('withCareer tidak idempoten');
+  const startDay = l.career.day;
+  if (CAR.isMatchDay(l)) errs.push('liga baru langsung hari laga (harusnya pramusim)');
+  let threw = false;
+  try { CAR.closeUserRound(l, 1, 0); } catch { threw = true; }
+  if (!threw) errs.push('laga bisa dimainkan sebelum hari laga');
+  const rq = createRng(3);
+  const seen = new Set();
+  let matches = 0;
+  let prevDay = l.career.day;
+  for (let guard = 0; guard < 4000 && !seasonOver(l); guard += 1) {
+    if (l.career.pending) {
+      seen.add(l.career.pending.type);
+      l = l.career.pending.type === 'tawaran' ? CAR.answerOffer(l, false) : CAR.chooseAfterSack(l, l.career.pending.offers[0]);
+      continue;
+    }
+    if (CAR.isMatchDay(l)) {
+      const f = userFixture(l);
+      const r = quickResult(clubById(l, f.home), clubById(l, f.away), rq);
+      const home = f.home === l.userClubId;
+      l = CAR.closeUserRound(l, home ? r.home : r.away, home ? r.away : r.home);
+      matches += 1;
+      continue;
+    }
+    const r = CAR.advanceDay(l);
+    if (r.league.career.day !== prevDay + CAR.DAY) errs.push('hari tidak maju tepat satu');
+    prevDay = r.league.career.day;
+    for (const e of r.events) seen.add(e.type);
+    l = r.league;
+    const ce = CAR.careerErrors(l);
+    if (ce.length) { errs.push(...ce); break; }
+  }
+  if (!seasonOver(l)) errs.push('musim tidak selesai');
+  if (!seen.has('sesiTaktik')) errs.push('tidak ada sesi taktik semusim');
+  const st = CAR.currentStint(l);
+  if (st.w + st.d + st.l !== matches && l.career.stints.length === 1) errs.push(`rekam jejak ${st.w + st.d + st.l} ≠ laga ${matches}`);
+  check(`semusim hari demi hari: ${matches} laga, ${Math.round((l.career.day - startDay) / CAR.DAY)} hari, event: ${[...seen].join(', ')}`, errs.slice(0, 5));
+  const e2 = [];
+  const l2 = CAR.startSeason(l);
+  if (l2.season !== l.season + 1 || CAR.careerErrors(l2).length) e2.push('musim baru tidak valid', ...CAR.careerErrors(l2));
+  if (CAR.currentStint(l2).seasons.length !== CAR.currentStint(l).seasons.length + 1) e2.push('posisi akhir musim tidak tercatat');
+  check('musim baru: posisi tercatat di rekam jejak, karier valid', e2);
+  // Pindah klub.
+  const e3 = [];
+  const other = l2.clubs.find((c) => c.id !== l2.userClubId && c.tier === 2).id;
+  const moved = CAR.switchClub(l2, other, 'pindah');
+  if (moved.userClubId !== other || moved.career.stints.length !== l2.career.stints.length + 1) e3.push('tidak pindah');
+  if (!moved.career.stints.at(-2).end) e3.push('masa jabatan lama tidak ditutup');
+  if (moved.tactic.template !== 'kustom' || moved.userTactics !== null) e3.push('taktik tidak direset');
+  if (leagueErrors(moved).length || CAR.careerErrors(moved).length) e3.push(...leagueErrors(moved), ...CAR.careerErrors(moved));
+  let t3 = false;
+  try { CAR.switchClub(moved, other, 'pindah'); } catch { t3 = true; }
+  if (!t3) e3.push('pindah ke klub sendiri diterima');
+  check('pindah klub: rekam jejak, taktik direset, liga valid, guard', e3);
+  // Jadwal sesi taktik.
+  const e4 = [];
+  if (CAR.setTacticDays(l2, [1, 4]).career.tacticDays.join() !== '1,4') e4.push('hari tidak tersimpan');
+  for (const bad of [[1, 2, 3, 4], [7], [-1]]) {
+    let th = false;
+    try { CAR.setTacticDays(l2, bad); } catch { th = true; }
+    if (!th) e4.push(`diterima: ${bad}`);
+  }
+  const od = CAR.sessionOdds(starterPlayers(l2));
+  if (Math.abs(od.bagus + od.biasa + od.buruk - 1) > 0.02) e4.push('peluang sesi tidak berjumlah 1');
+  check('hari sesi taktik: tersimpan, batas 3, peluang valid', e4);
+  // Simpanan v6 → v7.
+  const e5 = [];
+  const v6 = { ...createLeague(5), version: 6 };
+  delete v6.career;
+  const m = migrateLeague(v6);
+  if (!m || m.version !== 7 || m.career !== null || leagueErrors(m).length) e5.push('migrasi v6 gagal');
+  else {
+    const w = CAR.withCareer(m);
+    if (CAR.careerErrors(w).length) e5.push(...CAR.careerErrors(w));
+  }
+  check('simpanan v6 dimigrasi ke v7 lalu karier diisi', e5);
 }
 
 console.log('Pustaka skema siap pakai (15 Nov)');

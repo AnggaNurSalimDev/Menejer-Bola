@@ -5,14 +5,12 @@ import {
   userFixture,
   clubById,
   seasonOver,
-  newSeason,
   updateProfile,
   clubLogo,
   wageBill,
   absentPlayers,
   currentRound,
   eliteTables,
-  simulateToUserMatch,
   SEASON_ROUNDS,
   TIERS,
   topPlayers,
@@ -22,6 +20,9 @@ import { stagesOf, roundDate } from '../engine/calendar.js';
 import { compLabel, stageLabel, roundLabel, scoreText, dateLabel } from './compLabels.js';
 import { newsText, AbsenceBadge } from './Status.jsx';
 import ClubLogo from './ClubLogo.jsx';
+import DayPanel from './DayPanel.jsx';
+import ManagerView from './ManagerView.jsx';
+import { startSeason } from '../engine/career.js';
 import ProfileEditor from './ProfileEditor.jsx';
 import { t, tk, getLang } from '../i18n.js';
 
@@ -41,8 +42,8 @@ const profileErrText = (m) => {
 // (klasemen tiap kasta, tiap piala, Elite, jadwal saya, sejarah juara), lalu profil klub.
 // Semua perubahan lewat fungsi murni league.js; App yang menyimpan. `locked` = laga liga sedang berjalan.
 
-const VIEWS = ['liga', 'nasional', 'ligaCup', 'elite', 'super', 'jadwal', 'sejarah'];
-const VIEW_LABEL = { jadwal: tk('Jadwal saya'), sejarah: tk('Sejarah juara') };
+const VIEWS = ['liga', 'nasional', 'ligaCup', 'elite', 'super', 'jadwal', 'manajer', 'sejarah'];
+const VIEW_LABEL = { jadwal: tk('Jadwal saya'), sejarah: tk('Sejarah juara'), manajer: tk('Profil manajer') };
 
 function FixtureRow({ league, f, userId }) {
   const name = (id) => clubById(league, id).name;
@@ -312,24 +313,14 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch }) {
             <b>{t('{n} jt', { n: league.budget })}</b> · {t('pemasukan {n} jt/pekan', { n: league.income })} · {t('gaji {n} jt/pekan', { n: wageBill(user) })}
           </p>
         </div>
-        {!over && fx && (
+        {!over && (
           <div className="league-next">
-            <span>
-              {t('Laga berikutnya')} ({roundLabel(round, user.tier)} · {dateLabel(roundDate(league.season, league.week), { year: false })}): <b>{name(fx.home)}</b> vs <b>{name(fx.away)}</b> ({fx.home === user.id ? t('kandang') : t('tandang')}) · {t('lawan bergaya')}{' '}
-              {t(CLUB_STYLES[clubById(league, fx.home === user.id ? fx.away : fx.home).style].label).toLowerCase()}
-            </span>
-            <button type="button" className="break-button" onClick={onGoMatch}>
-              {t('Ke laga')}
-            </button>
-            {tiredCount > 0 && <small className="sub-warn">⚠️ {t('{n} pemain inti kondisinya di bawah {p}% — cek tab Skuad', { n: tiredCount, p: DEV.tiredBelow })}</small>}
-          </div>
-        )}
-        {!over && !fx && (
-          <div className="league-next">
-            <span>{t('Klubmu tidak main di babak ini.')}</span>
-            <button type="button" className="break-button" disabled={locked} onClick={() => onChange(simulateToUserMatch(league))}>
-              {t('Lewati ke laga berikutnya')}
-            </button>
+            {fx && tiredCount > 0 && <small className="sub-warn">⚠️ {t('{n} pemain inti kondisinya di bawah {p}% — cek tab Skuad', { n: tiredCount, p: DEV.tiredBelow })}</small>}
+            {fx && (
+              <span className="tac-note">
+                {t('lawan bergaya')} {t(CLUB_STYLES[clubById(league, fx.home === user.id ? fx.away : fx.home).style].label).toLowerCase()}
+              </span>
+            )}
           </div>
         )}
         {over && (
@@ -337,12 +328,15 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch }) {
             <span>
               🏆 {t('Juara Liga {n}', { n: user.tier })}: <b>{ownTable[0].name}</b> · {t('{c} finis ke-{p}', { c: user.name, p: ownTable.findIndex((r) => r.id === user.id) + 1 })}
             </span>
-            <button type="button" className="break-button" onClick={() => onChange(simulateToUserMatch(newSeason(league)))}>
+            <button type="button" className="break-button" disabled={locked || Boolean(league.career.pending)} onClick={() => onChange(startSeason(league))}>
               {t('Mulai musim {s}', { s: league.season + 1 })}
             </button>
           </div>
         )}
       </section>
+
+      {!over && <DayPanel league={league} onChange={onChange} onGoMatch={onGoMatch} locked={locked} />}
+      {over && league.career.pending && <DayPanel league={league} onChange={onChange} onGoMatch={onGoMatch} locked={locked} />}
 
       {(league.news.length > 0 || absentPlayers(user).length > 0) && (
         <section className="league-news" aria-label={t('Kabar klub')}>
@@ -423,6 +417,7 @@ export default function LeagueTab({ league, onChange, locked, onGoMatch }) {
       {view === 'elite' && <EliteView league={league} userId={user.id} />}
       {view === 'jadwal' && <MySchedule league={league} userId={user.id} />}
       {view === 'sejarah' && <HistoryView league={league} />}
+      {view === 'manajer' && <ManagerView league={league} />}
 
       <section aria-label={t('Profil klub')}>
         <h4>{t('Profil klub')}</h4>

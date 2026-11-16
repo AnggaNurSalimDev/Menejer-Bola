@@ -2,9 +2,10 @@ import { useState } from 'react';
 import App from './App.jsx';
 import MainMenu from './components/MainMenu.jsx';
 import { readSaves, writeSlot, deleteSlot } from './saves.js';
-import { seasonOver, userFixture, simulateToUserMatch } from './engine/league.js';
+import { withCareer, careerErrors } from './engine/career.js';
 
-const atRest = (l) => (seasonOver(l) || userFixture(l) ? l : simulateToUserMatch(l));
+// Hari demi hari (16 Nov): karier diisi bila belum ada / rusak; babak AI berjalan lewat advanceDay.
+const atRest = (l) => withCareer(l.career && careerErrors(l).length > 0 ? { ...l, career: null } : l);
 import { readLang, setLang, LANGS } from './i18n.js';
 
 // Akar aplikasi (14 Nov): menu utama dulu, lalu layar permainan untuk satu slot karier (atau laga

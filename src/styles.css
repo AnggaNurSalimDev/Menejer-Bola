@@ -2705,3 +2705,27 @@ details.fold {
 .feedback-link { color: inherit; text-decoration: none; border: 1px solid #3b5a46; border-radius: 6px; padding: 2px 8px; font-size: 0.85rem; white-space: nowrap; }
 .feedback-link:hover { background: #24352b; }
 .team-venue { font-size: 0.72rem; opacity: 0.7; border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; }
+
+/* Hari demi hari & profil manajer (16 Nov) */
+.day-panel { border: 1px solid #2f4a39; border-radius: 10px; padding: 10px 12px; margin: 8px 0 12px; background: #141c17; display: grid; gap: 8px; }
+.day-head { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; }
+.day-today { display: inline-flex; gap: 8px; align-items: baseline; }
+.day-kind { font-size: 0.75rem; border: 1px solid #3b5a46; border-radius: 999px; padding: 0 8px; opacity: 0.85; }
+.day-kind--laga { border-color: #d9a400; color: #ffd25a; }
+.day-kind--pemulihan { opacity: 0.6; }
+.day-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.day-feed { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 0.9rem; }
+.day-feed small { opacity: 0.6; margin-right: 6px; }
+.day-feed .is-bad { color: #ff9b8f; }
+.day-feed .is-good { color: #8fe3a5; }
+.day-decision { border: 1px solid #d9a400; border-radius: 8px; padding: 10px 12px; background: #1d1a10; }
+.day-decision.is-bad { border-color: #c0504d; background: #211312; }
+.day-decision h4 { margin: 0 0 8px; }
+.offer-compare { border-collapse: collapse; margin-bottom: 6px; }
+.offer-compare th, .offer-compare td { padding: 2px 14px 2px 0; text-align: left; }
+.offer-compare td:first-child { opacity: 0.7; }
+.offer-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.manager-view h5 { margin: 14px 0 4px; }
+.career-table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+.career-table th, .career-table td { padding: 4px 8px; border-bottom: 1px solid #24352b; text-align: left; vertical-align: top; }
+.career-table tr.is-user td { background: #18261d; }

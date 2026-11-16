@@ -16,7 +16,7 @@ export const ITCH_PAGE = '';
 
 const STEPS = [
   { title: tk('Selamat datang, Manajer'), body: tk('Kamu meracik taktik, lalu menonton laga berjalan sendiri. Pemain bergerak menurut posisi, instruksi, dan stat mereka — kamu tidak mengendalikan pemain langsung.') },
-  { title: tk('1 · Tonton laga'), body: tk('Tab Pertandingan: tekan Lanjut untuk mulai, pilih kecepatan 1×–8×. Saat jeda babak kamu bisa mengubah taktik dan mengganti pemain.') },
+  { title: tk('1 · Tonton laga'), body: tk('Hari berjalan di tab Kompetisi: tekan ▶ Lanjut ke laga — berhenti sendiri saat ada kejadian (cedera, tawaran klub) atau hari laga. Di hari laga, tab Pertandingan: tekan Lanjut, pilih kecepatan 1×–8×; saat jeda babak taktik & pemain bisa diubah.') },
   { title: tk('2 · Mulai dari template'), body: tk('Tab Taktik → Template taktik. Pilih yang ★ sedikit dulu (mis. 4-4-2 Klasik). Template rumit butuh pemahaman tim yang tinggi; kalau belum paham, rencana sering tidak jalan.') },
   { title: tk('3 · Strategi detil itu opsional'), body: tk('Di bawah papan zona ada Strategi detil. Tidak wajib. Kalau mau mencoba, pakai 📚 Pustaka skema — skema siap pakai yang tinggal ditambahkan.') },
   { title: tk('4 · Rawat skuad'), body: tk('Tab Skuad: pemain lelah, cedera, dan kontrak. Tombol istirahatkan memindahkan pemain lelah ke cadangan. Tab Bursa untuk membeli pemain.') },

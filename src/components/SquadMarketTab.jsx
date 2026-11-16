@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { getStyle } from '../engine/clubStyles.js';
 import { getFormation } from '../engine/formations.js';
 import { LEAGUE, clubById, overall, playerValue, buyPlayer, sellPlayer, setStarter, roleGroup, isAvailable, effectiveLineup, matchBench, wageBill, wageFor, renewContract, renewWage, restTired, setTraining, seasonLine, roleReference } from '../engine/league.js';
+import { setTacticDays, sessionOdds, CAREER } from '../engine/career.js';
 import { potentialRange, DEV, TRAINING_FOCUS, TRAINING_INTENSITY } from '../engine/development.js';
 import { AbsenceBadge, PotentialStars, FitBar } from './Status.jsx';
 import FitChip from './FitChip.jsx';
@@ -165,6 +166,7 @@ export default function SquadMarketTab({ league, onChange, locked, part = 'squad
                 ))}
               </div>
             </div>
+            {league.career && <TacticDays league={league} onChange={onChange} locked={locked} />}
             <p className="tac-note">{t('Berat: pemain muda berkembang ±25% lebih cepat, tapi kondisi pulih lebih lambat (9%/hari, normal 11%, ringan 13%) dan cedera latihan lebih sering. Fokus mempercepat stat terkait. Perkembangan dihitung tiap awal bulan; pemain inti berkembang lebih cepat dari cadangan; mulai usia 30 stat fisik menurun.')}</p>
           </div>
           {tired.length > 0 && (
@@ -341,6 +343,37 @@ export default function SquadMarketTab({ league, onChange, locked, part = 'squad
         </section>
         )}
       </div>
+    </div>
+  );
+}
+
+// Hari sesi latihan taktik (16 Nov): dipilih pengguna, hasil acak menurut kecerdasan pemain inti.
+const WEEKDAY_LABEL = [tk('Min'), tk('Sen'), tk('Sel'), tk('Rab'), tk('Kam'), tk('Jum'), tk('Sab')];
+function TacticDays({ league, onChange, locked }) {
+  const days = new Set(league.career.tacticDays);
+  const toggle = (d) => {
+    const next = new Set(days);
+    if (next.has(d)) next.delete(d);
+    else next.add(d);
+    if (next.size > CAREER.tacticDaysMax) return;
+    onChange(setTacticDays(league, [...next]));
+  };
+  const xi = Object.values(league.clubs.find((c) => c.id === league.userClubId).lineup);
+  const starters = league.clubs.find((c) => c.id === league.userClubId).players.filter((p) => xi.includes(p.uid));
+  const odds = sessionOdds(starters);
+  return (
+    <div className="training-row">
+      <span className="tac-label">{t('Sesi taktik')}</span>
+      <div className="tac-options">
+        {[1, 2, 3, 4, 5, 6, 0].map((d) => (
+          <button key={d} type="button" disabled={locked || (!days.has(d) && days.size >= CAREER.tacticDaysMax)} className={days.has(d) ? 'is-active' : undefined} aria-pressed={days.has(d)} onClick={() => toggle(d)}>
+            {t(WEEKDAY_LABEL[d])}
+          </button>
+        ))}
+      </div>
+      <span className="tac-note">
+        {t('maks {n} hari/pekan; dilewati di hari laga & sehari setelahnya. Peluang hasil (dari kecerdasan pemain inti): bagus {g}% · biasa {m}% · buruk {b}%.', { n: CAREER.tacticDaysMax, g: Math.round(odds.bagus * 100), m: Math.round(odds.biasa * 100), b: Math.round(odds.buruk * 100) })}
+      </span>
     </div>
   );
 }

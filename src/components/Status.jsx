@@ -46,6 +46,7 @@ export function newsText(n) {
     const where = `${compLabel(comp)} · ${stageLabel(stage)}`;
     return n.type === 'lolos' ? `✅ ${t('Lolos dari {w} (lawan {o})', { w: where, o: n.name })}` : `❌ ${t('Tersingkir di {w} oleh {o}', { w: where, o: n.name })}`;
   }
+  if (n.type === 'pindah') return `🤝 ${n.detail === 'dipecat' ? t('Mulai melatih {c} setelah dipecat', { c: n.name }) : t('Pindah melatih {c}', { c: n.name })}`;
   if (n.type === 'juara') return `🏆 ${t('Juara {c}!', { c: compLabel(n.detail) })}`;
   if (n.type === 'naik') return `⬆️ ${t('Promosi ke Liga {n}!', { n: n.weeks })}`;
   if (n.type === 'turun') return `⬇️ ${t('Terdegradasi ke Liga {n}', { n: n.weeks })}`;
