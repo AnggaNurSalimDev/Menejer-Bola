@@ -20,6 +20,7 @@ import { AMATEUR_IDS } from '../src/engine/clubs.js';
 import { marketRows, weakestStarters, squadCounts, strengths, BLOCK } from '../src/engine/market.js';
 import { TICK_RATE, HALF_TICKS } from '../src/engine/constants.js';
 import * as CAR from '../src/engine/career.js';
+import { diffMatch, excitementOf, createPicker, LINES } from '../src/audio/commentary.js';
 import { createLab, labErrors, margin as labMargin, scriptKey } from '../src/engine/scriptLab.js';
 import { PRESET_KEYS, PRESETS, PRESET_MEASURED, buildPreset, uniqueScriptId } from '../src/engine/scriptPresets.js';
 import { computeAnchor, PHASES } from '../src/engine/shape.js';
@@ -1278,6 +1279,35 @@ console.log('Statistik pemain, umur, potensi, kondisi, latihan (15 Nov)');
   }
   const after = TIERS.map((t) => avgTier(w, t));
   check(`3 musim: rata-rata nilai tiap kasta bergeser < 1 (${before.map((x) => x.toFixed(2)).join('/')} → ${after.map((x) => x.toFixed(2)).join('/')})`, before.every((b, i) => Math.abs(after[i] - b) < 1) && leagueErrors(w).length === 0 ? [] : ['bergeser']);
+}
+
+console.log('Komentator (16 Nov)');
+{
+  const errs = [];
+  const tm = createDemoTeams(8);
+  const sim = createSimulation(tm.home, tm.away, 12, {});
+  let prev = sim.getState();
+  const counts = {};
+  const pick = createPicker();
+  const ctx = { t: (x, v) => x.replace(/\{(\w+)\}/g, (_, k) => String(v?.[k] ?? '')), pick, name: () => 'Pemain', team: (id) => id, crowdTeamId: 'home', memo: {} };
+  for (let i = 0; i < 20000; i += 1) {
+    const st = prev.period === 'halftime' ? sim.startSecondHalf() : sim.step();
+    for (const l of diffMatch(prev, st, ctx)) {
+      counts[l.kind] = (counts[l.kind] ?? 0) + 1;
+      if (!l.text || /\{\w+\}/.test(l.text)) errs.push(`teks ${l.kind} bolong: ${l.text}`);
+    }
+    const ex = excitementOf(st);
+    if (!(ex >= 0 && ex <= 1)) errs.push(`ketegangan ${ex}`);
+    prev = st;
+    if (st.period === 'fulltime') break;
+  }
+  const goals = prev.stats.goals.home + prev.stats.goals.away;
+  if ((counts.goal ?? 0) !== goals) errs.push(`komentar gol ${counts.goal ?? 0} ≠ gol ${goals}`);
+  if ((counts.full ?? 0) !== 1 || (counts.half ?? 0) !== 1) errs.push('babak/akhir tidak dikomentari tepat sekali');
+  const shots = prev.stats.shots.home.total + prev.stats.shots.away.total;
+  if ((counts.save ?? 0) + (counts.miss ?? 0) + goals < shots * 0.8) errs.push('banyak tembakan tak dikomentari');
+  for (const [k, v] of Object.entries(LINES)) if (!v.length) errs.push(`kalimat ${k} kosong`);
+  check(`satu laga: ${JSON.stringify(counts)}`, errs.slice(0, 5));
 }
 
 console.log('Uji skema = latihan (16 Nov)');

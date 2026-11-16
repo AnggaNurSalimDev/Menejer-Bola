@@ -1,5 +1,7 @@
 import { withCareer, closeUserRound, isMatchDay, nextUserMatch, labBlocker, labSession, saveLabResult } from './engine/career.js';
 import MusicControl from './components/MusicControl.jsx';
+import { diffMatch, excitementOf, createPicker } from './audio/commentary.js';
+import { playSound, speak, setMatchActive, setExcitement } from './audio/hub.js';
 import Guide, { FeedbackLink, useGuide } from './components/Guide.jsx';
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import MatchView from './components/MatchView.jsx';
@@ -154,6 +156,13 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
   const guide = useGuide();
   const subToastRef = useRef(null);
   const scriptChipRef = useRef(null);
+  // Komentator & penonton (16 Nov): selisih state antar-bingkai → kalimat, sorak, peluit.
+  const commentRef = useRef(null);
+  const prevStateRef = useRef(null);
+  const pickerRef = useRef(createPicker());
+  const speedRef = useRef(1);
+  const crowdTeamRef = useRef('home');
+  const commentMemoRef = useRef({});
 
   const clockRef = useRef(null);
   const scoreRef = useRef(null);
@@ -270,6 +279,23 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
     setRunning(false);
   }
 
+  // Penonton bersuara selama laga berjalan; setelah berhenti diberi jeda supaya tepuk tangan selesai.
+  useEffect(() => {
+    speedRef.current = speed;
+  }, [speed]);
+  useEffect(() => {
+    crowdTeamRef.current = leagueMatch && !leagueMatch.userIsHome ? away.id : home.id;
+  }, [leagueMatch, home, away]);
+  useEffect(() => {
+    if (running) {
+      setMatchActive(true);
+      return undefined;
+    }
+    const id = setTimeout(() => setMatchActive(false), 3500);
+    return () => clearTimeout(id);
+  }, [running]);
+  useEffect(() => () => setMatchActive(false), []);
+
   // Semua angka diperbarui langsung di DOM, tanpa render ulang React setiap tick.
   const handleTick = useCallback(
     (state) => {
@@ -277,6 +303,36 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
         if (el && el.textContent !== text) el.textContent = text;
       };
       const { stats } = state;
+
+      // Komentator: hanya kalimat terpenting per bingkai yang tampil; bunyi semuanya.
+      const prevState = prevStateRef.current;
+      prevStateRef.current = state;
+      if (prevState && prevState.tick < state.tick) {
+        const lines = diffMatch(prevState, state, {
+          t,
+          pick: pickerRef.current,
+          name: (id) => namesById.get(id) ?? '',
+          team: (id) => (id === home.id ? home.name : away.name),
+          crowdTeamId: crowdTeamRef.current,
+          memo: commentMemoRef.current,
+        });
+        for (const l of lines) if (l.sound) playSound(l.sound);
+        const top = lines.reduce((a, b) => (!a || b.priority > a.priority ? b : a), null);
+        if (top) {
+          const el = commentRef.current;
+          if (el) {
+            el.dataset.kind = top.kind;
+            set(el, `🎙 ${top.text}`);
+            el.dataset.until = String(state.tick + 60);
+          }
+          // Di kecepatan tinggi hanya gol yang disuarakan (supaya tidak tertinggal jauh).
+          if (top.speak && top.priority >= 2 && (speedRef.current <= 2 || top.priority >= 5)) speak(top.text, top.priority);
+        } else if (commentRef.current?.textContent && state.tick > Number(commentRef.current.dataset.until ?? 0)) {
+          commentRef.current.textContent = '';
+          commentRef.current.dataset.kind = '';
+        }
+        if (state.tick % 10 === 0) setExcitement(excitementOf(state));
+      }
 
       if ((tabRef.current === 'team' || tabRef.current === 'subs') && state.tick % TEAM_VIEW_EVERY_TICKS === 0) setTeamView(state);
 
@@ -413,6 +469,9 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
             ? t('gol bunuh diri')
             : `${scorer ?? team.name}${goal.header ? ` (${t('sundulan')})` : goal.penalty ? ` (${t('penalti')})` : goal.freeKick ? ` (${t('tendangan bebas')})` : goal.longShot ? ` (${t('dari luar kotak')})` : ''}`;
           set(banner.querySelector('.goal-banner__detail'), `${who} · ${team.name}`);
+          set(banner.querySelector('.goal-banner__score'), `${home.name} ${stats.goals[home.id]} – ${stats.goals[away.id]} ${away.name}`);
+          const other = goal.teamId === home.id ? away : home;
+          banner.style.setProperty('--goal-color-2', team.colors.number ?? other.colors.shirt);
           banner.style.setProperty('--goal-color', team.colors.shirt);
         }
       }
@@ -679,6 +738,7 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
       <div ref={whistleRef} className="whistle-banner" hidden aria-live="polite" />
       <div ref={subToastRef} className="sub-toast" hidden aria-live="polite" />
       <div ref={scriptChipRef} className="script-chip" hidden aria-live="polite" />
+      <div ref={commentRef} className="comment-line" aria-live="polite" />
 
       {league && (
         <div hidden={tab !== 'league'}>
@@ -732,7 +792,13 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
         <div className="pitch-wrap">
           <MatchView simulation={simulation} running={running} speed={speed} onTick={handleTick} />
           <div ref={goalBannerRef} className="goal-banner" hidden aria-live="polite">
+            <span className="goal-banner__confetti" aria-hidden="true">
+              {Array.from({ length: 18 }, (_, i) => (
+                <i key={i} style={{ '--i': i }} />
+              ))}
+            </span>
             <span className="goal-banner__title">{t('GOL!')}</span>
+            <span className="goal-banner__score" />
             <span className="goal-banner__detail" />
           </div>
           {breakState && (

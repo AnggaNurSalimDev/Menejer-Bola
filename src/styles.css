@@ -2750,3 +2750,33 @@ details.fold {
 .music-pop { position: absolute; top: 110%; right: 0; z-index: 40; background: #18211c; border: 1px solid #2f4a39; border-radius: 8px; padding: 10px; display: grid; gap: 6px; width: 240px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
 .music-pop label { display: flex; gap: 8px; align-items: center; }
 .music-pop input[type='range'] { flex: 1; }
+
+/* Komentator & momen gol (16 Nov) */
+.comment-line { margin: 4px 0; padding: 4px 10px; border-left: 3px solid #4dabf7; background: #141c17; border-radius: 4px; font-size: 0.95rem; }
+.comment-line[data-kind='goal'] { border-color: #ffd43b; font-weight: 700; }
+.comment-line[data-kind='card'], .comment-line[data-kind='penalty'] { border-color: #ff6b6b; }
+.sound-row { display: flex; gap: 6px; align-items: center; }
+.sound-row input[type='range'] { flex: 1; min-width: 70px; }
+.goal-banner__score { font-size: clamp(1rem, 2.8vw, 1.5rem); font-weight: 800; color: #fff; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7); animation: goal-pop 0.6s ease-out; }
+.goal-banner { overflow: hidden; animation: goal-flash 0.6s ease-out; }
+@keyframes goal-flash { from { background: rgba(255, 255, 255, 0.55); } to { background: rgba(10, 12, 15, 0.35); } }
+.goal-banner__confetti { position: absolute; inset: 0; pointer-events: none; }
+.goal-banner__confetti i {
+  position: absolute;
+  top: -8%;
+  left: calc(var(--i) * 5.5% + 2%);
+  width: 8px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--goal-color, #1f4fbf);
+  opacity: 0.9;
+  animation: confetti-fall calc(1.6s + var(--i) * 0.07s) ease-in calc(var(--i) * 0.05s) forwards;
+}
+.goal-banner__confetti i:nth-child(odd) { background: var(--goal-color-2, #ffffff); width: 6px; height: 10px; }
+@keyframes confetti-fall {
+  from { transform: translateY(0) rotate(0deg); }
+  to { transform: translateY(115vh) rotate(calc(var(--i) * 47deg + 300deg)); opacity: 0.6; }
+}
+@media (prefers-reduced-motion: reduce) { .goal-banner__confetti { display: none; } .goal-banner { animation: none; } }
+.comment-line { min-height: 1.6em; }
+.comment-line:empty { border-color: transparent; background: transparent; }

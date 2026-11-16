@@ -1,119 +1,47 @@
 import { useEffect, useState } from 'react';
-import { createMusic, TRACKS } from '../audio/music.js';
-import { t } from '../i18n.js';
+import { TRACKS } from '../audio/music.js';
+import { subscribe, soundState, updateSound, nextTrack, setLanguage } from '../audio/hub.js';
+import { t, getLang } from '../i18n.js';
 
-// Tombol musik di bar atas (menu & layar game memakai satu pemutar yang sama).
-//
-//   pengaturan (localStorage) { on, volume }  ─▶  klik/ketuk pertama di halaman membuat AudioContext
-//   (aturan browser: suara baru boleh mulai setelah interaksi pengguna)  ─▶  play()
-
-const KEY = 'menejer-bola:musik:v1';
-const DEFAULTS = { on: true, volume: 0.5 };
-
-function load() {
-  try {
-    const v = JSON.parse(window.localStorage.getItem(KEY) ?? 'null');
-    if (v && typeof v.on === 'boolean' && v.volume >= 0 && v.volume <= 1) return v;
-  } catch {
-    /* abaikan */
-  }
-  return { ...DEFAULTS };
-}
-function save(v) {
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(v));
-  } catch {
-    /* abaikan */
-  }
-}
-
-// Satu pemutar untuk seluruh halaman.
-const player = { ctx: null, music: null, settings: load(), track: 0, listeners: new Set() };
-const notify = () => player.listeners.forEach((fn) => fn({ ...player.settings, track: player.track, started: Boolean(player.music?.playing()) }));
-
-function ensure() {
-  if (player.music) return player.music;
-  const Ctx = typeof window !== 'undefined' ? window.AudioContext || window.webkitAudioContext : null;
-  if (!Ctx) return null; // browser tanpa Web Audio: tombol tetap ada, tanpa suara
-  player.ctx = new Ctx();
-  player.music = createMusic(player.ctx);
-  player.music.onTrackChange((i) => {
-    player.track = i;
-    notify();
-  });
-  player.music.setVolume(player.settings.volume);
-  return player.music;
-}
-
-function apply() {
-  const s = player.settings;
-  if (!s.on) {
-    player.music?.stop();
-    player.ctx?.suspend?.();
-    notify();
-    return;
-  }
-  const m = ensure();
-  if (!m) return;
-  player.ctx.resume?.();
-  m.setVolume(s.volume);
-  if (!m.playing()) m.play(player.track);
-  notify();
-}
-
-function update(patch) {
-  player.settings = { ...player.settings, ...patch };
-  save(player.settings);
-  apply();
-}
-
-// Mulai saat interaksi pertama (bila musik aktif).
-if (typeof window !== 'undefined') {
-  const first = () => {
-    window.removeEventListener('pointerdown', first);
-    window.removeEventListener('keydown', first);
-    if (player.settings.on) apply();
-  };
-  window.addEventListener('pointerdown', first);
-  window.addEventListener('keydown', first);
-}
+// Tombol suara di bar atas (menu & layar game): musik, penonton & peluit, komentator bersuara.
+// Pengaturan & pemutar ada di audio/hub.js (satu untuk seluruh halaman).
 
 export default function MusicControl() {
-  const [s, setS] = useState({ ...player.settings, track: player.track, started: Boolean(player.music?.playing()) });
+  const [s, setS] = useState(soundState);
   const [open, setOpen] = useState(false);
-  useEffect(() => {
-    player.listeners.add(setS);
-    return () => player.listeners.delete(setS);
-  }, []);
+  useEffect(() => subscribe(setS), []);
+  useEffect(() => setLanguage(getLang()));
+  const anyOn = s.on || s.sfx;
   return (
     <span className="music-control">
-      <button type="button" className="menu-link" aria-pressed={s.on} title={s.on ? t('Matikan musik') : t('Nyalakan musik')} onClick={() => update({ on: !s.on })}>
-        {s.on ? '🔊' : '🔇'}
+      <button type="button" className="menu-link" aria-pressed={anyOn} title={anyOn ? t('Matikan semua suara') : t('Nyalakan suara')} onClick={() => updateSound(anyOn ? { on: false, sfx: false } : { on: true, sfx: true })}>
+        {anyOn ? '🔊' : '🔇'}
       </button>
-      <button type="button" className="menu-link" aria-expanded={open} title={t('Pengaturan musik')} onClick={() => setOpen(!open)}>
+      <button type="button" className="menu-link" aria-expanded={open} title={t('Pengaturan suara')} onClick={() => setOpen(!open)}>
         ♪
       </button>
       {open && (
         <span className="music-pop">
-          <label>
-            {t('Volume')}
-            <input type="range" min={0} max={1} step={0.05} value={s.volume} onChange={(e) => update({ volume: Number(e.target.value), on: true })} />
+          <label className="sound-row">
+            <input type="checkbox" checked={s.on} onChange={(e) => updateSound({ on: e.target.checked })} /> {t('Musik')}
+            <input type="range" min={0} max={1} step={0.05} value={s.volume} aria-label={t('Volume musik')} onChange={(e) => updateSound({ volume: Number(e.target.value), on: true })} />
           </label>
           <span className="tac-note">
             ♪ {TRACKS[s.track].name}
-            {!s.started && s.on && ` · ${t('mulai setelah kamu klik di halaman')}`}
+            {!s.started && s.on && ` · ${t('mulai setelah kamu klik di halaman')}`}{' '}
+            <button type="button" className="link-btn" onClick={nextTrack}>
+              ⏭ {t('Lagu berikutnya')}
+            </button>
           </span>
-          <button
-            type="button"
-            className="lane-reset"
-            onClick={() => {
-              update({ on: true });
-              player.music?.next();
-            }}
-          >
-            ⏭ {t('Lagu berikutnya')}
-          </button>
-          <small className="tac-note">{t('Musik orisinal buatan game ini (disintesis langsung, bebas hak cipta).')}</small>
+          <label className="sound-row">
+            <input type="checkbox" checked={s.sfx} onChange={(e) => updateSound({ sfx: e.target.checked })} /> {t('Penonton & peluit')}
+            <input type="range" min={0} max={1} step={0.05} value={s.sfxVolume} aria-label={t('Volume penonton')} onChange={(e) => updateSound({ sfxVolume: Number(e.target.value), sfx: true })} />
+          </label>
+          <label className="sound-row">
+            <input type="checkbox" checked={s.voice} onChange={(e) => updateSound({ voice: e.target.checked })} /> {t('Suara komentator')}
+          </label>
+          {s.voice && !s.voiceAvailable && <small className="sub-warn">{t('Browser ini tidak punya suara untuk bahasa yang dipilih — komentar tampil sebagai teks saja.')}</small>}
+          <small className="tac-note">{t('Musik, penonton, dan peluit dibuat langsung oleh game (bebas hak cipta). Suara komentator memakai suara bawaan browser/perangkatmu.')}</small>
         </span>
       )}
     </span>
