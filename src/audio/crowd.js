@@ -102,10 +102,15 @@ export function createCrowd(ctx, out, samples = {}) {
     const src = ctx.createBufferSource();
     src.buffer = samples.ambience;
     src.loop = true;
+    // mp3 punya jeda kecil di awal/akhir (encoder): putaran memakai bagian tengahnya saja.
+    if (samples.ambience.duration > 1) {
+      src.loopStart = 0.06;
+      src.loopEnd = samples.ambience.duration - 0.06;
+    }
     const gain = ctx.createGain();
     gain.gain.value = 0.45;
     src.connect(gain).connect(master);
-    src.start(ctx.currentTime, Math.random() * Math.max(0, samples.ambience.duration - 1));
+    src.start(ctx.currentTime, 0.06 + Math.random() * Math.max(0, samples.ambience.duration - 1.2));
     bed = { src, gain };
   }
 
