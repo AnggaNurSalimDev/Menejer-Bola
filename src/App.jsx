@@ -1,4 +1,5 @@
 import { withCareer, closeUserRound, isMatchDay, nextUserMatch, labBlocker, labSession, saveLabResult } from './engine/career.js';
+import MusicControl from './components/MusicControl.jsx';
 import Guide, { FeedbackLink, useGuide } from './components/Guide.jsx';
 import { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import MatchView from './components/MatchView.jsx';
@@ -657,6 +658,7 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
               ☰ {t('Menu utama')}
             </button>
           )}
+          <MusicControl />
           <button type="button" className="menu-link" onClick={guide.show}>
             ? {t('Panduan')}
           </button>

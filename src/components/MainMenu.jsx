@@ -1,3 +1,4 @@
+import MusicControl from './MusicControl.jsx';
 import { useState } from 'react';
 import ClubLogo from './ClubLogo.jsx';
 import ProfileEditor from './ProfileEditor.jsx';
@@ -216,6 +217,7 @@ export default function MainMenu({ saves, onStart, onLoad, onDelete, onFriendly,
   return (
     <main className="main-menu">
       <div className="lang-switch" role="group" aria-label="Bahasa / Language">
+        <MusicControl />
         {langs.map((l) => (
           <button key={l} type="button" className={l === lang ? 'is-active' : undefined} aria-pressed={l === lang} onClick={() => onLang(l)}>
             {l === 'id' ? 'ID' : 'EN'}

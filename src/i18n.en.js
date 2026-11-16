@@ -771,4 +771,11 @@ export const EN = Object.freeze({
   'sebelum skema': 'before the scheme',
   'skema berjalan': 'scheme running',
   sesudahnya: 'afterwards',
+  'Matikan musik': 'Turn music off',
+  'Nyalakan musik': 'Turn music on',
+  'Pengaturan musik': 'Music settings',
+  Volume: 'Volume',
+  'mulai setelah kamu klik di halaman': 'starts once you click on the page',
+  'Lagu berikutnya': 'Next track',
+  'Musik orisinal buatan game ini (disintesis langsung, bebas hak cipta).': 'Original music made for this game (synthesised live, copyright-free).',
 });

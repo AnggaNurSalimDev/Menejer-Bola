@@ -2744,3 +2744,9 @@ details.fold {
 .lab-label { font-size: 2.2px; fill: #fff; text-anchor: middle; paint-order: stroke; stroke: #000; stroke-width: 0.4px; }
 .lab-phase { font-size: 0.75rem; border: 1px solid #3b5a46; border-radius: 999px; padding: 0 6px; opacity: 0.7; }
 .lab-phase.is-on { border-color: #ffd43b; color: #ffd43b; opacity: 1; }
+
+/* Musik (16 Nov) */
+.music-control { position: relative; display: inline-flex; gap: 2px; align-items: center; }
+.music-pop { position: absolute; top: 110%; right: 0; z-index: 40; background: #18211c; border: 1px solid #2f4a39; border-radius: 8px; padding: 10px; display: grid; gap: 6px; width: 240px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); }
+.music-pop label { display: flex; gap: 8px; align-items: center; }
+.music-pop input[type='range'] { flex: 1; }
