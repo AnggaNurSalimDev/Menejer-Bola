@@ -870,4 +870,5 @@ export const EN = Object.freeze({
   'Waktu sejak peluit kick-off (sama dengan tMs di log)': 'Time since the kick-off whistle (same as tMs in the log)',
   '{n} kejadian': '{n} events',
   'Salin log JSON': 'Copy JSON log',
+  'Diunduh: {n} — ganti ekstensinya jadi .srt sebelum diimpor.': 'Downloaded: {n} — rename the extension to .srt before importing.',
 });
