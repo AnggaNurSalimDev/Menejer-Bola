@@ -2799,3 +2799,10 @@ details.fold {
 .training-load.is-compact { font-size: 0.9rem; }
 .day-kind--istirahat { opacity: 0.75; }
 .prog-chip { opacity: 0.8; }
+
+/* Mode rekam (17 Nov) */
+.rec-controls { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 2px 8px; border: 1px solid #c0504d; border-radius: 8px; }
+.rec-dot { color: #ff5252; animation: rec-blink 1.2s steps(2, start) infinite; }
+@keyframes rec-blink { to { visibility: hidden; } }
+.rec-clock { font-variant-numeric: tabular-nums; min-width: 5.2em; }
+.rec-msg { flex-basis: 100%; }

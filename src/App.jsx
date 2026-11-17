@@ -4,6 +4,9 @@ import { learnRate } from './engine/tacticTemplates.js';
 import { starterPlayers } from './engine/league.js';
 import { withCareer, closeUserRound, isMatchDay, nextUserMatch, labBlocker, drillSession, saveLabResult, masteryOf } from './engine/career.js';
 import MusicControl from './components/MusicControl.jsx';
+import RecordControls from './components/RecordControls.jsx';
+import { createEventLog, deriveEvents } from './recording/eventLog.js';
+import { isRecordMode, subscribeRecordMode } from './recording/recordMode.js';
 import { diffMatch, excitementOf, createPicker } from './audio/commentary.js';
 import { playSound, setMatchActive, setExcitement } from './audio/hub.js';
 import Guide, { FeedbackLink, useGuide } from './components/Guide.jsx';
@@ -162,10 +165,18 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
   const scriptChipRef = useRef(null);
   // Komentator & penonton (16 Nov): selisih state antar-bingkai → kalimat, sorak, peluit.
   const commentRef = useRef(null);
-  const prevStateRef = useRef(null);
   const pickerRef = useRef(createPicker());
   const speedRef = useRef(1);
   const crowdTeamRef = useRef('home');
+  // Kalimat komentar sejak bingkai terakhir (dikumpulkan per tick, yang terpenting ditampilkan).
+  const frameLinesRef = useRef([]);
+  // Log kejadian untuk rekaman (17 Nov): hanya membaca state; di-reset tiap laga baru / ganti seed.
+  const recLogRef = useRef(createEventLog());
+  const recMemoRef = useRef({});
+  const [recordMode, setRecordMode] = useState(isRecordMode);
+  const recordModeRef = useRef(recordMode);
+  recordModeRef.current = recordMode;
+  useEffect(() => subscribeRecordMode(setRecordMode), []);
   const commentMemoRef = useRef({});
 
   const clockRef = useRef(null);
@@ -301,20 +312,41 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
     return () => clearTimeout(id);
   }, [running]);
   useEffect(() => () => setMatchActive(false), []);
+  // Log rekaman: laga baru / ulang seed = log baru.
+  useEffect(() => {
+    recLogRef.current.reset();
+    recMemoRef.current = {};
+    frameLinesRef.current = [];
+  }, [simulation]);
+  // Kejadian teknis: jeda/lanjut & ganti kecepatan (bagian video yang dipercepat).
+  const prevRunningRef = useRef(running);
+  useEffect(() => {
+    if (prevRunningRef.current === running) return;
+    prevRunningRef.current = running;
+    const log = recLogRef.current;
+    if (!recordModeRef.current || !log.started()) return;
+    const st = simulation.getState();
+    log.add({ jenis: running ? 'lanjut' : 'jeda', bobot: 1, tick: st.tick }, performance.now(), st, { speed, teamName: () => null });
+  }, [running, simulation, speed]);
+  const prevSpeedRef = useRef(speed);
+  useEffect(() => {
+    if (prevSpeedRef.current === speed) return;
+    const from = prevSpeedRef.current;
+    prevSpeedRef.current = speed;
+    const log = recLogRef.current;
+    if (!recordModeRef.current || !log.started()) return;
+    const st = simulation.getState();
+    log.add({ jenis: 'kecepatan', penyebab: `${from}× → ${speed}×`, bobot: 1, tick: st.tick }, performance.now(), st, { speed, teamName: () => null });
+  }, [speed, simulation]);
 
   // Semua angka diperbarui langsung di DOM, tanpa render ulang React setiap tick.
-  const handleTick = useCallback(
-    (state) => {
-      const set = (el, text) => {
-        if (el && el.textContent !== text) el.textContent = text;
-      };
-      const { stats } = state;
-
-      // Komentator: hanya kalimat terpenting per bingkai yang tampil; bunyi semuanya.
-      const prevState = prevStateRef.current;
-      prevStateRef.current = state;
-      if (prevState && prevState.tick < state.tick) {
-        const lines = diffMatch(prevState, state, {
+  // Tiap tick simulasi: komentar + bunyi, dan (mode rekam) log kejadian. Hanya MEMBACA state.
+  const handleStep = useCallback(
+    (prev, next, now) => {
+      if (!prev || !next || (next.tick <= prev.tick && prev.period === next.period)) return;
+      let lines = [];
+      try {
+        lines = diffMatch(prev, next, {
           t,
           pick: pickerRef.current,
           name: (id) => namesById.get(id) ?? '',
@@ -322,9 +354,47 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
           crowdTeamId: crowdTeamRef.current,
           memo: commentMemoRef.current,
         });
-        for (const l of lines) if (l.sound) playSound(l.sound);
+      } catch (e) {
+        console.warn('[komentar]', e?.message ?? e);
+      }
+      for (const l of lines) if (l.sound) playSound(l.sound);
+      frameLinesRef.current.push(...lines);
+      if (!recordModeRef.current) return;
+      const log = recLogRef.current;
+      const teamName = (id) => (id === home.id ? home.name : id === away.id ? away.name : null);
+      const speedNow = speedRef.current;
+      try {
+        // t0 = bingkai pertama banner "PRIIIT! Kick-off" babak 1 (peluit akhir jeda kick-off).
+        if (!log.started() && next.period === 'first' && next.whistle?.kind === 'kickoff' && prev.whistle?.tick !== next.whistle.tick) {
+          log.start(now);
+          log.add({ jenis: 'kickoff', komentar: `${t('PRIIIT!')} ${t('Kick-off')} — ${home.name} vs ${away.name}`, bobot: 2, tick: next.tick }, now, next, { speed: speedNow, teamName });
+        }
+        for (const e of deriveEvents(prev, next, { lines, memo: recMemoRef.current })) {
+          // Kick-off babak 1 dari komentar terjadi sebelum t0 (sudah diwakili penanda di atas).
+          if (e.jenis === 'kickoff' && next.period === 'first') continue;
+          log.add(e, now, next, { speed: speedNow, teamName });
+        }
+      } catch (e) {
+        console.warn('[log rekam]', e?.message ?? e);
+      }
+    },
+    [home, away, namesById],
+  );
+
+  const handleTick = useCallback(
+    (state) => {
+      const set = (el, text) => {
+        if (el && el.textContent !== text) el.textContent = text;
+      };
+      const { stats } = state;
+
+      // Komentator: kalimat dikumpulkan per tick (handleStep); yang terpenting sejak bingkai lalu tampil.
+      {
+        const lines = frameLinesRef.current;
+        frameLinesRef.current = [];
         const top = lines.reduce((a, b) => (!a || b.priority > a.priority ? b : a), null);
         if (top) {
+          top.shown = true; // log rekaman menandai teks yang benar-benar tampil
           const el = commentRef.current;
           if (el) {
             el.dataset.kind = top.kind;
@@ -823,7 +893,7 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
       {/* Tab Pertandingan. Disembunyikan (bukan dilepas) supaya loop & canvas tetap hidup. */}
       <div hidden={tab !== 'match'} className="match-layout">
         <div className="pitch-wrap">
-          <MatchView simulation={simulation} running={running} speed={speed} onTick={handleTick} />
+          <MatchView simulation={simulation} running={running} speed={speed} onTick={handleTick} onStep={handleStep} />
           <div ref={goalBannerRef} className="goal-banner" hidden aria-live="polite">
             <span className="goal-banner__confetti" aria-hidden="true">
               {Array.from({ length: 18 }, (_, i) => (
@@ -886,6 +956,24 @@ export default function App({ initialLeague, onSaveLeague, onExitToMenu, lang, o
             </button>
           ))}
         </div>
+        {recordMode && (
+          <RecordControls
+            log={recLogRef.current}
+            meta={() => {
+              const st = simulation.getState();
+              return {
+                seed: matchSeed,
+                timKandang: home.name,
+                timTandang: away.name,
+                formasi: { kandang: st.teams[home.id]?.activeTactics?.formation ?? home.formation ?? null, tandang: st.teams[away.id]?.activeTactics?.formation ?? away.formation ?? null },
+                gayaLawan: awayStyle ? t(CLUB_STYLES[awayStyle]?.label ?? awayStyle) : null,
+                tanggalRekam: new Date().toISOString(),
+                versiGame: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev',
+                jenisLaga: leagueMatch ? leagueMatch.label : t('Persahabatan'),
+              };
+            }}
+          />
+        )}
         {!leagueMatch && (
           <button type="button" onClick={restart}>
             {t('Ulang (seed baru)')}

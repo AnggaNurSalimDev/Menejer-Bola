@@ -10,7 +10,9 @@ const ASPECT = (PITCH.width + 8) / (PITCH.length + 8);
 
 // Loop permainan. Penggambaran dilakukan langsung ke canvas di setiap
 // frame, bukan lewat render ulang React (prinsip arsitektur no. 3).
-export default function MatchView({ simulation, running, speed, onTick }) {
+// onStep(prev, next, nowMs) (17 Nov): dipanggil tiap tick simulasi (bukan tiap bingkai) supaya komentar & log
+// rekaman tidak melewatkan kejadian di kecepatan tinggi. nowMs = waktu bingkai (basis performance.now()).
+export default function MatchView({ simulation, running, speed, onTick, onStep }) {
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
 
@@ -21,6 +23,8 @@ export default function MatchView({ simulation, running, speed, onTick }) {
   runningRef.current = running;
   speedRef.current = speed;
   onTickRef.current = onTick;
+  const onStepRef = useRef(onStep);
+  onStepRef.current = onStep;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -66,6 +70,7 @@ export default function MatchView({ simulation, running, speed, onTick }) {
         while (accumulator >= STEP_MS && steps < MAX_STEPS_PER_FRAME) {
           previous = current;
           current = simulation.step();
+          onStepRef.current?.(previous, current, now);
           accumulator -= STEP_MS;
           steps += 1;
         }

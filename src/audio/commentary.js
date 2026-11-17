@@ -43,7 +43,8 @@ export function diffMatch(prev, next, ctx) {
   const out = [];
   const [homeId, awayId] = Object.keys(next.stats.goals);
   const s = scoreText(next, homeId, awayId);
-  const say = (kind, key, params, { sound = null, priority = 1 } = {}) => out.push({ kind, text: ctx.t(ctx.pick(key, LINES[key]), { s, ...params }), sound, priority });
+  // Info tambahan untuk log rekaman (17 Nov): playerId, teamId, card, penalty, jarak tembak — opsional.
+  const say = (kind, key, params, { sound = null, priority = 1, ...info } = {}) => out.push({ kind, key, text: ctx.t(ctx.pick(key, LINES[key]), { s, ...params }), sound, priority, ...info });
   const name = (id) => (id ? ctx.name(id) : '');
 
   // Periode.
@@ -60,7 +61,7 @@ export function diffMatch(prev, next, ctx) {
       const g = next.lastGoal;
       const crowd = id === ctx.crowdTeamId ? 'roar' : 'roarAway';
       const key = g?.ownGoal ? 'ownGoal' : g?.penalty ? 'goalPenalty' : g?.freeKick ? 'goalFreeKick' : g?.header ? 'goalHeader' : g?.longShot ? 'goalLong' : 'goal';
-      say('goal', key, { p: name(g?.scorerId) || ctx.team(id), t: ctx.team(id) }, { sound: crowd, priority: 5 });
+      say('goal', key, { p: name(g?.scorerId) || ctx.team(id), t: ctx.team(id) }, { sound: crowd, priority: 5, playerId: g?.scorerId ?? null, teamId: id });
     }
   }
   const scored = out.some((x) => x.kind === 'goal');
@@ -69,20 +70,24 @@ export function diffMatch(prev, next, ctx) {
   // ctx.memo.shot = { teamId, kicker, tick } menunggu sampai salah satu terjadi (maks 3 dtk).
   const memo = ctx.memo ?? (ctx.memo = {});
   for (const id of [homeId, awayId]) {
-    if (next.stats.shots[id].total > prev.stats.shots[id].total && !scored) memo.shot = { teamId: id, kicker: name(next.ball.kickerId) || ctx.team(id), tick: next.tick };
+    if (next.stats.shots[id].total > prev.stats.shots[id].total && !scored) {
+      const shooter = next.ball.kickerId ? next.players.find((p) => p.id === next.ball.kickerId) : null;
+      const goalX = shooter ? (shooter.attacksRight ? 105 : 0) : null;
+      memo.shot = { teamId: id, kickerId: next.ball.kickerId ?? null, kicker: name(next.ball.kickerId) || ctx.team(id), tick: next.tick, dist: shooter ? Math.hypot(shooter.x - goalX, shooter.y - 34) : null };
+    }
   }
   if (scored) memo.shot = null;
   if (memo.shot) {
-    const { teamId, kicker, tick } = memo.shot;
+    const { teamId, kicker, tick, kickerId, dist } = memo.shot;
     const other = teamId === homeId ? awayId : homeId;
     const saved = sum2(next.stats.saves[other]) > sum2(prev.stats.saves[other]);
     const owner = next.ball.ownerId ? next.players.find((p) => p.id === next.ball.ownerId) : null;
     const over = next.ball.restartKind || (owner && owner.teamId !== teamId && owner.role !== 'GK') || next.tick - tick > 30;
     if (saved || (owner && owner.role === 'GK' && owner.teamId !== teamId)) {
-      say('save', 'save', { p: kicker }, { sound: 'applause', priority: 2 });
+      say('save', 'save', { p: kicker }, { sound: 'applause', priority: 2, playerId: kickerId, teamId, dist });
       memo.shot = null;
     } else if (over) {
-      say('miss', 'miss', { p: kicker }, { sound: 'ooh', priority: 2 });
+      say('miss', 'miss', { p: kicker }, { sound: 'ooh', priority: 2, playerId: kickerId, teamId, dist });
       memo.shot = null;
     }
   }
@@ -92,16 +97,17 @@ export function diffMatch(prev, next, ctx) {
   if (w && (!prev.whistle || prev.whistle.tick !== w.tick || prev.whistle.kind !== w.kind)) {
     const p = name(w.playerId);
     if (w.kind === 'foul' || w.kind === 'advantage') {
-      if (w.penalty) say('penalty', 'penalty', {}, { sound: 'whistleShort', priority: 4 });
-      else if (w.card === 'red' || w.card === 'secondYellow') say('card', 'red', { p }, { sound: 'whistleShort', priority: 4 });
-      else if (w.card === 'yellow') say('card', 'yellow', { p }, { sound: 'whistleShort', priority: 3 });
-      else say('foul', 'foul', { p }, { sound: w.kind === 'advantage' ? null : 'whistleShort', priority: 1 });
-    } else if (w.kind === 'offside') say('offside', 'offside', { p }, { sound: 'whistleShort', priority: 1 });
+      const info = { playerId: w.playerId ?? null, teamId: w.teamId ?? null, card: w.card ?? null, penalty: Boolean(w.penalty) };
+      if (w.penalty) say('penalty', 'penalty', {}, { sound: 'whistleShort', priority: 4, ...info });
+      else if (w.card === 'red' || w.card === 'secondYellow') say('card', 'red', { p }, { sound: 'whistleShort', priority: 4, ...info });
+      else if (w.card === 'yellow') say('card', 'yellow', { p }, { sound: 'whistleShort', priority: 3, ...info });
+      else say('foul', 'foul', { p }, { sound: w.kind === 'advantage' ? null : 'whistleShort', priority: 1, ...info });
+    } else if (w.kind === 'offside') say('offside', 'offside', { p }, { sound: 'whistleShort', priority: 1, playerId: w.playerId ?? null, teamId: w.teamId ?? null });
   }
 
   // Sepak pojok.
   for (const id of [homeId, awayId]) {
-    if ((next.stats.corners[id]?.taken ?? 0) > (prev.stats.corners[id]?.taken ?? 0)) say('corner', 'corner', { t: ctx.team(id) }, { priority: 1 });
+    if ((next.stats.corners[id]?.taken ?? 0) > (prev.stats.corners[id]?.taken ?? 0)) say('corner', 'corner', { t: ctx.team(id) }, { priority: 1, teamId: id });
   }
   return out;
 }
@@ -131,7 +137,10 @@ export function createPicker() {
   const idx = new Map();
   return (key, list) => {
     if (!Array.isArray(list) || list.length === 0) throw new RangeError(`pick: daftar kosong untuk ${key}`);
-    const i = idx.get(key) ?? Math.floor(Math.random() * list.length);
+    // Awal giliran dari nama kunci (bukan Math.random): seed sama → teks komentar sama (log rekaman).
+    let h = 0;
+    for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) % 9973;
+    const i = idx.get(key) ?? h % list.length;
     idx.set(key, (i + 1) % list.length);
     return list[i % list.length];
   };

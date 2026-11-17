@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { TRACKS } from '../audio/music.js';
 import { subscribe, soundState, updateSound, nextTrack, setLanguage } from '../audio/hub.js';
 import { t, getLang } from '../i18n.js';
+import { recordToggle, recordViaUrl, setRecordToggle, subscribeRecordMode } from '../recording/recordMode.js';
 
 // Tombol suara di bar atas (menu & layar game): musik, penonton & peluit, komentator bersuara.
 // Pengaturan & pemutar ada di audio/hub.js (satu untuk seluruh halaman).
@@ -9,6 +10,8 @@ import { t, getLang } from '../i18n.js';
 export default function MusicControl() {
   const [s, setS] = useState(soundState);
   const [open, setOpen] = useState(false);
+  const [rec, setRec] = useState(recordToggle);
+  useEffect(() => subscribeRecordMode(() => setRec(recordToggle())), []);
   useEffect(() => subscribe(setS), []);
   const lang = getLang();
   useEffect(() => setLanguage(lang), [lang]);
@@ -18,8 +21,8 @@ export default function MusicControl() {
       <button type="button" className="menu-link" aria-pressed={anyOn} title={anyOn ? t('Matikan semua suara') : t('Nyalakan suara')} onClick={() => updateSound(anyOn ? { on: false, sfx: false } : { on: true, sfx: true })}>
         {anyOn ? '🔊' : '🔇'}
       </button>
-      <button type="button" className="menu-link" aria-expanded={open} title={t('Pengaturan suara')} onClick={() => setOpen(!open)}>
-        ♪
+      <button type="button" className="menu-link" aria-expanded={open} title={t('Pengaturan')} onClick={() => setOpen(!open)}>
+        ⚙️
       </button>
       {open && (
         <span className="music-pop">
@@ -39,6 +42,10 @@ export default function MusicControl() {
             <input type="range" min={0} max={1} step={0.05} value={s.sfxVolume} aria-label={t('Volume penonton')} onChange={(e) => updateSound({ sfxVolume: Number(e.target.value), sfx: true })} />
           </label>
           <small className="tac-note">{t('Musik, penonton, dan peluit dibuat langsung oleh game (bebas hak cipta).')}</small>
+          <label className="sound-row">
+            <input type="checkbox" checked={rec || recordViaUrl()} disabled={recordViaUrl()} onChange={(e) => setRecordToggle(e.target.checked)} /> ⏺ {t('Mode rekam (log kejadian untuk video)')}
+          </label>
+          {recordViaUrl() && <small className="tac-note">{t('Aktif lewat ?rekam=1 di alamat.')}</small>}
         </span>
       )}
     </span>

@@ -42,12 +42,20 @@ racik taktik ──▶ hari demi hari (latihan, istirahat, kejadian) ──▶ l
 - Musik latar orisinal yang disintesis langsung oleh game (Web Audio), peluit wasit (pendek untuk pelanggaran, panjang untuk mulai/akhir), dan penonton yang makin riuh saat serangan berbahaya dan meledak saat gol.
 - Komentar teks di atas lapangan.
 
+## Mode rekam (untuk video promosi)
+
+Aktifkan dengan `?rekam=1` di alamat, atau ⚙️ → **Mode rekam**. Pemain biasa tidak melihat apa pun.
+- Di bar kontrol muncul `⏺ 03:12.4 · 132 kejadian [⬇ JSON] [⬇ SRT] [📋]`. Kode waktu itu sama persis dengan `tMs` di log, dihitung dari jam dinding sejak banner "PRIIIT! Kick-off" babak 1. Jeda dan kecepatan 1×–8× tetap terhitung.
+- **JSON** berisi semua kejadian (gol, tembakan, penyelamatan, blunder beserta perkiraan penyebabnya, tekel, pelanggaran, kartu, offside, pojok, pergantian, on fire, kepercayaan diri turun, babak/laga selesai, jeda/lanjut/kecepatan). Tiap kejadian punya bobot 1–3 untuk memilih sorotan; blunder yang dibalas gol lawan ≤ 15 detik naik jadi bobot 3.
+- **SRT** berisi komentar sebagai subtitle (3 detik atau sampai komentar berikutnya). Subtitle pertama adalah penanda kick-off di 00:00: geser trek subtitle ke bingkai video yang menunjukkan `⏺ 00:00.0`.
+- Log hanya membaca state, jadi seed yang sama menghasilkan laga dan log yang sama, mode rekam aktif atau tidak (diuji di `scripts/check-recording.js`).
+
 ## Menjalankan
 
 ```bash
 npm install
 npm run dev        # buka di browser (tambahkan ?seed=13 untuk memutar ulang laga tertentu)
-npm run check      # kamus terjemahan + uji engine (invariant & angka kewajaran)
+npm run check      # kamus terjemahan + uji engine (invariant & angka kewajaran) + uji log rekaman
 npm run calibrate  # ukur rata-rata gol & dinamika kualitas tim
 npm run build      # build produksi
 ```
@@ -70,8 +78,9 @@ src/
 ├─ render/            menggambar state ke canvas (hanya membaca state)
 ├─ components/        UI React (tab Pertandingan, Taktik, Skuad, Bursa, Kompetisi, panel hari, latihan, dll.)
 ├─ audio/             musik (music.js), penonton & peluit (crowd.js), komentar (commentary.js), rekaman (samples/)
+├─ recording/         log kejadian & subtitle untuk mode rekam (eventLog.js, recordMode.js)
 └─ i18n.js, i18n.en.js, saves.js (3 slot simpanan di localStorage)
-scripts/              check-engine.js, check-i18n.js, calibrate.js
+scripts/              check-engine.js, check-i18n.js, check-recording.js, calibrate.js
 docs/                 dokumen arah game (riwayat keputusan & catatan keseimbangan)
 ```
 

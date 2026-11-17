@@ -1498,6 +1498,8 @@ export const UNDERSTANDING = Object.freeze({
 // options.scriptMastery { idTim: { idSkema: 0–100 } }; tim tanpa peta = tidak terpengaruh (klub AI).
 // Kotak zona untuk drill (bingkai tim, meter; tim menyerang ke x besar, kiri = y kecil). Sedikit
 // menjauh dari garis supaya bola tidak langsung keluar.
+const EMPTY_TICK_EVENTS = Object.freeze([]);
+
 export const DRILL_ZONES = Object.freeze({
   sendiriKiri: Object.freeze({ x: [12, 46], y: [4, 30] }),
   sendiriKanan: Object.freeze({ x: [12, 46], y: [38, 64] }),
@@ -2069,6 +2071,8 @@ export function createSimulation(home, away, seed, options = {}) {
     const tempoOf = (player) => philosophies[player.teamId].tempo * styles[player.teamId].tempo;
     const events = [];
     const note = (playerId, event) => events.push([playerId, event]);
+    // Penanda khusus log rekaman (17 Nov): TIDAK masuk events (tidak menyentuh pstats/kepercayaan diri).
+    const flags = [];
 
     // 1. Duel dan keputusan pemegang bola.
     if (ball.ownerId !== null) {
@@ -2204,6 +2208,7 @@ export function createSimulation(home, away, seed, options = {}) {
           // Guard: sapuan panik hanya boleh terjadi bila semua syaratnya terpenuhi.
           if (!canPanicClear(holder, ball, match)) throw new Error(`sapuan panik tidak sah oleh ${holder.id}`);
           stats.clearances[holder.teamId] += 1;
+          flags.push([holder.id, 'panicClear']);
           ball = releaseBall(ball, holder, clearVelocity(holder, ball, rng, blunderScale(holder, decision.context)), {});
           ballReleasedBy = holder.id;
         } else if (decision?.type === 'shoot') {
@@ -3100,6 +3105,8 @@ export function createSimulation(home, away, seed, options = {}) {
       whistle,
       tackleEvents,
       pstats,
+      // Peristiwa tick ini (17 Nov, log rekaman): hanya dibaca tampilan, tidak dipakai simulasi.
+      tickEvents: events.length || flags.length ? [...events, ...flags] : EMPTY_TICK_EVENTS,
       lastPass,
       possessionTeamId: nowPoss ?? prev.possessionTeamId ?? null,
     };
